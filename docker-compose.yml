@@ -1,0 +1,54 @@
+services:
+    nginx:
+        image: nginx:1.27-alpine
+        ports:
+            - "127.0.0.1:80:80"
+        volumes:
+            - .:/var/www/html:ro
+            - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+        depends_on:
+            - php
+
+    php:
+        build:
+            context: ./docker/php
+            args:
+                UID: ${LOCAL_UID:-1000}
+                GID: ${LOCAL_GID:-1000}
+        volumes:
+            - .:/var/www/html
+        depends_on:
+            db:
+                condition: service_healthy
+
+    node:
+        build:
+            context: ./docker/node
+            args:
+                UID: ${LOCAL_UID:-1000}
+                GID: ${LOCAL_GID:-1000}
+        volumes:
+            - .:/var/www/html
+            - node_modules:/var/www/html/node_modules
+        ports:
+            - "127.0.0.1:5173:5173"
+
+    db:
+        image: postgis/postgis:16-3.4
+        environment:
+            POSTGRES_DB: ${DB_DATABASE}
+            POSTGRES_USER: ${DB_USERNAME}
+            POSTGRES_PASSWORD: ${DB_PASSWORD}
+        volumes:
+            - postgres_data:/var/lib/postgresql/data
+        ports:
+            - "127.0.0.1:54325:5432"
+        healthcheck:
+            test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+            interval: 5s
+            timeout: 5s
+            retries: 10
+
+volumes:
+    postgres_data:
+    node_modules:
