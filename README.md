@@ -44,10 +44,13 @@ Vite запускается в отдельном терминале. Прило
 docker compose exec php composer test
 sh scripts/init-test-db.sh
 docker compose exec php composer test:postgis
+docker compose exec node npm run typecheck
 docker compose exec node npm run build
 ```
 
 Обычные тесты используют SQLite в памяти, PostGIS-тесты — отдельную базу `web_gis_test`. CI также проверяет миграции на PostgreSQL.
+
+Фронтенд использует Tailwind CSS и shadcn-vue. Каталоги и добавление UI-компонентов описаны в [структуре фронтенда](docs/frontend-structure.md).
 
 ## Остановка
 
