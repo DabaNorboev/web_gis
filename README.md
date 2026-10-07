@@ -52,6 +52,8 @@ docker compose exec node npm run build
 
 Фронтенд использует Tailwind CSS и shadcn-vue. Каталоги и добавление UI-компонентов описаны в [структуре фронтенда](docs/frontend-structure.md).
 
+Создана схема первого транспортного импорта. Таблицы, GIS-соглашения и правила обновления описаны в [схеме данных](docs/data-schema.md).
+
 ## Остановка
 
 ```bash
