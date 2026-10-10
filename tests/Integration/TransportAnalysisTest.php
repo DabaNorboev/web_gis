@@ -54,6 +54,14 @@ class TransportAnalysisTest extends TestCase
             ->assertJsonPath('metrics.stops_count.observed_at', '2025-05-01T00:00:00+00:00')
             ->assertJsonPath('metrics.stops_count.quality.freshness', 'UNKNOWN')
             ->assertJsonPath('radius_m', 500);
+        $geometry = $response->json('analysis_area');
+        $this->assertSame('Polygon', $geometry['type']);
+        $coverage = DB::selectOne('SELECT ST_Covers(ST_SetSRID(ST_GeomFromGeoJSON(?),4326), ST_SetSRID(ST_MakePoint(92.9,56),4326)) AS covers', [json_encode($geometry)]);
+        $this->assertTrue($coverage->covers);
+        foreach ($geometry['coordinates'][0] as [$lon, $lat]) {
+            $vertex = DB::selectOne('SELECT ST_Distance(ST_SetSRID(ST_MakePoint(?,?),4326)::geography, ST_SetSRID(ST_MakePoint(92.9,56),4326)::geography) AS meters', [$lon, $lat]);
+            $this->assertEqualsWithDelta(500, $vertex->meters, 2);
+        }
         $distance = $response->json('metrics.nearest_stop_distance.value');
         $this->assertGreaterThan(11, $distance);
         $this->assertLessThan(12, $distance);
@@ -103,7 +111,8 @@ class TransportAnalysisTest extends TestCase
         $this->import([['1', 'Архив', 'Автобус', '12', '', '92.9', '56']]);
         DB::table('dataset_imports')->update(['is_active' => false]);
         $response = $this->getJson('/api/v1/transport/analysis?lon=92.9&lat=56')->assertOk()
-            ->assertJsonPath('nearest_stop', null)->assertJsonPath('route_details', null);
+            ->assertJsonPath('nearest_stop', null)->assertJsonPath('route_details', null)
+            ->assertJsonPath('analysis_area.type', 'Polygon');
         foreach ($response->json('metrics') as $metric) {
             $this->assertNull($metric['value']);
             $this->assertNull($metric['dataset_import_id']);

@@ -33,9 +33,12 @@ class TransportAnalysisService
                 ],
             ];
         };
+        // This polygon is for display; the counts still use exact ST_DWithin geography queries.
+        $area = DB::selectOne('SELECT ST_AsGeoJSON(ST_Buffer(ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)::geometry) AS geometry', [$lon, $lat, self::RADIUS_M]);
         $response = [
             'point' => ['lon' => $lon, 'lat' => $lat], 'radius_m' => self::RADIUS_M,
             'scope' => 'imported_stops', 'nearest_stop' => null,
+            'analysis_area' => json_decode($area->geometry, true),
             'route_details' => null, 'metrics' => [],
         ];
         if (! $import) {

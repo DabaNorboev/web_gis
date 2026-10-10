@@ -194,3 +194,13 @@
     .map-caption { left: 12px; top: 12px; font-size: 9px; }
     .placelens-map .maplibregl-ctrl-attrib { max-width: calc(100vw - 32px); font-size: 9px; }
 }
+
+@layer components {
+    .transport-results { @apply mt-6 border-t border-[#dce4d9] pt-5 pb-6; }
+    .result-action { @apply rounded px-1 py-1 text-xs font-medium text-[#2d6450] underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-[#2d6450]; }
+    .result-metric { @apply rounded-xl border border-[#dce4d9] bg-[#f1f4ed] p-3; }
+    .result-notice { @apply rounded-xl bg-[#f6efdf] p-3 text-xs leading-5 text-[#705629]; }
+    .map-selection-tools { @apply absolute top-16 left-3 z-1 flex max-w-[calc(100%-24px)] flex-col gap-1 rounded-xl bg-[#fcfdf9]/95 px-3 py-2 shadow-sm; }
+}
+
+.place-panel-content.has-analysis .place-search { margin-top: 0; }
