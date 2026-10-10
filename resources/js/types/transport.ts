@@ -17,11 +17,13 @@ export interface TransportMetric {
         reason: string
     }
 }
+export interface TransportStop extends Coordinates { id: number; source_id: string; name: string }
 export interface TransportAnalysis {
     point: Coordinates
     radius_m: number
     scope: 'imported_stops'
     analysis_area: Polygon
-    nearest_stop: (Coordinates & { id: number; name: string; address: string | null }) | null
+    nearest_stop: (TransportStop & { address: string | null }) | null
+    stops_in_radius: TransportStop[]
     metrics: Record<MetricKey, TransportMetric>
 }

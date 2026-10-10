@@ -40,7 +40,7 @@ class TransportAnalysisTest extends TestCase
     {
         $rows = [
             ['1', 'Ближайшая', 'Автобус', '12,23', '', '92.9', '56.0001'],
-            ['2', 'Рядом', 'Автобус', '12', '', '92.9', '56.003'],
+            ['2', 'Ближайшая', 'Автобус', '12', '', '92.9', '56.003'],
             ['3', 'Далеко', 'Автобус', '99', '', '92.9', '56.02'],
         ];
         $old = $this->import($rows);
@@ -53,7 +53,14 @@ class TransportAnalysisTest extends TestCase
             ->assertJsonPath('metrics.unique_routes_count.quality.availability', 'AVAILABLE')
             ->assertJsonPath('metrics.stops_count.observed_at', '2025-05-01T00:00:00+00:00')
             ->assertJsonPath('metrics.stops_count.quality.freshness', 'UNKNOWN')
-            ->assertJsonPath('radius_m', 500);
+            ->assertJsonPath('radius_m', 500)
+            ->assertJsonCount(2, 'stops_in_radius')
+            ->assertJsonPath('stops_in_radius.0.source_id', '1')
+            ->assertJsonPath('stops_in_radius.1.source_id', '2')
+            ->assertJsonPath('stops_in_radius.0.name', 'Ближайшая')
+            ->assertJsonPath('stops_in_radius.1.name', 'Ближайшая')
+            ->assertJsonPath('stops_in_radius.0.lon', 92.9)
+            ->assertJsonPath('stops_in_radius.0.lat', 56.0001);
         $geometry = $response->json('analysis_area');
         $this->assertSame('Polygon', $geometry['type']);
         $coverage = DB::selectOne('SELECT ST_Covers(ST_SetSRID(ST_GeomFromGeoJSON(?),4326), ST_SetSRID(ST_MakePoint(92.9,56),4326)) AS covers', [json_encode($geometry)]);
@@ -112,7 +119,7 @@ class TransportAnalysisTest extends TestCase
         DB::table('dataset_imports')->update(['is_active' => false]);
         $response = $this->getJson('/api/v1/transport/analysis?lon=92.9&lat=56')->assertOk()
             ->assertJsonPath('nearest_stop', null)->assertJsonPath('route_details', null)
-            ->assertJsonPath('analysis_area.type', 'Polygon');
+            ->assertJsonPath('analysis_area.type', 'Polygon')->assertJsonPath('stops_in_radius', []);
         foreach ($response->json('metrics') as $metric) {
             $this->assertNull($metric['value']);
             $this->assertNull($metric['dataset_import_id']);
@@ -125,6 +132,7 @@ class TransportAnalysisTest extends TestCase
     {
         $this->import([['1', 'Далеко', 'Автобус', '12', '', '92.9', '56.02']]);
         $response = $this->getJson('/api/v1/transport/analysis?lon=92.9&lat=56')->assertOk()
+            ->assertJsonPath('stops_in_radius', [])
             ->assertJsonPath('metrics.stops_count.value', 0)
             ->assertJsonPath('metrics.unique_routes_count.value', 0)
             ->assertJsonPath('metrics.unique_routes_count.quality.availability', 'AVAILABLE');
@@ -141,7 +149,8 @@ class TransportAnalysisTest extends TestCase
         $this->import($rows);
         $this->getJson('/api/v1/transport/analysis?lon=92.9&lat=56')->assertOk()
             ->assertJsonPath('metrics.stops_count.value', 1)
-            ->assertJsonPath('nearest_stop.source_id', '499');
+            ->assertJsonPath('nearest_stop.source_id', '499')
+            ->assertJsonCount(1, 'stops_in_radius')->assertJsonPath('stops_in_radius.0.source_id', '499');
     }
 
     public function test_invalid_coordinates_return_json_validation_errors(): void

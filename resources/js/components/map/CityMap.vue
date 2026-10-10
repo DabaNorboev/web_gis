@@ -16,8 +16,11 @@ function updateSelection() {
     if (props.point) data.features.push({ type: 'Feature', properties: { kind: 'point' }, geometry: { type: 'Point', coordinates: [props.point.lon, props.point.lat] } })
     if (props.analysis) {
         data.features.push({ type: 'Feature', properties: { kind: 'area' }, geometry: props.analysis.analysis_area })
-        const stop = props.analysis.nearest_stop
-        if (stop) data.features.push({ type: 'Feature', properties: { kind: 'stop' }, geometry: { type: 'Point', coordinates: [stop.lon, stop.lat] } })
+        const nearest = props.analysis.nearest_stop
+        for (const stop of props.analysis.stops_in_radius) {
+            if (stop.id !== nearest?.id) data.features.push({ type: 'Feature', properties: { kind: 'stop' }, geometry: { type: 'Point', coordinates: [stop.lon, stop.lat] } })
+        }
+        if (nearest) data.features.push({ type: 'Feature', properties: { kind: 'nearest' }, geometry: { type: 'Point', coordinates: [nearest.lon, nearest.lat] } })
     }
     source.setData(data)
 }
@@ -62,7 +65,8 @@ function initialize() {
             map.addSource('transport-selection', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
             map.addLayer({ id: 'analysis-area-fill', type: 'fill', source: 'transport-selection', filter: ['==', 'kind', 'area'], paint: { 'fill-color': '#2d6450', 'fill-opacity': 0.1 } })
             map.addLayer({ id: 'analysis-area-outline', type: 'line', source: 'transport-selection', filter: ['==', 'kind', 'area'], paint: { 'line-color': '#2d6450', 'line-width': 2, 'line-dasharray': [3, 2] } })
-            map.addLayer({ id: 'nearest-stop', type: 'circle', source: 'transport-selection', filter: ['==', 'kind', 'stop'], paint: { 'circle-radius': 7, 'circle-color': '#c27630', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } })
+            map.addLayer({ id: 'nearby-stops', type: 'circle', source: 'transport-selection', filter: ['==', 'kind', 'stop'], paint: { 'circle-radius': 5, 'circle-color': '#708cad', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 } })
+            map.addLayer({ id: 'nearest-stop', type: 'circle', source: 'transport-selection', filter: ['==', 'kind', 'nearest'], paint: { 'circle-radius': 9, 'circle-color': '#c27630', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } })
             map.addLayer({ id: 'selected-point', type: 'circle', source: 'transport-selection', filter: ['==', 'kind', 'point'], paint: { 'circle-radius': 7, 'circle-color': '#2d6450', 'circle-stroke-color': '#fff', 'circle-stroke-width': 3 } })
             updateSelection()
         })
@@ -102,6 +106,7 @@ onBeforeUnmount(() => {
             <button type="button" class="result-action" @click="selectCenter">Анализировать центр карты</button>
             <div v-if="point" class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[#637769]">
                 <span><span class="inline-block size-2 rounded-full bg-[#2d6450]" /> Выбранная точка · 500 м</span>
+                <span v-if="analysis?.stops_in_radius.length"><span class="inline-block size-2 rounded-full bg-[#708cad]" /> Точки остановок</span>
                 <span v-if="analysis?.nearest_stop"><span class="inline-block size-2 rounded-full bg-[#c27630]" /> Ближайшая остановка</span>
             </div>
         </div>

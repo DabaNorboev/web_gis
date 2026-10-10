@@ -37,7 +37,7 @@ class TransportAnalysisService
         $area = DB::selectOne('SELECT ST_AsGeoJSON(ST_Buffer(ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)::geometry) AS geometry', [$lon, $lat, self::RADIUS_M]);
         $response = [
             'point' => ['lon' => $lon, 'lat' => $lat], 'radius_m' => self::RADIUS_M,
-            'scope' => 'imported_stops', 'nearest_stop' => null,
+            'scope' => 'imported_stops', 'nearest_stop' => null, 'stops_in_radius' => [],
             'analysis_area' => json_decode($area->geometry, true),
             'route_details' => null, 'metrics' => [],
         ];
@@ -55,10 +55,15 @@ class TransportAnalysisService
             ORDER BY distance_m, id LIMIT 1
             SQL, [$lon, $lat, $import->id]);
         $stops = DB::select(<<<'SQL'
-            SELECT id FROM transport_stops
+            SELECT id, source_id, name, ST_X(geom) AS lon, ST_Y(geom) AS lat FROM transport_stops
             WHERE dataset_import_id = ?
                 AND ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)
+            ORDER BY id
             SQL, [$import->id, $lon, $lat, self::RADIUS_M]);
+        $response['stops_in_radius'] = array_map(fn ($stop) => [
+            'id' => $stop->id, 'source_id' => $stop->source_id, 'name' => $stop->name,
+            'lon' => (float) $stop->lon, 'lat' => (float) $stop->lat,
+        ], $stops);
         $stopIds = array_column($stops, 'id');
         $routes = $stopIds ? DB::table('transport_routes as r')
             ->join('transport_stop_routes as link', 'link.transport_route_id', '=', 'r.id')
