@@ -58,9 +58,9 @@ class OfficialStopsImportTest extends TestCase
         $this->assertSame(2, $result['report']['accepted_stops']);
         $this->assertSame(1, $result['report']['outside_boundary']);
         $this->assertSame(['4'], $result['report']['invalid_coordinates']);
-        $this->assertSame(4, $result['report']['routes']);
+        $this->assertSame(3, $result['report']['routes']);
         $this->assertSame(4, $result['report']['stop_route_links']);
-        $this->assertSame(1, $result['report']['unknown_routes']);
+        $this->assertSame(0, $result['report']['unknown_routes']);
         $stop = DB::selectOne("SELECT ST_X(geom) AS lon, ST_Y(geom) AS lat, ST_SRID(geom) AS srid, raw_data FROM transport_stops WHERE source_id = '1'");
         $this->assertEquals(92.9, $stop->lon);
         $this->assertEquals(56.1, $stop->lat);
@@ -159,7 +159,7 @@ class OfficialStopsImportTest extends TestCase
     public function test_route_normalization_does_not_invent_modes_or_parse_unknown_labels(): void
     {
         $result = app(OfficialRouteNormalizer::class)->normalize('12,7т,4тр,экспресс', 'Автобус и троллейбус');
-        $this->assertSame(['unknown:12', 'trolleybus:7', 'unknown:4тр'], array_column($result['routes'], 'source_id'));
+        $this->assertSame(['bus:12', 'trolleybus:7', 'tram:4'], array_column($result['routes'], 'source_id'));
         $this->assertContains('unparsed_route:экспресс', $result['issues']);
         $this->assertSame([], app(OfficialRouteNormalizer::class)->normalize('', '-')['routes']);
     }
@@ -193,6 +193,36 @@ class OfficialStopsImportTest extends TestCase
         $this->assertNotEquals($first['import_id'], $second['import_id']);
         $this->assertEquals(1, DB::table('dataset_imports')->where('is_active', true)->count());
         $this->assertEquals(2, DB::table('dataset_imports')->where('status', 'succeeded')->count());
+    }
+
+    public function test_catalog_resolves_unique_refs_but_preserves_ambiguous_and_missing_refs(): void
+    {
+        $normalizer = app(OfficialRouteNormalizer::class);
+        $result = $normalizer->normalize('12,6,20,4т,4тр,1', 'Автобус и троллейбус');
+        $this->assertSame(['bus:12', 'unknown:6', 'unknown:20', 'trolleybus:4', 'tram:4', 'bus:1'], array_column($result['routes'], 'source_id'));
+        $this->assertSame('electric_bus', $result['routes'][5]['resolutions'][0]['vehicle_type']);
+        $this->assertContains('source_type_conflict:4тр', $result['issues']);
+        $old = $normalizer->normalize('20,8т', 'Автобус и троллейбус');
+        $this->assertSame(['unknown:20', 'trolleybus:8'], array_column($old['routes'], 'source_id'));
+        $this->assertContains('route_not_in_catalog:8т', $old['issues']);
+        $wrongType = $normalizer->normalize('12,23', 'троллейбус');
+        $this->assertSame(['bus:12', 'bus:23'], array_column($wrongType['routes'], 'source_id'));
+        $this->assertContains('source_type_conflict:12', $wrongType['issues']);
+        $this->assertSame('bus:6', $normalizer->normalize('6', 'Автобус')['routes'][0]['source_id']);
+    }
+
+    public function test_catalog_change_creates_new_snapshot_and_preserves_resolution_provenance(): void
+    {
+        $first = $this->runImport();
+        $raw = json_decode(DB::table('transport_routes')->where('dataset_import_id', $first['import_id'])->where('source_id', 'bus:12')->value('raw_data'), true);
+        $this->assertContains('catalog_unique', array_column($raw['resolutions'], 'method'));
+        config(['transport_routes.version' => 2]);
+        $second = $this->runImport();
+        $this->assertSame('succeeded', $second['status']);
+        $this->assertNotEquals($first['import_id'], $second['import_id']);
+        $configuration = json_decode(DB::table('dataset_imports')->find($second['import_id'])->configuration, true);
+        $this->assertSame(2, $configuration['route_catalog']['version']);
+        $this->assertNull($configuration['route_catalog']['observed_at']);
     }
 
     private function runImport(array $options = []): array

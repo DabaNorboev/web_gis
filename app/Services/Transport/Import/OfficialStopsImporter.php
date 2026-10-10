@@ -27,7 +27,8 @@ class OfficialStopsImporter
         $contents = $this->readFile($file);
         $boundaryContents = $this->readFile($boundaryFile);
         $configuration = [
-            'importer_version' => 1,
+            'importer_version' => 2,
+            'route_catalog' => $this->normalizer->catalogMetadata(),
             'boundary_sha256' => hash('sha256', $boundaryContents),
             'source_version' => $options['source_version'] ?? null,
             'source_updated_at' => $this->date($options['source_updated_at'] ?? null),
@@ -85,6 +86,7 @@ class OfficialStopsImporter
                     foreach ($normalized['routes'] as $route) {
                         $key = $route['source_id'];
                         $routes[$key] ??= $route;
+                        $routes[$key]['resolutions'] = array_values(array_unique(array_merge($routes[$key]['resolutions'], $route['resolutions']), SORT_REGULAR));
                         $routes[$key]['raw_tokens'] = array_values(array_unique(array_merge($routes[$key]['raw_tokens'], $route['raw_tokens'])));
                     }
                     $report['stop_route_links'] += count($stop['routes']);
@@ -105,7 +107,7 @@ class OfficialStopsImporter
                     $routeIds[$key] = DB::table('transport_routes')->insertGetId([
                         'dataset_import_id' => $importId, 'source_id' => $key,
                         'mode' => $route['mode'], 'ref' => $route['ref'],
-                        'raw_data' => $this->json(['raw_tokens' => $route['raw_tokens']]),
+                        'raw_data' => $this->json(['raw_tokens' => $route['raw_tokens'], 'resolutions' => $route['resolutions']]),
                     ]);
                 }
                 foreach ($selected as $stop) {
