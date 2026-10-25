@@ -6,6 +6,8 @@ PlaceLens помогает сравнить выбранные адресные 
 
 [Карта документации](docs/README.md) · [Границы продукта](docs/product.md) · [Архитектура](docs/architecture.md) · [Проверки](docs/testing.md) · [Roadmap](docs/roadmap.md) · [Гипотезы](docs/product-hypotheses.md)
 
+Планирование на 26.10.2026: [датированный снимок состояния](docs/current-state.md), [видение и согласованные вводные](docs/project-vision.md), [ограничения](docs/project-constraints.md), [план E0–E8](docs/roadmap.md). Целевой сценарий для покупателей с пешим и автомобильным режимами ещё не реализован; текущий автомобильный пилот сохраняет свой контракт.
+
 ## Стек и сервисы
 
 PHP 8.4 / Laravel 13, PostgreSQL 16 / PostGIS 3.4, Vue 3 / TypeScript 6, Vite, MapLibre, Tailwind CSS 4 и shadcn-vue. Python ETL — одноразовая офлайн-подготовка, без постоянного сервиса. Точные зависимости — manifests/lock, версии контейнеров — Compose/Dockerfile; установленный пакет не означает реализованную функцию.
