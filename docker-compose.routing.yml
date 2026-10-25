@@ -1,0 +1,30 @@
+# Optional, verified car pilot. Use together with docker-compose.yml.
+services:
+    php:
+        networks: [default, routing]
+
+    local-router:
+        image: ghcr.io/project-osrm/osrm-backend@sha256:855614a38f464b0558a2ad6eaa7cb8c139f39887da9b38b485ce453c6e6e6124
+        entrypoint: ["/bin/sh", "/startup.sh"]
+        volumes:
+            - ./data/prepared/local-routing/osrm-car-20261021-v1:/data:ro
+            - ./docker/routing/start.sh:/startup.sh:ro
+        user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+        read_only: true
+        init: true
+        cpus: 2
+        mem_limit: 1g
+        memswap_limit: 1g
+        tmpfs: ["/tmp:size=16m,mode=1777"]
+        cap_drop: [ALL]
+        security_opt: [no-new-privileges:true]
+        networks: [routing]
+        healthcheck:
+            test: ["CMD-SHELL", "grep -q '00000000:1388 .* 0A ' /proc/net/tcp"]
+            interval: 5s
+            timeout: 2s
+            retries: 3
+
+networks:
+    routing:
+        internal: true

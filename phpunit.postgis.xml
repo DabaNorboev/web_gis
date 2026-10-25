@@ -8,9 +8,13 @@
         <testsuite name="PostGISWrite">
             <directory>tests/Integration</directory>
             <exclude>tests/Integration/PostgisConnectionTest.php</exclude>
+            <exclude>tests/Integration/RoutingGeometryGuardTest.php</exclude>
+            <exclude>tests/Integration/RoutingSnapTest.php</exclude>
         </testsuite>
         <testsuite name="PostGISReadOnly">
             <file>tests/Integration/PostgisConnectionTest.php</file>
+            <file>tests/Integration/RoutingGeometryGuardTest.php</file>
+            <file>tests/Integration/RoutingSnapTest.php</file>
         </testsuite>
     </testsuites>
     <source>
