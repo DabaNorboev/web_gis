@@ -85,6 +85,7 @@ class AddressProfileTest extends TestCase
         $this->assertEqualsWithDelta(600, $response->json('blocks.roads.data.metrics.length.value'), 1);
         $this->assertGreaterThan(300, $response->json('blocks.railways.data.metrics.nearest_distance.value'));
         $this->getJson('/api/v1/addresses/osm:node:2/profile')->assertOk()->assertJsonPath('point.lon', 92.901);
+        $this->withoutVite();
         $this->get('/address/osm:node:1?radius_m=300')->assertOk()->assertViewIs('welcome');
     }
 
