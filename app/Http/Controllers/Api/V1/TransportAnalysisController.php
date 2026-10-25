@@ -13,6 +13,6 @@ class TransportAnalysisController extends Controller
     {
         $coordinates = $request->validated();
 
-        return response()->json($service->analyze((float) $coordinates['lon'], (float) $coordinates['lat']));
+        return response()->json($service->analyze((float) $coordinates['lon'], (float) $coordinates['lat'], (int) ($coordinates['radius_m'] ?? 500)));
     }
 }

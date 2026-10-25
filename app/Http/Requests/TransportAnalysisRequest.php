@@ -15,6 +15,7 @@ class TransportAnalysisRequest extends FormRequest
     {
         return [
             'lon' => ['required', 'numeric', 'between:-180,180'],
+            'radius_m' => ['sometimes', 'integer', 'in:300,500'],
             'lat' => ['required', 'numeric', 'between:-90,90'],
         ];
     }

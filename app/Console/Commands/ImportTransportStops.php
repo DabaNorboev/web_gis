@@ -10,6 +10,7 @@ class ImportTransportStops extends Command
 {
     protected $signature = 'transport:import-stops {file : Local official CSV file}
         {--boundary= : Local Krasnoyarsk GeoJSON boundary}
+        {--buffer-m=0 : Data selection buffer outside the service boundary, in metres}
         {--source-version= : Source file version}
         {--source-updated-at= : Source publication date, distinct from observation date}
         {--observed-at= : Observation date, only if known}
@@ -27,6 +28,7 @@ class ImportTransportStops extends Command
                 return self::FAILURE;
             }
             $result = $importer->import($this->argument('file'), $this->option('boundary'), [
+                'buffer_m' => $this->option('buffer-m'),
                 'source_version' => $this->option('source-version'),
                 'source_updated_at' => $this->option('source-updated-at'),
                 'observed_at' => $this->option('observed-at'),

@@ -5,7 +5,7 @@ namespace Tests\Integration;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
-use Tests\TestCase;
+use Tests\PostgisTestCase as TestCase;
 
 class TransportSchemaTest extends TestCase
 {
@@ -28,6 +28,19 @@ class TransportSchemaTest extends TestCase
         }
 
         parent::tearDown();
+    }
+
+    public function test_fixture_writes_are_allowed_only_in_the_writable_test_database(): void
+    {
+        $state = DB::selectOne("SELECT current_database() AS name,
+            current_setting('transaction_read_only') AS read_only,
+            current_setting('default_transaction_read_only') AS default_read_only");
+        $this->assertSame('web_gis_test', $state->name);
+        $this->assertSame('off', $state->read_only);
+        $this->assertSame('off', $state->default_read_only);
+
+        $id = $this->createImport();
+        $this->assertNotNull(DB::table('dataset_imports')->find($id));
     }
 
     public function test_snapshot_preserves_source_metadata_raw_data_and_distances_in_metres(): void

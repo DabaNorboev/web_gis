@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Transport\Import;
+namespace App\Services\Gis;
 
 use Illuminate\Support\Facades\DB;
 use RuntimeException;

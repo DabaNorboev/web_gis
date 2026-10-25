@@ -2,6 +2,8 @@
 
 namespace App\Services\Transport\Import;
 
+use App\Services\Gis\DatasetCoverage;
+use App\Services\Gis\GeoJsonBoundary;
 use DateTimeImmutable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -17,6 +19,7 @@ class OfficialStopsImporter
         private OfficialStopsCsvReader $reader,
         private OfficialRouteNormalizer $normalizer,
         private GeoJsonBoundary $boundary,
+        private DatasetCoverage $coverage,
     ) {}
 
     public function import(string $file, string $boundaryFile, array $options = []): array
@@ -26,8 +29,10 @@ class OfficialStopsImporter
         }
         $contents = $this->readFile($file);
         $boundaryContents = $this->readFile($boundaryFile);
+        $coverage = $this->coverage->prepare($boundaryContents, $options['buffer_m'] ?? 0);
         $configuration = [
-            'importer_version' => 2,
+            'importer_version' => 3,
+            'spatial_coverage' => $this->coverage->metadata($coverage),
             'route_catalog' => $this->normalizer->catalogMetadata(),
             'boundary_sha256' => hash('sha256', $boundaryContents),
             'source_version' => $options['source_version'] ?? null,
@@ -63,10 +68,10 @@ class OfficialStopsImporter
             }
 
             // Preparation and publication share a transaction; failed SQL cannot poison the failure audit update.
-            return DB::transaction(function () use ($contents, $boundaryContents, $options, $importId, &$report) {
+            return DB::transaction(function () use ($contents, $coverage, $options, $importId, &$report) {
                 $rows = $this->reader->read($contents);
                 $valid = array_values(array_filter($rows, fn ($r) => $r['lon'] !== null && $r['lat'] !== null));
-                $selected = $this->boundary->select($valid, $this->boundary->geometry($boundaryContents));
+                $selected = $this->boundary->select($valid, $coverage['data_geometry']);
                 $report = [
                     'input_rows' => count($rows), 'accepted_stops' => count($selected),
                     'outside_boundary' => count($valid) - count($selected),
@@ -121,6 +126,7 @@ class OfficialStopsImporter
                         DB::table('transport_stop_routes')->insert($links);
                     }
                 }
+                $this->coverage->store($importId, $coverage);
                 DB::table('dataset_imports')->where('source', self::SOURCE)->where('dataset_key', self::DATASET)->where('is_active', true)->update(['is_active' => false]);
                 DB::table('dataset_imports')->where('id', $importId)->update([
                     'status' => 'succeeded', 'is_active' => true, 'finished_at' => DB::raw('GREATEST(started_at, clock_timestamp())'),

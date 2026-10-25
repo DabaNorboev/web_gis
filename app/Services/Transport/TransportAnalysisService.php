@@ -2,6 +2,8 @@
 
 namespace App\Services\Transport;
 
+use App\Services\Gis\AnalysisArea;
+use App\Services\Gis\DatasetCoverage;
 use App\Services\Transport\Import\OfficialStopsImporter;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -10,17 +12,21 @@ class TransportAnalysisService
 {
     public const RADIUS_M = 500;
 
-    public function analyze(float $lon, float $lat): array
+    public function __construct(private DatasetCoverage $coverage, private AnalysisArea $area) {}
+
+    public function analyze(float $lon, float $lat, int $radiusM = self::RADIUS_M, ?array $snapshots = null): array
     {
         // Capture one snapshot ID for every subsequent query. Historical rows remain available during publication.
-        $import = DB::table('dataset_imports')->where('source', OfficialStopsImporter::SOURCE)
-            ->where('dataset_key', OfficialStopsImporter::DATASET)->where('status', 'succeeded')->where('is_active', true)->first();
+        $import = $snapshots === null ? DB::table('dataset_imports')->where('source', OfficialStopsImporter::SOURCE)
+            ->where('dataset_key', OfficialStopsImporter::DATASET)->where('status', 'succeeded')->where('is_active', true)->first()
+            : ($snapshots[OfficialStopsImporter::DATASET] ?? null);
         $calculatedAt = CarbonImmutable::now('UTC')->toIso8601String();
         $observedAt = $import?->observed_at ? CarbonImmutable::parse($import->observed_at)->utc()->toIso8601String() : null;
         $base = [
             'source' => OfficialStopsImporter::SOURCE,
             'dataset_import_id' => $import?->id,
             'observed_at' => $observedAt,
+            'source_updated_at' => $import?->source_updated_at ? CarbonImmutable::parse($import->source_updated_at)->utc()->toIso8601String() : null,
             'calculated_at' => $calculatedAt,
         ];
         $metric = function (string $key, mixed $value, string $unit, string $availability, string $reason) use ($base): array {
@@ -34,16 +40,19 @@ class TransportAnalysisService
             ];
         };
         // This polygon is for display; the counts still use exact ST_DWithin geography queries.
-        $area = DB::selectOne('SELECT ST_AsGeoJSON(ST_Buffer(ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)::geometry) AS geometry', [$lon, $lat, self::RADIUS_M]);
+        $area = $this->area->forPoint($lon, $lat, $radiusM);
         $response = [
-            'point' => ['lon' => $lon, 'lat' => $lat], 'radius_m' => self::RADIUS_M,
+            'point' => ['lon' => $lon, 'lat' => $lat], 'radius_m' => $radiusM,
             'scope' => 'imported_stops', 'nearest_stop' => null, 'stops_in_radius' => [],
-            'analysis_area' => json_decode($area->geometry, true),
+            'analysis_area' => $area['analysis_area'],
+            'analysis_bounds' => $area['analysis_bounds'],
             'route_details' => null, 'metrics' => [],
+            'coverage' => $this->coverage->assess($import?->id, $lon, $lat, $radiusM),
         ];
-        if (! $import) {
+        if (! $import || in_array($response['coverage']['status'], ['OUTSIDE_SERVICE_AREA', 'UNKNOWN'], true)) {
+            $reason = ! $import ? 'Активный набор остановок отсутствует.' : $response['coverage']['reason'];
             foreach (['nearest_stop_distance' => 'm', 'stops_count' => 'count', 'unique_routes_count' => 'count', 'identified_routes_count' => 'count'] as $key => $unit) {
-                $response['metrics'][$key] = $metric($key, null, $unit, 'UNAVAILABLE', 'Активный набор остановок отсутствует.');
+                $response['metrics'][$key] = $metric($key, null, $unit, 'UNAVAILABLE', $reason);
             }
 
             return $response;
@@ -54,15 +63,21 @@ class TransportAnalysisService
             FROM transport_stops WHERE dataset_import_id = ?
             ORDER BY distance_m, id LIMIT 1
             SQL, [$lon, $lat, $import->id]);
+        // A candidate is provably the nearest in the selected source only when its entire distance
+        // fits inside the loaded territory; an unimported point outside could otherwise be closer.
+        if ($nearest && (float) $nearest->distance_m > $response['coverage']['available_radius_m']) {
+            $nearest = null;
+        }
         $stops = DB::select(<<<'SQL'
-            SELECT id, source_id, name, ST_X(geom) AS lon, ST_Y(geom) AS lat FROM transport_stops
+            SELECT id, source_id, name, ST_X(geom) AS lon, ST_Y(geom) AS lat,
+                ST_Distance(geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography) AS distance_m FROM transport_stops
             WHERE dataset_import_id = ?
                 AND ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, ?)
-            ORDER BY id
-            SQL, [$import->id, $lon, $lat, self::RADIUS_M]);
+            ORDER BY distance_m, id
+            SQL, [$lon, $lat, $import->id, $lon, $lat, $radiusM]);
         $response['stops_in_radius'] = array_map(fn ($stop) => [
             'id' => $stop->id, 'source_id' => $stop->source_id, 'name' => $stop->name,
-            'lon' => (float) $stop->lon, 'lat' => (float) $stop->lat,
+            'lon' => (float) $stop->lon, 'lat' => (float) $stop->lat, 'distance_m' => (float) $stop->distance_m,
         ], $stops);
         $stopIds = array_column($stops, 'id');
         $routes = $stopIds ? DB::table('transport_routes as r')
@@ -107,11 +122,16 @@ class TransportAnalysisService
             'catalog' => json_decode($import->configuration, true)['route_catalog'] ?? null,
         ];
         $response['metrics'] = [
-            'nearest_stop_distance' => $metric('nearest_stop_distance', $nearest ? round((float) $nearest->distance_m, 2) : null, 'm', $nearest ? 'AVAILABLE' : 'INSUFFICIENT_DATA', 'Расстояние по прямой до ближайшей остановки импортированного набора, не пеший маршрут.'),
-            'stops_count' => $metric('stops_count', count($stops), 'count', 'AVAILABLE', 'Число точек остановок импортированного набора в радиусе 500 м; полнота реальной сети не подтверждена.'),
+            'nearest_stop_distance' => $metric('nearest_stop_distance', $nearest ? round((float) $nearest->distance_m, 2) : null, 'm', $nearest ? 'AVAILABLE' : 'INSUFFICIENT_DATA', $nearest ? 'Расстояние по прямой до ближайшей остановки импортированного набора, не пеший маршрут.' : 'В подтверждённой области поиска ближайшая остановка не определена. Более далёкий импортированный объект может не быть ближайшим за границей покрытия.'),
+            'stops_count' => $metric('stops_count', count($stops), 'count', 'AVAILABLE', "Число точек остановок импортированного набора в радиусе {$radiusM} м; полнота реальной сети не подтверждена."),
             'unique_routes_count' => $metric('unique_routes_count', $incomplete ? null : $identified->count(), 'count', $incomplete ? 'INSUFFICIENT_DATA' : 'AVAILABLE', $incomplete ? 'Есть неопределённые маршруты, пропуски или конфликты исходных сведений.' : 'Уникальные ключи маршрутов из импортированного набора, по одному на вид и номер; действующая сеть не подтверждена.'),
             'identified_routes_count' => $metric('identified_routes_count', $identified->count(), 'count', 'AVAILABLE', 'Количество ключей с определённым видом транспорта; частичный результат при неполных сведениях.'),
         ];
+        if ($response['coverage']['status'] === 'PARTIAL') {
+            foreach (['stops_count', 'unique_routes_count', 'identified_routes_count'] as $key) {
+                $response['metrics'][$key] = $metric($key, null, 'count', 'INSUFFICIENT_DATA', $response['coverage']['reason']);
+            }
+        }
 
         return $response;
     }

@@ -5,7 +5,7 @@ namespace Tests\Integration;
 use App\Services\Transport\Import\OfficialStopsImporter;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
-use Tests\TestCase;
+use Tests\PostgisTestCase as TestCase;
 
 class TransportAnalysisTest extends TestCase
 {
@@ -158,6 +158,89 @@ class TransportAnalysisTest extends TestCase
         foreach (['lon=92.9', 'lon=181&lat=56', 'lon=92&lat=-91', 'lon=NaN&lat=56', 'lon[]=92&lat=56'] as $query) {
             $this->getJson('/api/v1/transport/analysis?'.$query)->assertUnprocessable()->assertJsonStructure(['message', 'errors']);
         }
+    }
+
+    public function test_selectable_radii_sort_by_exact_distance_and_preserve_input_point(): void
+    {
+        $rows = [];
+        foreach ([900, 200, 450] as $meters) {
+            $point = DB::selectOne('SELECT ST_Y(ST_Project(ST_SetSRID(ST_MakePoint(92.9,56),4326)::geography, ?::double precision, 0::double precision)::geometry) AS lat', [$meters]);
+            $rows[] = [(string) $meters, 'Остановка', 'Автобус', '12', '', '92.9', (string) $point->lat];
+        }
+        $this->import($rows);
+        foreach ([300 => ['200'], 500 => ['200', '450']] as $radius => $ids) {
+            $response = $this->getJson('/api/v1/transport/analysis?lon=92.9&lat=56&radius_m='.$radius)->assertOk()
+                ->assertJsonPath('radius_m', $radius)->assertJsonPath('point.lon', 92.9)
+                ->assertJsonPath('point.lat', 56)->assertJsonPath('metrics.stops_count.value', count($ids));
+            $this->assertSame($ids, array_column($response->json('stops_in_radius'), 'source_id'));
+            $ring = $response->json('analysis_area.coordinates.0');
+            $bounds = $response->json('analysis_bounds');
+            $expected = [min(array_column($ring, 0)), min(array_column($ring, 1)), max(array_column($ring, 0)), max(array_column($ring, 1))];
+            foreach ($expected as $index => $coordinate) {
+                $this->assertEqualsWithDelta($coordinate, $bounds[$index], 0.00000001);
+            }
+            $this->assertTrue($bounds[0] < 92.9 && $bounds[2] > 92.9 && $bounds[1] < 56 && $bounds[3] > 56);
+            foreach ($response->json('stops_in_radius') as $stop) {
+                $this->assertEqualsWithDelta((float) $stop['source_id'], $stop['distance_m'], 0.05);
+            }
+            foreach ($response->json('analysis_area.coordinates.0') as [$lon, $lat]) {
+                $distance = DB::selectOne('SELECT ST_Distance(ST_SetSRID(ST_MakePoint(?,?),4326)::geography, ST_SetSRID(ST_MakePoint(92.9,56),4326)::geography) AS meters', [$lon, $lat]);
+                $this->assertEqualsWithDelta($radius, $distance->meters, 3);
+            }
+        }
+        foreach (['0', '400', '1000', '1001', '300.5', 'abc', ''] as $radius) {
+            $this->getJson('/api/v1/transport/analysis?lon=92.9&lat=56&radius_m='.$radius)->assertUnprocessable();
+        }
+    }
+
+    public function test_outside_service_area_is_distinct_from_no_stops_and_from_a_missing_source(): void
+    {
+        $this->import([['1', 'В городе', 'Автобус', '12', '', '92.9', '56']]);
+        $response = $this->getJson('/api/v1/transport/analysis?lon=37.62&lat=55.75')->assertOk()
+            ->assertJsonPath('coverage.status', 'OUTSIDE_SERVICE_AREA')
+            ->assertJsonPath('nearest_stop', null)->assertJsonPath('stops_in_radius', [])
+            ->assertJsonPath('route_details', null);
+        foreach ($response->json('metrics') as $metric) {
+            $this->assertNull($metric['value']);
+            $this->assertNull($metric['quality']['method']);
+            $this->assertSame('UNAVAILABLE', $metric['quality']['availability']);
+            $this->assertStringContainsString('вне территории сервиса', $metric['quality']['reason']);
+        }
+    }
+
+    public function test_buffer_includes_external_stops_without_expanding_service_and_preserves_old_snapshot(): void
+    {
+        file_put_contents($this->directory.'/boundary.json', '{"type":"Polygon","coordinates":[[[92.89,55.99],[92.91,55.99],[92.91,56.01],[92.89,56.01],[92.89,55.99]]]}');
+        $rows = [['1', 'Внутри', 'Автобус', '12', '', '92.9', '56'], ['2', 'За границей', 'Автобус', '23', '', '92.911', '56']];
+        $old = $this->import($rows);
+        $this->getJson('/api/v1/transport/analysis?lon=92.909&lat=56')->assertOk()
+            ->assertJsonPath('coverage.status', 'PARTIAL')
+            ->assertJsonPath('metrics.stops_count.value', null)
+            ->assertJsonPath('metrics.stops_count.quality.availability', 'INSUFFICIENT_DATA')
+            ->assertJsonPath('metrics.nearest_stop_distance.value', null);
+        $new = $this->import($rows, ['buffer_m' => 1000]);
+        $this->getJson('/api/v1/transport/analysis?lon=92.909&lat=56')->assertOk()
+            ->assertJsonPath('coverage.status', 'COVERED')->assertJsonPath('coverage.buffer_m', 1000)
+            ->assertJsonPath('nearest_stop.source_id', '2')->assertJsonPath('metrics.stops_count.value', 1)
+            ->assertJsonPath('metrics.unique_routes_count.value', 1);
+        $this->getJson('/api/v1/transport/analysis?lon=92.911&lat=56')->assertOk()
+            ->assertJsonPath('coverage.status', 'OUTSIDE_SERVICE_AREA')->assertJsonPath('metrics.stops_count.value', null);
+        // An exact point on the service boundary is included, with the whole radius covered by the buffer.
+        $this->getJson('/api/v1/transport/analysis?lon=92.91&lat=56')->assertOk()
+            ->assertJsonPath('coverage.status', 'COVERED')->assertJsonPath('nearest_stop.source_id', '2');
+        $this->assertSame(1, DB::table('transport_stops')->where('dataset_import_id', $old['import_id'])->count());
+        $this->assertSame(2, DB::table('transport_stops')->where('dataset_import_id', $new['import_id'])->count());
+        $this->assertFalse(DB::table('dataset_imports')->find($old['import_id'])->is_active);
+        $this->assertSame(2, DB::table('dataset_coverages')->count());
+    }
+
+    public function test_unknown_coverage_never_claims_zero_or_a_nearest_stop(): void
+    {
+        $result = $this->import([['1', 'В городе', 'Автобус', '12', '', '92.9', '56']]);
+        DB::table('dataset_coverages')->where('dataset_import_id', $result['import_id'])->delete();
+        $this->getJson('/api/v1/transport/analysis?lon=92.9&lat=56')->assertOk()
+            ->assertJsonPath('coverage.status', 'UNKNOWN')->assertJsonPath('metrics.stops_count.value', null)
+            ->assertJsonPath('nearest_stop', null)->assertJsonPath('stops_in_radius', []);
     }
 
     private function import(array $rows, array $options = []): array

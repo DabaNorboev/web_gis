@@ -8,7 +8,7 @@ use App\Services\Transport\Import\OfficialStopsImporter;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
-use Tests\TestCase;
+use Tests\PostgisTestCase as TestCase;
 
 class OfficialStopsImportTest extends TestCase
 {
@@ -146,7 +146,8 @@ class OfficialStopsImportTest extends TestCase
     {
         file_put_contents($this->boundary, '{"type":"Point","coordinates":[92.9,56.1]}');
         $this->artisan('transport:import-stops', ['file' => $this->csv, '--boundary' => $this->boundary])->assertFailed();
-        $this->assertEquals(1, DB::table('dataset_imports')->where('status', 'failed')->count());
+        // Invalid coverage is an invalid import parameter; reject it before registering an attempt.
+        $this->assertEquals(0, DB::table('dataset_imports')->count());
         $this->assertEquals(0, DB::table('transport_stops')->count());
         $this->writeRows([
             ['1', 'А', 'Автобус', '1', '', '92.9', '56.1'],
