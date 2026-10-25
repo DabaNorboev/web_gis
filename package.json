@@ -6,9 +6,12 @@
         "build": "vite build",
         "dev": "vite",
         "typecheck": "vue-tsc --noEmit",
+        "test": "node --test tests/frontend/*.test.mjs",
+        "test:smoke": "playwright test",
         "ui:add": "shadcn-vue add"
     },
     "devDependencies": {
+        "@playwright/test": "1.64.1",
         "@tailwindcss/vite": "^4.0.0",
         "@vitejs/plugin-vue": "^6.0.9",
         "laravel-vite-plugin": "^3.1",

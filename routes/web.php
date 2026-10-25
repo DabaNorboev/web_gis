@@ -7,6 +7,7 @@ Route::get('/', function () {
 });
 
 Route::view('/address/{id}', 'welcome');
+Route::view('/compare', 'welcome');
 // This public page has no session state. In particular, do not persist an old
 // query-format link as Laravel's _previous.url in a guest session.
 Route::view('/trips', 'welcome')->withoutMiddleware([
