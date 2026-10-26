@@ -1,0 +1,288 @@
+{
+  "version": 1,
+  "status": "FROZEN_BEFORE_ROUTER_REQUESTS",
+  "scope": "Task1 public walking scenario check; no productintegration",
+  "coordinate_order": "lon,lat",
+  "snap_limit_m": 20,
+  "refinement_attempts_per_end": 1,
+  "selection": "Four public apartments to nearby public groceries in centre/rightbank/twoSolnechny neighbourhoods; illustrative, not representative citycoverage",
+  "policy": "Original objectinput and explicitlyselected streetinput always separate; >20m shift never called address refinement; noautoconnector orentrance; only originalradiuses20",
+  "cases": [
+    {
+      "id": "centre",
+      "area": "Центр",
+      "original": {
+        "start": {
+          "id": "way/60333868",
+          "label": "улица Ленина, 112",
+          "coordinate": [
+            92.85691572194698,
+            56.012996851312465
+          ],
+          "point_method": "inside_centroid_or_boundary_vertex",
+          "role": "hypothetical_home_object_not_entrance"
+        },
+        "target": {
+          "id": "node/1076663013",
+          "label": "Красный Яр",
+          "coordinate": [
+            92.8563753,
+            56.0133717
+          ],
+          "point_method": "OSM_point",
+          "role": "public_place_object_not_verified_entrance"
+        }
+      },
+      "selected": {
+        "start": {
+          "coordinate": [
+            92.85692831280052,
+            56.01289682010654
+          ],
+          "way_id": 949713977,
+          "source_nodes": [
+            12424826549,
+            1154342302
+          ],
+          "selection_method": "explicit_source_segment_projection",
+          "selected_before_ors_queries": true,
+          "source_precision_error_m": 0.00013909064234690665,
+          "shift_from_object_m": 11.16087757147449,
+          "within_original_snap_limit": true,
+          "entrance_verified": false
+        },
+        "target": {
+          "coordinate": [
+            92.85624483223121,
+            56.01336553074247
+          ],
+          "way_id": 1308109136,
+          "source_nodes": [
+            12335291316,
+            12335291326
+          ],
+          "selection_method": "explicit_source_segment_projection",
+          "selected_before_ors_queries": true,
+          "source_precision_error_m": 6.784859309398569e-06,
+          "shift_from_object_m": 8.163116775597473,
+          "within_original_snap_limit": true,
+          "entrance_verified": false
+        }
+      },
+      "selected_variant_kind": "nearby_street_candidate",
+      "expectation": {
+        "original": "NEEDS_REFINEMENT because objectpoints are inside building polygons; noentranceclaim",
+        "selected": "Evaluate independently, not guaranteed success; one preselected candidate per end only",
+        "original_to_street": "Remain unknown unless actual connector independently passes; proximity alone not sufficient"
+      },
+      "source_obstacle_review": "Prequery original points inside building polygons; proposed streetpoints outside building/water, field access unknown"
+    },
+    {
+      "id": "right_bank",
+      "area": "Правый берег",
+      "original": {
+        "start": {
+          "id": "way/154257446",
+          "label": "улица Щорса, 47",
+          "coordinate": [
+            92.95323272365401,
+            55.989828520391924
+          ],
+          "point_method": "inside_centroid_or_boundary_vertex",
+          "role": "hypothetical_home_object_not_entrance"
+        },
+        "target": {
+          "id": "node/2332697644",
+          "label": "Эскадра",
+          "coordinate": [
+            92.9510429,
+            55.9911227
+          ],
+          "point_method": "OSM_point",
+          "role": "public_place_object_not_verified_entrance"
+        }
+      },
+      "selected": {
+        "start": {
+          "coordinate": [
+            92.9526074,
+            55.9908692
+          ],
+          "way_id": 689535540,
+          "source_nodes": [
+            7095269915
+          ],
+          "selection_method": "explicit_source_node",
+          "selected_before_ors_queries": true,
+          "source_precision_error_m": 0.0,
+          "shift_from_object_m": 122.21748577700131,
+          "within_original_snap_limit": false,
+          "entrance_verified": false
+        },
+        "target": {
+          "coordinate": [
+            92.95113655079363,
+            55.99099333019829
+          ],
+          "way_id": 1180957489,
+          "source_nodes": [
+            11171004848,
+            8760582223
+          ],
+          "selection_method": "explicit_source_segment_projection",
+          "selected_before_ors_queries": true,
+          "source_precision_error_m": 5.85157577449374e-05,
+          "shift_from_object_m": 15.538569541115804,
+          "within_original_snap_limit": true,
+          "entrance_verified": false
+        }
+      },
+      "selected_variant_kind": "separate_street_route_not_address_refinement",
+      "expectation": {
+        "original": "NEEDS_REFINEMENT because objectpoints are inside building polygons; noentranceclaim",
+        "selected": "Evaluate independently, not guaranteed success; one preselected candidate per end only",
+        "original_to_street": "Remain unknown unless actual connector independently passes; proximity alone not sufficient"
+      },
+      "source_obstacle_review": "Prequery original points inside building polygons; proposed streetpoints outside building/water, field access unknown"
+    },
+    {
+      "id": "solnechny_svetlova",
+      "area": "Солнечный",
+      "original": {
+        "start": {
+          "id": "way/60545296",
+          "label": "улица Светлова, 5",
+          "coordinate": [
+            92.92352396758687,
+            56.12149213284285
+          ],
+          "point_method": "inside_centroid_or_boundary_vertex",
+          "role": "hypothetical_home_object_not_entrance"
+        },
+        "target": {
+          "id": "node/12567134844",
+          "label": "Батон",
+          "coordinate": [
+            92.9324277,
+            56.1200984
+          ],
+          "point_method": "OSM_point",
+          "role": "public_place_object_not_verified_entrance"
+        }
+      },
+      "selected": {
+        "start": {
+          "coordinate": [
+            92.9237803,
+            56.1216949
+          ],
+          "way_id": 1325286929,
+          "source_nodes": [
+            12263071258
+          ],
+          "selection_method": "explicit_source_node",
+          "selected_before_ors_queries": true,
+          "source_precision_error_m": 0.0,
+          "shift_from_object_m": 27.627648610393887,
+          "within_original_snap_limit": false,
+          "entrance_verified": false
+        },
+        "target": {
+          "coordinate": [
+            92.930547,
+            56.119864
+          ],
+          "way_id": 523840062,
+          "source_nodes": [
+            5098868440
+          ],
+          "selection_method": "explicit_source_node",
+          "selected_before_ors_queries": true,
+          "source_precision_error_m": 0.0,
+          "shift_from_object_m": 119.80649972162583,
+          "within_original_snap_limit": false,
+          "entrance_verified": false
+        }
+      },
+      "selected_variant_kind": "separate_street_route_not_address_refinement",
+      "expectation": {
+        "original": "NEEDS_REFINEMENT because objectpoints are inside building polygons; noentranceclaim",
+        "selected": "Evaluate independently, not guaranteed success; one preselected candidate per end only",
+        "original_to_street": "Remain unknown unless actual connector independently passes; proximity alone not sufficient"
+      },
+      "source_obstacle_review": "Prequery original points inside building polygons; proposed streetpoints outside building/water, field access unknown"
+    },
+    {
+      "id": "solnechny_mikutskogo",
+      "area": "Солнечный",
+      "original": {
+        "start": {
+          "id": "way/60545223",
+          "label": "улица Микуцкого, 2",
+          "coordinate": [
+            92.925152572353,
+            56.113987825657794
+          ],
+          "point_method": "inside_centroid_or_boundary_vertex",
+          "role": "hypothetical_home_object_not_entrance"
+        },
+        "target": {
+          "id": "node/12876825753",
+          "label": "Пятёрочка",
+          "coordinate": [
+            92.9277077,
+            56.113515
+          ],
+          "point_method": "OSM_point",
+          "role": "public_place_object_not_verified_entrance"
+        }
+      },
+      "selected": {
+        "start": {
+          "coordinate": [
+            92.9254458,
+            56.1145823
+          ],
+          "way_id": 1325286933,
+          "source_nodes": [
+            2206512543
+          ],
+          "selection_method": "explicit_source_node",
+          "selected_before_ors_queries": true,
+          "source_precision_error_m": 0.0,
+          "shift_from_object_m": 68.63116314587369,
+          "within_original_snap_limit": false,
+          "entrance_verified": false
+        },
+        "target": {
+          "coordinate": [
+            92.924949,
+            56.1130407
+          ],
+          "way_id": 1325286935,
+          "source_nodes": [
+            2206512389
+          ],
+          "selection_method": "explicit_source_node",
+          "selected_before_ors_queries": true,
+          "source_precision_error_m": 0.0,
+          "shift_from_object_m": 179.48899118959181,
+          "within_original_snap_limit": false,
+          "entrance_verified": false
+        }
+      },
+      "selected_variant_kind": "separate_street_route_not_address_refinement",
+      "expectation": {
+        "original": "NEEDS_REFINEMENT because objectpoints are inside building polygons; noentranceclaim",
+        "selected": "Evaluate independently, not guaranteed success; one preselected candidate per end only",
+        "original_to_street": "Remain unknown unless actual connector independently passes; proximity alone not sufficient"
+      },
+      "source_obstacle_review": "Prequery original points inside building polygons; proposed streetpoints outside building/water, field access unknown"
+    }
+  ],
+  "sources": [
+    "experiments/grocery-poc/.runtime/data/dataset.json",
+    "data/reports/local-routing-2026-10-21/prepared/context.json",
+    "data/reports/local-routing-integration-2026-10-21/guard-export/obstacles.jsonl"
+  ]
+}
