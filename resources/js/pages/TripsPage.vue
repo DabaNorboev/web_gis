@@ -88,17 +88,22 @@ async function openActionNotice(notice: SummaryNotice) {
     await nextTick()
     const row = analysis.value?.results.find(item => item.index === notice.index)
     const location = notice.location ?? (row ? tripFailureMessage(row).location : 'unknown')
-    if (mode.value === 'walking' && notice.action === 'choice') {
+    const walkingChoice = mode.value === 'walking' && notice.action === 'choice'
+    const walkingGroup = walkingChoice && row ? rowCandidateGroups(row).find(group => !group.selected && (
+        location === 'start' ? group.key === 'S' : location === 'target' ? group.key === String(notice.index + 1)
+            : location === 'both_endpoints'
+    )) : undefined
+    if (walkingChoice && !walkingGroup) {
         if (location === 'start' || location === 'both_endpoints') await mapChoice('start', true)
         else if (location === 'target') await mapChoice(notice.index, true)
         else returnToForm()
         return
     }
-    const index = row && sharedStartRow.value && location === 'start' ? sharedStartRow.value.index : notice.index
+    const index = row && sharedStartRow.value && (location === 'start' || walkingGroup?.key === 'S') ? sharedStartRow.value.index : notice.index
     const card = document.getElementById(`trip-result-${index}`)
     if (!card) return
     const selector = notice.action === 'result' ? null : notice.action === 'calculate' ? '[data-trip-action="calculate"]' : notice.action === 'choice' ? '[data-needs-choice="true"] button[data-candidate-id]' : notice.action === 'retry' ? '[data-trip-action="retry"]' : '[data-trip-action="refine"]'
-    const choiceSelector = notice.action === 'choice' && notice.location && ['start', 'target'].includes(notice.location)
+    const choiceSelector = walkingGroup ? `[data-choice-key="${walkingGroup.key}"][data-needs-choice="true"] button[data-candidate-id]` : notice.action === 'choice' && notice.location && ['start', 'target'].includes(notice.location)
         ? `[data-choice-key="${notice.location === 'start' ? 'S' : String(notice.index + 1)}"][data-needs-choice="true"] button[data-candidate-id]` : selector
     const target = (choiceSelector ? card.querySelector<HTMLElement>(choiceSelector) : null) ?? card
     card.scrollIntoView({ block: 'start' })
@@ -305,7 +310,7 @@ onBeforeUnmount(() => { window.removeEventListener('resize', resizeLayout); wind
                             </template>
                             <details v-for="group in rowCandidateGroups(row).filter(group => group.key !== 'S' || !sharedStartRow || row.index === sharedStartRow.index)" :open="!group.selected" :key="group.key" class="trip-candidates" :data-choice-key="group.key" :data-needs-choice="!group.selected" :aria-label="`Дорожные варианты: ${group.label}, поездка ${row.index + 1}`">
                                 <summary>{{ group.label }} · {{ group.selected ? 'Дорожная точка выбрана ✓' : 'Выберите дорожную точку' }}</summary>
-                                <p class="trip-hint">Расстояние указано от исходной точки до дороги; подход не рассчитан. <button type="button" class="trip-text-button" @click="mapChoice(group.key === 'S' ? 'start' : Number(group.key) - 1, true)">Показать на карте</button></p>
+                                <p class="trip-hint">{{ mode === 'walking' ? 'Смещение от проверяемой уличной точки; это не длина подхода.' : 'Расстояние указано от исходной точки до дороги; подход не рассчитан.' }} <button type="button" class="trip-text-button" @click="mapChoice(group.key === 'S' ? 'start' : Number(group.key) - 1, true)">Показать на карте</button></p>
                                 <ul class="trip-candidate-list"><li v-for="(candidate, index) in group.candidates" :key="candidateId(group.key, index)">
                                     <button type="button" class="trip-candidate-option" :data-candidate-id="candidateId(group.key, index)" :aria-pressed="sameRoadPoint(group.selected, candidate.point)" :class="{ 'is-highlighted': highlightedCandidate === candidateId(group.key, index), 'is-selected': sameRoadPoint(group.selected, candidate.point) }" @mouseenter="candidateFocus(candidateId(group.key, index), 'pointer')" @mouseleave="candidateFocus(null, 'pointer')" @focus="candidateFocus(candidateId(group.key, index), 'focus')" @blur="candidateFocus(null, 'focus')" @click="chooseRoad(group.key, candidate.point)">
                                         <span class="trip-candidate-badge" aria-hidden="true">{{ index + 1 }}</span><span><strong>{{ group.candidates.length === 1 && group.selected ? 'Выбранная точка' : `Вариант ${index + 1}` }} — {{ snapDistance(candidate.distance_m) }}</strong><small v-if="candidate.name">{{ candidate.name }}</small><small v-if="sameRoadPoint(group.selected, candidate.point)">✓ Выбрано</small></span>

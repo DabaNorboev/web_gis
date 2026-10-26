@@ -102,6 +102,11 @@ class LocalWalkingRouterProvider
                     'CHOOSE' => 'SNAP_CHOICE_REQUIRED', 'OUTSIDE_PILOT' => 'OUTSIDE_CONFIRMED_COVERAGE',
                     'UNKNOWN' => 'SNAP_CHECK_FAILED', default => 'SNAP_NO_SAFE_CANDIDATE',
                 }];
+                // CHOOSE is an explicit state, independent of the guard's detail
+                // codes. Keep source evidence while exposing a stable UI action.
+                if ($choice['status'] === 'CHOOSE') {
+                    $codes = array_values(array_unique(['SNAP_CHOICE_REQUIRED', ...$codes]));
+                }
                 foreach ($codes as $code) {
                     $issues[] = TripDiagnostics::issue($code, $end, 'snap');
                 }

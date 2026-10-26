@@ -48,16 +48,26 @@ async function submit(side?: SideKey, id?: string) { closeEditor(); await nextTi
 async function chooseRoad(side: SideKey, id: string, end: 'start' | 'target', point: Coordinates) {
     const active = document.activeElement as HTMLElement | null
     setRoad(side, id, end, point)
-    await calculate(side, id)
+    const request = calculate(side, id), epoch = cell(side, id).epoch, requestMode = mode.value
+    await request
     await nextTick()
+    if (mode.value !== requestMode || cells[side][id]?.epoch !== epoch) return
+    if (requestMode === 'walking' && active && !active.isConnected && document.activeElement === document.body) {
+        document.getElementById(`personal-trip-${side}-${id}`)?.querySelector<HTMLElement>('.personal-road-choice summary, .personal-refine summary')?.focus({ preventScroll: true })
+    }
     if (active?.isConnected && document.activeElement === active && !active.getClientRects().length) active.closest('details')?.querySelector('summary')?.focus({ preventScroll: true })
 }
 async function act(side: SideKey, id: string, message: TripFailureMessage) {
     if (message.action === 'retry') { await submit(side, id); return }
     if (message.action === 'choice') {
-        if (mode.value === 'walking') { emit('pick', id, side, message.location === 'target' ? 'target' : 'start'); return }
+        const end = message.location === 'target' ? 'target' : message.location === 'start' ? 'start' : message.location === 'both_endpoints' ? (cell(side, id).options.start.length ? 'start' : cell(side, id).options.target.length ? 'target' : 'start') : null
+        if (mode.value === 'walking' && (!end || !cell(side, id).options[end].length)) {
+            if (end) emit('pick', id, side, end)
+            else emit('show', side, id)
+            return
+        }
         await nextTick()
-        const group = document.getElementById(`personal-trip-${side}-${id}`)?.querySelector<HTMLDetailsElement>(`[data-end="${message.location === 'target' ? 'target' : 'start'}"]`)
+        const group = document.getElementById(`personal-trip-${side}-${id}`)?.querySelector<HTMLDetailsElement>(`[data-end="${end ?? 'start'}"]`)
         if (group) { group.open = true; group.querySelector('button')?.focus() }
     } else if (message.location === 'start' || message.location === 'both_endpoints') emit('pick', id, side, 'start')
     else if (message.location === 'target') { if (mode.value === 'walking') emit('pick', id, side, 'target'); else void edit(id) }
@@ -99,7 +109,7 @@ defineExpose({ edit, focusGoal, closeEditor })
                         <p v-if="shared[side] && messages(side, place.id).some(m => m.location === 'start')"><a :href="`#personal-shared-${side}`" @click.prevent="scrollShared(side)">Общий старт {{ names[side] }}</a><button type="button" @click="act(side, place.id, shared[side]!)">{{ shared[side]!.label }}</button></p>
                         <div v-for="message in messages(side, place.id).filter(m => !shared[side] || m.location !== 'start')" :key="message.location" class="personal-warning" :class="{ 'is-choice': message.action === 'choice' }"><strong>{{ locationNames[message.location] }}: {{ message.title }}</strong><p v-if="mode === 'walking' || message.action !== 'choice'">{{ message.description }}</p><button type="button" @click="act(side, place.id, message)">{{ message.label }}</button><button v-if="message.location === 'both_endpoints'" type="button" @click="mode === 'walking' ? emit('pick', place.id, side, 'target') : edit(place.id)">Уточнить цель</button><button v-if="message.action === 'review'" type="button" @click="submit(side, place.id)">Повторить {{ names[side] }}</button></div>
                     </template>
-                    <details v-for="end in (['start', 'target'] as const).filter(end => mode === 'driving' && cell(side, place.id).options[end].length)" :key="end" :data-end="end" :open="cell(side, place.id).row?.road_choices?.[end]?.status !== 'SELECTED'" class="personal-road-choice"><summary>Дорога · {{ end === 'start' ? 'старт' : 'цель' }} {{ names[side] }}</summary><p>От исходной точки; подход не рассчитан. Выбор только для этой поездки.</p><button v-for="(candidate, index) in cell(side, place.id).options[end]" :key="index" type="button" :aria-pressed="cell(side, place.id).row?.road_choices?.[end]?.status === 'SELECTED' && sameRoadPoint(cell(side, place.id).row?.road_choices?.[end]?.point, candidate.point)" @click="chooseRoad(side, place.id, end, candidate.point)">Дорога {{ index + 1 }} · {{ snapDistance(candidate.distance_m) }}<span v-if="candidate.name"> · {{ candidate.name }}</span></button><button type="button" @click="emit('show', side, place.id)">Варианты на карте {{ names[side] }}</button></details>
+                    <details v-for="end in (['start', 'target'] as const).filter(end => cell(side, place.id).options[end].length)" :key="end" :data-end="end" :open="cell(side, place.id).row?.road_choices?.[end]?.status !== 'SELECTED'" class="personal-road-choice"><summary>{{ mode === 'walking' ? 'Улица' : 'Дорога' }} · {{ end === 'start' ? 'старт' : 'цель' }} {{ names[side] }}</summary><p v-if="mode === 'walking'">Смещение от проверяемой уличной точки; это не расстояние подхода. Выбор только для этой поездки.</p><p v-else>От исходной точки; подход не рассчитан. Выбор только для этой поездки.</p><button v-for="(candidate, index) in cell(side, place.id).options[end]" :key="index" type="button" :aria-pressed="cell(side, place.id).row?.road_choices?.[end]?.status === 'SELECTED' && sameRoadPoint(cell(side, place.id).row?.road_choices?.[end]?.point, candidate.point)" @click="chooseRoad(side, place.id, end, candidate.point)">{{ mode === 'walking' ? 'Улица' : 'Дорога' }} {{ index + 1 }} · {{ snapDistance(candidate.distance_m) }}<span v-if="candidate.name"> · {{ candidate.name }}</span></button><button type="button" @click="emit('show', side, place.id)">Варианты на карте {{ names[side] }}</button></details>
                     <details v-if="mode === 'walking' || cell(side, place.id).row" class="personal-refine"><summary>{{ mode === 'walking' ? 'Выбрать уличные точки' : 'Уточнить привязку' }} {{ names[side] }}</summary><p>Исходный адрес и цель сохранятся. Новый дорожный выбор требует проверки.</p><p v-if="mode === 'walking'">Выбранная улица может отличаться от объекта. Смещение не является расстоянием подхода; подход остаётся неизвестным.</p><button type="button" @click="emit('pick', place.id, side, 'start')">{{ mode === 'walking' ? 'Уличная' : 'Дорожная' }} точка старта {{ names[side] }}</button><button type="button" @click="emit('pick', place.id, side, 'target')">{{ mode === 'walking' ? 'Уличная' : 'Дорожная' }} точка цели {{ names[side] }}</button><template v-if="mode === 'walking'"><p v-if="cell(side, place.id).hints.start">Уличный старт выбран явно.<button type="button" @click="setRoad(side, place.id, 'start', null)">Убрать уличный старт</button></p><p v-if="cell(side, place.id).hints.target">Уличная цель выбрана явно.<button type="button" @click="setRoad(side, place.id, 'target', null)">Убрать уличную цель</button></p></template></details>
                 </section>
             </div>

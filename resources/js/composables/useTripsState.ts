@@ -93,10 +93,13 @@ export function useTripsState(effects: TripsEffects) {
         for (const end of ['start', 'target'] as const) {
             const key = end === 'start' ? 'S' : String(row.index + 1)
             const choice = row.road_choices?.[end]
-            const options = candidateOptions[key] ?? (choice?.status === 'CHOOSE' || choice?.status === 'SELECTED' && choice.manual || mode.value === 'walking' ? choice?.candidates : undefined)
+            // Walking candidates are checked for this exact street input, never reusable hints.
+            const options = mode.value === 'walking' ? (choice?.status === 'CHOOSE' ? choice.candidates : undefined)
+                : candidateOptions[key] ?? (choice?.status === 'CHOOSE' || choice?.status === 'SELECTED' && choice.manual ? choice.candidates : undefined)
             const item = end === 'start' ? draft.start : draft.places[row.index]
+            const selectedRoad = mode.value === 'walking' ? null : item?.road
             if (options?.length) groups.push({ key, label: end === 'start' ? 'Старт' : `Место ${row.index + 1}`, candidates: options,
-                selected: item?.road && options.some(option => sameRoadPoint(option.point, item.road!)) ? item.road : (mode.value === 'driving' && choice?.status === 'SELECTED' ? choice.point ?? null : null) })
+                selected: selectedRoad && options.some(option => sameRoadPoint(option.point, selectedRoad)) ? selectedRoad : (mode.value === 'driving' && choice?.status === 'SELECTED' ? choice.point ?? null : null) })
         }
         return groups
     }
@@ -111,9 +114,13 @@ export function useTripsState(effects: TripsEffects) {
         else hoveredCandidate.value = id
     }
     function rememberCandidates(result: TripAnalysis) {
+        if (mode.value === 'walking') {
+            for (const key of Object.keys(candidateOptions)) delete candidateOptions[key]
+            return
+        }
         for (const row of result.results) for (const end of ['start', 'target'] as const) {
             const choice = row.road_choices?.[end], key = end === 'start' ? 'S' : String(row.index + 1)
-            if (choice?.candidates?.length && (choice.status === 'CHOOSE' || choice.status === 'SELECTED' && choice.manual && !candidateOptions[key] || mode.value === 'walking' && choice.status !== 'SELECTED')) candidateOptions[key] = choice.candidates
+            if (choice?.candidates?.length && (choice.status === 'CHOOSE' || choice.status === 'SELECTED' && choice.manual && !candidateOptions[key])) candidateOptions[key] = choice.candidates
             else if (choice?.status === 'NONE') delete candidateOptions[key]
         }
     }

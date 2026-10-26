@@ -1055,3 +1055,136 @@ test('walking both-endpoint secondary refinement selects target street while pre
         assert.equal(h.calls.length, 1)
     } finally { h.dispose() }
 })
+
+const walkingAlternatives = [
+    { point: { lon: .12402, lat: .23501 }, distance_m: 2.3, name: 'Synthetic street A' },
+    { point: { lon: .12404, lat: .23502 }, distance_m: 4.6, name: 'Synthetic street B' },
+]
+function walkingChoiceRow(location = 'target') {
+    return { ...walkingRow, index: 0, status: 'NEEDS_REFINEMENT', route: null, snaps: null,
+        diagnostics: { version: 1, issues: [{ code: 'SNAP_CHOICE_REQUIRED', category: 'ambiguity', stage: 'snap',
+            location, target_index: location === 'start' ? null : 0 }] },
+        road_choices: { start: { status: location === 'start' ? 'CHOOSE' : 'SELECTED',
+            ...(location === 'start' ? { candidates: walkingAlternatives } : { point: street.start }) },
+            target: { status: location === 'start' ? 'SELECTED' : 'CHOOSE',
+                ...(location === 'start' ? { point: street.target } : { candidates: walkingAlternatives }) } } }
+}
+
+for (const location of ['start', 'target', 'both_endpoints']) {
+    test(`walking ${location} ambiguity focuses actual candidates from primary and summary without choosing`, async () => {
+        const row = walkingChoiceRow(location), seen = []
+        const card = { querySelector(selector) { seen.push(selector); return { focus() { seen.push('focus') }, scrollIntoView() {} } },
+            focus() { seen.push('card focus') }, scrollIntoView() {} }
+        const h = pageHarness(utils.tripUrl(walkingSelection), () => ({ mode: 'walking', results: [row] }), { getElementById: () => card })
+        try {
+            await settleTrips()
+            h.page.primaryAction(row)
+            await settleTrips()
+            await h.page.openActionNotice(h.page.actionNotices.value[0])
+            const key = location === 'start' ? 'S' : '1'
+            assert.deepEqual(seen.filter(value => value !== 'focus'), Array(2).fill(`[data-choice-key="${key}"][data-needs-choice="true"] button[data-candidate-id]`))
+            assert.equal(seen.filter(value => value === 'focus').length, 2)
+            assert.equal(h.page.activeRoad.value, false)
+            assert.equal(h.calls.length, 1)
+            assert.deepEqual(h.page.selection(), walkingSelection)
+            assert.deepEqual(h.page.candidateGroups.value[0].candidates, walkingAlternatives)
+            assert.equal(h.page.candidateGroups.value[0].selected, null)
+        } finally { h.dispose() }
+    })
+}
+
+test('walking candidate selection preserves originals, checks normally, drops previous alternatives and ignores late replies', async () => {
+    let defer = false
+    const pending = [], initial = { ...walkingSelection, places: [walkingSelection.places[0]] }
+    const chosen = walkingAlternatives[1].point
+    const h = tripsHarness(initial, (value, signal) => {
+        const response = value.places[0].road ? { mode: 'walking', results: [{ ...walkingRow,
+            road_choices: { start: { status: 'SELECTED', point: street.start }, target: { status: 'SELECTED', point: chosen } } }] }
+            : { mode: 'walking', results: [walkingChoiceRow()] }
+        return defer ? new Promise(resolve => pending.push({ value, signal, resolve, response })) : Promise.resolve(response)
+    })
+    try {
+        await settleTrips()
+        assert.equal(h.trips.selection().places[0].road, undefined)
+        h.trips.chooseRoad('1', chosen)
+        assert.equal(h.calls.length, 2)
+        assert.deepEqual(h.calls[1].places[0], { ...initial.places[0], road: chosen })
+        assert.deepEqual(h.calls[1].start, initial.start)
+        await settleTrips()
+        assert.equal(h.trips.analysis.value.results[0].status, 'AVAILABLE')
+        assert.deepEqual(h.trips.candidateGroups.value, [])
+        assert.deepEqual(h.trips.selection().places[0].road, chosen)
+        assert.deepEqual(h.saves.at(-1).value.places[0], { ...initial.places[0], road: chosen })
+        defer = true
+        h.trips.chooseRoad('1', walkingAlternatives[0].point)
+        h.trips.setMode('driving')
+        assert.equal(pending[0].signal.aborted, true)
+        pending[0].resolve(pending[0].response)
+        await settleTrips()
+        assert.equal(h.trips.analysis.value, null)
+        assert.deepEqual(h.trips.candidateGroups.value, [])
+        assert.equal(h.trips.selection().places[0].road, undefined)
+    } finally { h.dispose() }
+})
+
+test('walking SELECTED without candidates has no mandatory empty choice and stale explicit input does not select a CHOOSE option', async () => {
+    const withStreet = { ...walkingSelection, places: [{ ...walkingSelection.places[0], road: walkingAlternatives[0].point }] }
+    const h = tripsHarness(withStreet, () => Promise.resolve({ mode: 'walking', results: [walkingChoiceRow()] }))
+    try {
+        await settleTrips()
+        assert.equal(h.trips.candidateGroups.value.length, 1)
+        assert.equal(h.trips.candidateGroups.value[0].key, '1')
+        assert.equal(h.trips.candidateGroups.value[0].selected, null)
+        assert.deepEqual(h.trips.selection(), withStreet)
+    } finally { h.dispose() }
+})
+
+
+for (const outcome of ['AVAILABLE', 'UNKNOWN', 'partial']) {
+    test(`walking manual street edit drops checked candidates immediately and after ${outcome}`, async () => {
+        const pending = [], initial = { ...walkingSelection, places: [walkingSelection.places[0]] }
+        const manual = { lon: .8, lat: .9 }
+        const h = tripsHarness(initial, (value, signal) => value.places[0].road
+            ? new Promise(resolve => pending.push({ value, signal, resolve }))
+            : Promise.resolve({ mode: 'walking', results: [walkingChoiceRow()] }))
+        try {
+            await settleTrips()
+            assert.equal(h.trips.candidateGroups.value[0].candidates.length, 2)
+            h.trips.chooseRoad('1', manual)
+            assert.deepEqual(h.trips.candidateGroups.value, [])
+            assert.equal(h.trips.analysis.value.results[0].route, null)
+            assert.deepEqual(h.trips.selection().places[0], { ...initial.places[0], road: manual })
+            const row = { ...walkingRow, status: outcome, route: outcome === 'AVAILABLE' ? walkingRow.route : null,
+                road_choices: { start: { status: 'SELECTED', point: street.start }, target: { status: outcome === 'AVAILABLE' ? 'SELECTED' : 'UNKNOWN',
+                    point: outcome === 'AVAILABLE' ? manual : null, candidates: walkingAlternatives } } }
+            pending[0].resolve({ mode: 'walking', results: outcome === 'partial' ? [] : [row] })
+            await settleTrips()
+            assert.deepEqual(h.trips.candidateGroups.value, [])
+            assert.deepEqual(h.trips.selection().places[0].road, manual)
+            if (outcome === 'UNKNOWN') assert.equal(h.trips.analysis.value.results[0].route, null)
+        } finally { h.dispose() }
+    })
+}
+
+test('walking only presents fresh CHOOSE candidates after a manual edit and ignores superseded candidate replies', async () => {
+    const pending = [], initial = { ...walkingSelection, places: [walkingSelection.places[0]] }
+    const fresh = [{ point: { lon: .80001, lat: .90001 }, distance_m: 1.2, name: 'New street input' }]
+    const h = tripsHarness(initial, (value, signal) => value.places[0].road
+        ? new Promise(resolve => pending.push({ value, signal, resolve }))
+        : Promise.resolve({ mode: 'walking', results: [walkingChoiceRow()] }))
+    try {
+        await settleTrips()
+        h.trips.chooseRoad('1', { lon: .8, lat: .9 })
+        h.trips.chooseRoad('1', { lon: .81, lat: .91 })
+        assert.equal(pending[0].signal.aborted, true)
+        pending[0].resolve({ mode: 'walking', results: [walkingChoiceRow()] })
+        await settleTrips()
+        assert.deepEqual(h.trips.candidateGroups.value, [])
+        const row = walkingChoiceRow()
+        row.road_choices.target.candidates = fresh
+        pending[1].resolve({ mode: 'walking', results: [row] })
+        await settleTrips()
+        assert.deepEqual(h.trips.candidateGroups.value.map(group => group.candidates), [fresh])
+        assert.deepEqual(h.trips.selection().places[0].road, { lon: .81, lat: .91 })
+    } finally { h.dispose() }
+})

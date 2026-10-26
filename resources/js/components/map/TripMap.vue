@@ -60,7 +60,7 @@ function updateCandidateMarkers() {
         const selected = sameRoadPoint(group.selected, candidate.point)
         entry.button.textContent = selected ? `${group.label} ✓` : `${group.label} · Вариант ${index + 1}`
         entry.button.setAttribute('aria-pressed', String(selected))
-        entry.button.setAttribute('aria-label', `${group.label}, вариант ${index + 1}, ${Math.round(candidate.distance_m * 10) / 10} м от исходной точки${candidate.name ? ', ' + candidate.name : ''}${selected ? ', выбран' : ''}`)
+        entry.button.setAttribute('aria-label', `${group.label}, вариант ${index + 1}, ${Math.round(candidate.distance_m * 10) / 10} м от ${props.mode === 'walking' ? 'проверяемой уличной' : 'исходной'} точки${candidate.name ? ', ' + candidate.name : ''}${selected ? ', выбран' : ''}`)
         entry.button.classList.toggle('is-selected', selected)
         entry.button.classList.toggle('is-highlighted', props.highlightedCandidate === id)
         entry.button.title = entry.button.getAttribute('aria-label')!

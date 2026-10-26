@@ -31,7 +31,10 @@ export function useComparisonTrips() {
     function invalidate(side: SideKey, id: string, clearHints = false) {
         const value = cell(side, id)
         value.epoch = ++epochSequence; value.row = null; value.source = null; value.limitation = ''; value.status = 'idle'; value.error = ''
-        if (clearHints) { value.hints = {}; value.options = { start: [], target: [] } }
+        if (clearHints) value.hints = {}
+        // Walking candidates describe the input of one completed verification.
+        // A new street edit or request must not reuse distances from that input.
+        if (clearHints || mode.value === 'walking') value.options = { start: [], target: [] }
     }
     function setMode(next: TripMode) {
         if ((next !== 'driving' && next !== 'walking') || next === mode.value) return
@@ -114,7 +117,7 @@ export function useComparisonTrips() {
                             Object.assign(cell(side, item.id), { row, source: response.source, limitation: response.limitation, status: 'ready' })
                             for (const end of ['start', 'target'] as const) {
                                 const choice = row.road_choices?.[end]
-                                if (requestMode === 'walking') cell(side, item.id).options[end] = []
+                                if (requestMode === 'walking') cell(side, item.id).options[end] = choice?.status === 'CHOOSE' ? choice.candidates ?? [] : []
                                 else if (choice?.status === 'CHOOSE' || choice?.manual) cell(side, item.id).options[end] = choice.candidates ?? []
                                 else if (choice?.status === 'NONE') cell(side, item.id).options[end] = []
                             }

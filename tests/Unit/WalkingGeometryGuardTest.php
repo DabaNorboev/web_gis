@@ -53,6 +53,10 @@ class WalkingGeometryGuardTest extends TestCase
 
             public ?array $service = null;
 
+            public mixed $featureFilter = null;
+
+            public array $featureRequests = [];
+
             public function __construct(public array $source, public array $rows) {}
 
             public function manifest(): array
@@ -68,8 +72,9 @@ class WalkingGeometryGuardTest extends TestCase
             public function features(array $coordinates, array $start, array $target): array
             {
                 $this->loadedCoordinates = $coordinates;
+                $this->featureRequests[] = ['start' => $start, 'target' => $target];
 
-                return $this->rows;
+                return $this->featureFilter === null ? $this->rows : ($this->featureFilter)($this->rows, $start, $target);
             }
         };
     }
@@ -336,6 +341,169 @@ class WalkingGeometryGuardTest extends TestCase
         };
         $this->expectException(RoutingDataException::class);
         (new WalkingGeometryGuard)->scope($snapshot, $this->selected(0));
+    }
+
+    private function junction(): array
+    {
+        return [$this->way(10, [1, 2], [[0, 0], [30, 0]]),
+            $this->way(20, [1, 3], [[0, 0], [-30, 0]]), $this->way(30, [1, 4], [[0, 0], [0, 30]])];
+    }
+
+    public function test_junction_choices_are_real_source_projections_that_explicitly_revalidate(): void
+    {
+        $snapshot = $this->snapshot($this->junction());
+        $guard = new WalkingGeometryGuard;
+        $original = $this->selected(1.5, .95);
+        $r = $guard->validatePoint($snapshot, $original);
+        $this->assertSame('CHOOSE', $r['status']);
+        $this->assertNull($r['point']);
+        $this->assertNotEmpty($r['candidates']);
+        $this->assertLessThanOrEqual(6, count($r['candidates']));
+        foreach ($r['candidates'] as $candidate) {
+            $this->assertLessThanOrEqual(20, $candidate['distance_m']);
+            $this->assertSame('SELECTED', $guard->validatePoint($snapshot, $candidate['point'])['status']);
+            $xy = G::utm(array_values($candidate['point']));
+            $this->assertTrue(G::project($xy, G::utm($this->p(0)), G::utm($this->p(30)))[0] < .001
+                || G::project($xy, G::utm($this->p(0)), G::utm($this->p(0, 30)))[0] < .001);
+        }
+        $this->assertSame($this->selected(1.5, .95), $original);
+        $first = $r['candidates'][0]['point'];
+        $body = $this->body([array_values($first), $this->p(20)]);
+        $review = $guard->review($snapshot, $body, $first, $this->selected(20));
+        $this->assertSame('AVAILABLE', $review['status']);
+    }
+
+    public function test_tight_parallel_and_coincident_source_edges_never_gain_automatic_choices(): void
+    {
+        foreach ([0, .8] as $gap) {
+            $ways = [$this->simple(), $this->way(20, [3, 4], [[0, $gap], [10, $gap]])];
+            $r = (new WalkingGeometryGuard)->validatePoint($this->snapshot($ways), $this->selected(5, .4));
+            $this->assertSame('CHOOSE', $r['status']);
+            $this->assertNull($r['point']);
+            $this->assertSame([], $r['candidates']);
+        }
+    }
+
+    public function test_suggestions_do_not_cross_water_building_barrier_or_railway(): void
+    {
+        $ways = $this->junction();
+        $guard = new WalkingGeometryGuard;
+        foreach (['water', 'building', 'barrier', 'railway'] as $hazard) {
+            if (in_array($hazard, ['water', 'building'], true)) {
+                $extras = [$this->polygon($hazard, 1.5, .475, .15)];
+            } else {
+                $edge = $this->line($this->way(90, [90, 91], [[-10, .475], [10, .475]], [$hazard => $hazard === 'barrier' ? 'fence' : 'rail']));
+                unset($edge['tags']['highway']);
+                $extras = [$edge];
+            }
+            $snapshot = $this->snapshot($ways, $extras);
+            $r = $guard->validatePoint($snapshot, $this->selected(1.5, .95));
+            $this->assertSame('CHOOSE', $r['status']);
+            foreach ($r['candidates'] as $candidate) {
+                // The closest horizontal-edge projection lies across the hazard and must never be suggested.
+                $this->assertGreaterThan(.4, abs(($candidate['point']['lat'] - 56) * 111300), $hazard);
+                $this->assertSame('SELECTED', $guard->validatePoint($snapshot, $candidate['point'])['status']);
+            }
+        }
+    }
+
+    public function test_denied_conditional_or_blocked_source_edges_are_not_suggested(): void
+    {
+        foreach ([['foot' => 'no'], ['access' => 'private'], ['foot:conditional' => 'yes @ (Mo-Fr)']] as $tags) {
+            $ways = $this->junction();
+            $ways[0]['tags'] = $tags + ['highway' => 'footway'];
+            $r = (new WalkingGeometryGuard)->validatePoint($this->snapshot($ways), $this->selected(1.5, .95));
+            foreach ($r['candidates'] as $candidate) {
+                $this->assertLessThan(.25, abs(($candidate['point']['lon'] - 93) * 62376));
+            }
+            $this->assertNull($r['distance_m']);
+        }
+        $r = (new WalkingGeometryGuard)->validatePoint($this->snapshot($this->junction(), [$this->node(2, 30, 0, ['barrier' => 'gate'])]), $this->selected(1.5, .95));
+        foreach ($r['candidates'] as $candidate) {
+            $this->assertLessThan(.25, abs(($candidate['point']['lon'] - 93) * 62376));
+        }
+    }
+
+    public function test_new_candidate_neighbourhood_cannot_hide_a_new_parallel_street(): void
+    {
+        $ways = [$this->way(10, [1, 2], [[19.9, -30], [19.9, 30]]),
+            $this->way(20, [3, 4], [[-19.9, -30], [-19.9, 30]]), $this->way(30, [5, 6], [[20.7, -30], [20.7, 30]])];
+        $snapshot = $this->snapshot($ways);
+        $snapshot->featureFilter = function ($rows, $start, $target) {
+            return array_values(array_filter($rows, function ($row) use ($start, $target) {
+                [$a,$b] = array_map(G::utm(...), $row['geometry']['coordinates']);
+
+                return min(G::project(G::utm(array_values($start)), $a, $b)[0], G::project(G::utm(array_values($target)), $a, $b)[0]) <= 20.5;
+            }));
+        };
+        $r = (new WalkingGeometryGuard)->validatePoint($snapshot, $this->selected(0));
+        $this->assertSame('CHOOSE', $r['status']);
+        $this->assertNotEmpty($r['candidates']);
+        foreach ($r['candidates'] as $candidate) {
+            $this->assertLessThan(93, $candidate['point']['lon']);
+        }
+        $this->assertGreaterThan(1, count($snapshot->featureRequests));
+        $this->assertTrue((bool) array_filter($snapshot->featureRequests, fn ($request) => $request['target']['lon'] > 93));
+    }
+
+    public function test_a_newly_selected_different_source_identity_is_not_relabelled_as_a_candidate(): void
+    {
+        $ways = [$this->way(10, [1, 2], [[19.9, -30], [19.9, 30]]), $this->way(20, [3, 4], [[-19.9, -30], [-19.9, 30]])];
+        $snapshot = $this->snapshot($ways);
+        $replacement = $this->line($this->way(90, [90, 91], [[19.9, -30], [19.9, 30]]));
+        $snapshot->featureFilter = function ($rows, $start, $target) use ($replacement) {
+            return $target['lon'] > 93 ? [$rows[1], $replacement] : $rows;
+        };
+        $r = (new WalkingGeometryGuard)->validatePoint($snapshot, $this->selected(0));
+        $this->assertSame('CHOOSE', $r['status']);
+        $this->assertNotEmpty($r['candidates']);
+        foreach ($r['candidates'] as $candidate) {
+            $this->assertLessThan(93, $candidate['point']['lon']);
+        }
+    }
+
+    public function test_suggestion_list_is_bounded_and_deduplicated_without_auto_selection(): void
+    {
+        $ways = [];
+        for ($i = 0; $i < 8; $i++) {
+            $angle = $i * M_PI / 4;
+            $x = 10 * cos($angle);
+            $y = 10 * sin($angle);
+            $dx = -sin($angle) * 5;
+            $dy = cos($angle) * 5;
+            $ways[] = $this->way(10 + $i, [2 * $i + 1, 2 * $i + 2], [[$x - $dx, $y - $dy], [$x + $dx, $y + $dy]]);
+        }
+        $snapshot = $this->snapshot($ways);
+        $guard = new WalkingGeometryGuard;
+        $r = $guard->validatePoint($snapshot, $this->selected(0));
+        $this->assertSame('CHOOSE', $r['status']);
+        $this->assertNull($r['point']);
+        $this->assertCount(6, $r['candidates']);
+        $this->assertLessThanOrEqual(13, count($snapshot->featureRequests));
+        foreach ($r['candidates'] as $i => $candidate) {
+            foreach (array_slice($r['candidates'], $i + 1) as $other) {
+                $this->assertGreaterThan(.25, G::distance(G::utm(array_values($candidate['point'])), G::utm(array_values($other['point']))));
+            }
+            $this->assertSame('SELECTED', $guard->validatePoint($snapshot, $candidate['point'])['status']);
+        }
+    }
+
+    public function test_candidate_checks_share_fail_closed_budget_and_do_not_return_partial_choices(): void
+    {
+        $snapshot = $this->snapshot($this->junction());
+        $calls = 0;
+        $snapshot->featureFilter = function ($rows) use (&$calls) {
+            if (++$calls === 3) {
+                throw new RoutingDataException('synthetic candidate read budget');
+            }
+
+            return $rows;
+        };
+        $r = (new WalkingGeometryGuard)->validatePoint($snapshot, $this->selected(1.5, .95));
+        $this->assertSame('UNKNOWN', $r['status']);
+        $this->assertSame([], $r['candidates']);
+        $this->assertNull($r['point']);
+        $this->assertNull($r['distance_m']);
     }
 
     public function test_limited_reader_failure_is_unknown_and_metrics_stay_null(): void

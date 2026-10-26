@@ -1,12 +1,8 @@
 import { test, expect, ready, mapReady } from './support.mjs'
 import { places } from './fixtures.mjs'
-import { mkdir } from 'node:fs/promises'
-
-const screenshotDir = 'data/reports/walking-ui-2026-10-26/screenshots'
 async function screenshot(page, testInfo, name) {
     if (!['phone-320', 'short-desktop'].includes(testInfo.project.name)) return
-    await mkdir(screenshotDir, { recursive: true })
-    await page.screenshot({ path: `${screenshotDir}/${name}-${testInfo.project.name}.png`, fullPage: true })
+    await testInfo.attach(name, { body: await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage: true }), contentType: 'image/png' })
 }
 
 // Synthetic contract examples exercise the UI. They do not establish that ORS
@@ -188,6 +184,49 @@ test('walking /trips no-candidate refinement opens the street picker from summar
     privateCalls(service.calls)
 })
 
+test('walking /trips checked candidates require an explicit click and round-trip the original object with its street', async ({ page, api }) => {
+    const service = await install(page)
+    const candidates = [
+        { point: { lon: 92.87004, lat: 56.01 }, distance_m: 2.5, name: 'Синтетическая улица А' },
+        { point: { lon: 92.87, lat: 56.01006 }, distance_m: 6.7, name: 'Синтетическая улица Б' },
+    ]
+    service.respond(value => {
+        if (value.start.road) {
+            const response = walkingResponse(value)
+            response.results[0].road_choices = { start: { status: 'SELECTED', point: point(value.start.road) },
+                target: { status: 'SELECTED', point: point(value.places[0]) } }
+            return response
+        }
+        const response = walkingStartRefinement(value)
+        response.results[0].road_choices.start = { status: 'CHOOSE', point: null, candidates, checks: ['SNAP_CHOICE_REQUIRED'] }
+        return response
+    })
+    await page.goto(tripLink({ ...selected, start, places: [target] }))
+    const failure = page.locator('#trip-result-0'), options = failure.locator('[data-choice-key="S"]')
+    await expect(options.locator('button[data-candidate-id]')).toHaveCount(2)
+    await expect(options).toContainText('Смещение от проверяемой уличной точки; это не длина подхода')
+    expect(service.calls).toHaveLength(1)
+    expect(service.calls[0].value.start.road).toBeUndefined()
+    await page.getByRole('button', { name: 'Выбрать вариант, место 1', exact: true }).press('Enter')
+    await expect(options.locator('button[data-candidate-id]').first()).toBeFocused()
+    await failure.getByRole('button', { name: 'Выбрать вариант', exact: true }).press('Enter')
+    await expect(options.locator('button[data-candidate-id]').first()).toBeFocused()
+    expect(service.calls).toHaveLength(1)
+    await options.locator('button[data-candidate-id]').nth(1).press('Enter')
+    await expect(failure.locator('.walking-values')).toHaveCount(1)
+    expect(service.calls).toHaveLength(2)
+    expect(service.calls[1].value.start).toEqual({ ...start, road: candidates[1].point })
+    expect(service.calls[1].value.places).toEqual([target])
+    await expect(failure.locator('button[data-candidate-id]')).toHaveCount(0)
+    const saved = JSON.parse(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('trip'))
+    expect(saved.start).toEqual({ ...start, road: candidates[1].point })
+    await page.reload()
+    await expect(failure.locator('.walking-values')).toHaveCount(1)
+    expect(service.calls.at(-1).value.start).toEqual({ ...start, road: candidates[1].point })
+    await noOverflow(page)
+    privateCalls(service.calls)
+})
+
 test('walking /trips mode switch clears routes and hints without a hidden POST; late answer stays obsolete', async ({ page, api }) => {
     const service = await install(page)
     await page.goto(tripLink(selected))
@@ -248,6 +287,47 @@ test('walking /compare restores mode and street-only pair, preserves address pai
     const personal = await page.evaluate(() => navigator.clipboard.readText())
     expect(personal).toContain('#places=')
     expect(JSON.parse(new URLSearchParams(new URL(personal).hash.slice(1)).get('places'))).toMatchObject({ version: 2, mode: 'walking' })
+    await noOverflow(page)
+    privateCalls(service.calls)
+})
+
+test('walking /compare checked candidate changes only its explicit street and rechecks that pair', async ({ page, api }) => {
+    const service = await install(page)
+    const candidates = [
+        { point: { lon: target.lon + .00004, lat: target.lat }, distance_m: 2.5, name: 'Синтетическая улица А' },
+        { point: { lon: target.lon, lat: target.lat + .00006 }, distance_m: 6.7, name: 'Синтетическая улица Б' },
+    ]
+    service.respond(value => {
+        const response = walkingResponse(value)
+        if (value.start.lon !== places.a.lon || value.places[0].road) return response
+        const row = response.results[0]
+        row.status = 'NEEDS_REFINEMENT'; row.route = null; row.snaps = null
+        row.metrics = { distance: metric('route_distance', null, 'm', 'street_points'), duration: metric('route_duration', null, 's', 'street_points') }
+        row.checks = ['SNAP_CHOICE_REQUIRED']
+        row.diagnostics = { version: 1, issues: [{ code: 'SNAP_CHOICE_REQUIRED', category: 'ambiguity', stage: 'snap', location: 'target', target_index: 0 }] }
+        row.road_choices = { start: { status: 'SELECTED', point: point(value.start) }, target: { status: 'CHOOSE', point: null, candidates } }
+        return response
+    })
+    await page.goto(compareLink(compareSelection())); await ready(page)
+    const left = page.locator('#personal-trip-left-goal-0'), right = page.locator('#personal-trip-right-goal-0')
+    await expect(right.locator('.personal-distance')).toHaveCount(1)
+    await expect(left.locator('.personal-distance')).toHaveCount(0)
+    const options = left.locator('.personal-road-choice[data-end="target"]')
+    await expect(options).toContainText('Смещение от проверяемой уличной точки; это не расстояние подхода')
+    expect(service.calls).toHaveLength(2)
+    await left.getByRole('button', { name: 'Выбрать вариант', exact: true }).press('Enter')
+    await expect(options.getByRole('button', { name: /Улица 1/ })).toBeFocused()
+    expect(service.calls).toHaveLength(2)
+    await options.getByRole('button', { name: /Улица 2/ }).press('Enter')
+    await expect(left.locator('.personal-distance')).toHaveCount(1)
+    await expect(right.locator('.personal-distance')).toHaveCount(1)
+    expect(service.calls).toHaveLength(3)
+    const checked = service.calls.at(-1).value
+    expect(checked.start).toEqual({ lon: places.a.lon, lat: places.a.lat })
+    expect(checked.places).toEqual([{ ...point(target), label: target.label, road: candidates[1].point }])
+    const saved = JSON.parse(new URLSearchParams(new URL(page.url()).hash.slice(1)).get('places'))
+    expect(saved.roads.left['goal-0'].target).toEqual(candidates[1].point)
+    expect(saved.roads.right?.['goal-0']?.target).toBeUndefined()
     await noOverflow(page)
     privateCalls(service.calls)
 })

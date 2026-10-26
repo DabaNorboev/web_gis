@@ -245,7 +245,8 @@ class WalkingGeometryGuard
                     if (! $i) {
                         continue;
                     }
-                    $edge = ['way' => $way, 'u' => $f['nodes'][$i - 1], 'v' => $node, 'a' => $points[$i - 1], 'b' => $p, 'tags' => $tags];
+                    $edge = ['way' => $way, 'u' => $f['nodes'][$i - 1], 'v' => $node, 'a' => $points[$i - 1], 'b' => $p, 'tags' => $tags,
+                        'coordinates' => [$g['coordinates'][$i - 1], $g['coordinates'][$i]]];
                     $key = 'e'.count($data['edges']);
                     $data['edges'][$key] = $edge;
                     foreach ($this->indexCells($edge['a'], $p) as $cell) {
@@ -466,9 +467,10 @@ class WalkingGeometryGuard
                     continue 2;
                 }
             }
-            [$gap,$point] = WalkingGeometry::project($original, $edge['a'], $edge['b']);
+            [$gap,$point,$fraction] = WalkingGeometry::project($original, $edge['a'], $edge['b']);
             if ($gap <= 20 + 1e-9) {
-                $candidates[] = ['gap' => $gap, 'point' => $point, 'way' => $edge['way'], 'u' => $edge['u'], 'v' => $edge['v']];
+                $candidates[] = ['gap' => $gap, 'point' => $point, 'way' => $edge['way'], 'u' => $edge['u'], 'v' => $edge['v'],
+                    'coordinate' => WalkingGeometry::point($edge['coordinates'][0], $edge['coordinates'][1], $fraction)];
             }
             if (count($candidates) > 64) {
                 throw new RoutingDataException('Walking endpoint candidate budget');
@@ -481,7 +483,7 @@ class WalkingGeometryGuard
         $candidates = array_values(array_filter($candidates, fn ($c) => $c['gap'] <= $best + 1 + 1e-9));
         $groups = $this->groups($candidates, $data['points']);
         if (count($groups) > 1) {
-            return ['status' => 'CHOOSE', 'checks' => ['DISTINCT_SOURCE_JUNCTION_OR_EDGE_CHOICES']];
+            return ['status' => 'CHOOSE', 'checks' => ['DISTINCT_SOURCE_JUNCTION_OR_EDGE_CHOICES'], 'groups' => $groups];
         }
         foreach ($groups[0] as $candidate) {
             if (WalkingGeometry::distance($original, $candidate['point']) > 1e-7 && ($issues = $this->conflicts($original, $candidate['point'], $data))) {
@@ -513,25 +515,106 @@ class WalkingGeometryGuard
             }
         }
 
-        return ['status' => 'SELECTED', 'checks' => []];
+        return ['status' => 'SELECTED', 'checks' => [], 'groups' => $groups];
     }
 
+    private function edgeIdentity(array $candidate): string
+    {
+        return $candidate['way'].':'.min($candidate['u'], $candidate['v']).':'.max($candidate['u'], $candidate['v']);
+    }
+
+    /** Fresh endpoint neighbourhood, without resetting this request's work or numeric budgets. */
+    private function pointData(WalkingRoutingSnapshot $snapshot, array $point, array $original): array
+    {
+        $dy = 20.5 / 110000;
+        $dx = $dy / max(.1, cos(deg2rad($point['lat'])));
+        $features = $snapshot->features([[$point['lon'] - $dx, $point['lat'] - $dy], [$point['lon'] + $dx, $point['lat'] + $dy]], $original, $point);
+        $this->tick();
+        $this->activeCells = [];
+        $this->restrictCells([[$point['lon'], $point['lat']]], $original, $point);
+
+        return $this->prepare($features);
+    }
+
+    /** Suggestions remain choices; each must independently resolve on its original source group. */
+    private function suggestions(WalkingRoutingSnapshot $snapshot, array $original, array $groups, array $area): array
+    {
+        usort($groups, fn ($a, $b) => min(array_column($a, 'gap')) <=> min(array_column($b, 'gap')));
+        $result = [];
+        $seenPoints = [];
+        $seenGroups = [];
+        $attempts = 0;
+        $origin = $this->xy($original);
+        foreach ($groups as $group) {
+            $identities = array_values(array_unique(array_map($this->edgeIdentity(...), $group)));
+            sort($identities);
+            $groupKey = implode(',', $identities);
+            if (isset($seenGroups[$groupKey])) {
+                continue;
+            }
+            $seenGroups[$groupKey] = true;
+            usort($group, fn ($a, $b) => $a['gap'] <=> $b['gap']);
+            foreach ($group as $proposal) {
+                $this->tick();
+                $coordinate = $proposal['coordinate'];
+                $point = ['lon' => $coordinate[0], 'lat' => $coordinate[1]];
+                $xy = $this->xy($point);
+                $gap = WalkingGeometry::distance($origin, $xy);
+                if ($gap > 20 + 1e-9 || ! $this->edgeCovered($origin, $xy, $area)) {
+                    continue;
+                }
+                foreach ($seenPoints as $seen) {
+                    if (WalkingGeometry::distance($xy, $seen) <= .25 + 1e-9) {
+                        continue 2;
+                    }
+                }
+                $seenPoints[] = $xy;
+                if (++$attempts > 12) {
+                    return $result;
+                }
+                $data = $this->pointData($snapshot, $point, $original);
+                // Check even a zero-length connector: a point on a barrier/rail line is not a safe suggestion.
+                if ($this->conflicts($origin, $xy, $data)) {
+                    continue;
+                }
+                $resolved = $this->endpoint($xy, null, $data);
+                if ($resolved['status'] !== 'SELECTED') {
+                    continue;
+                }
+                $selected = $resolved['groups'][0];
+                $selectedIdentities = array_values(array_unique(array_map($this->edgeIdentity(...), $selected)));
+                // A new neighbourhood may reveal another, closer street. Never relabel that as this proposal.
+                if (! in_array($this->edgeIdentity($proposal), $selectedIdentities, true)) {
+                    continue;
+                }
+                $result[] = ['point' => $point, 'distance_m' => $gap];
+                if (count($result) === 6) {
+                    return $result;
+                }
+                break; // One suggestion per original source group.
+            }
+        }
+
+        return $result;
+    }
+
+    /** CHOOSE carries at most six explicit, revalidated source-edge choices; it never auto-selects one. */
     public function validatePoint(WalkingRoutingSnapshot $snapshot, array $point): array
     {
         $this->begin();
         try {
-            if (! $this->covered($this->xy($point), $this->area($snapshot->manifest()))) {
-                return $this->result('OUTSIDE_PILOT', ['OUTSIDE_CONFIRMED_COVERAGE']);
+            $area = $this->area($snapshot->manifest());
+            if (! $this->covered($this->xy($point), $area)) {
+                return $this->result('OUTSIDE_PILOT', ['OUTSIDE_CONFIRMED_COVERAGE']) + ['point' => null, 'candidates' => []];
             }
-            $dy = 20.5 / 110000;
-            $dx = $dy / max(.1, cos(deg2rad($point['lat'])));
-            $features = $snapshot->features([[$point['lon'] - $dx, $point['lat'] - $dy], [$point['lon'] + $dx, $point['lat'] + $dy]], $point, $point);
-            $this->restrictCells([[$point['lon'], $point['lat']]], $point, $point);
-            $end = $this->endpoint($this->xy($point), null, $this->prepare($features));
+            $data = $this->pointData($snapshot, $point, $point);
+            $end = $this->endpoint($this->xy($point), null, $data);
+            unset($data);
+            $candidates = $end['status'] === 'CHOOSE' ? $this->suggestions($snapshot, $point, $end['groups'], $area) : [];
 
-            return $this->result($end['status'], $end['checks']) + ['point' => $end['status'] === 'SELECTED' ? $point : null];
+            return $this->result($end['status'], $end['checks']) + ['point' => $end['status'] === 'SELECTED' ? $point : null, 'candidates' => $candidates];
         } catch (\Throwable) {
-            return $this->result('UNKNOWN', ['SOURCE_DATA_OR_BUDGET_UNAVAILABLE']);
+            return $this->result('UNKNOWN', ['SOURCE_DATA_OR_BUDGET_UNAVAILABLE']) + ['point' => null, 'candidates' => []];
         } finally {
             WalkingGeometry::budget(null);
         }

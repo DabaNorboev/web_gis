@@ -178,4 +178,29 @@ class WalkingTripAnalysisTest extends TestCase
             ->assertJsonPath('results.0.status', 'UNKNOWN')->assertDontSee('SYNTHETIC_INTERNAL_GEOMETRY');
         Http::assertNothingSent();
     }
+
+    public function test_choose_exposes_ambiguity_and_explicit_candidates_without_routing_or_moving_the_object(): void
+    {
+        $candidate = ['point' => ['lon' => .00001, 'lat' => 0.0], 'distance_m' => 1.1];
+        $this->mock(WalkingGeometryGuard::class, function ($m) use ($candidate) {
+            $m->shouldReceive('scope')->andReturn(true);
+            $m->shouldReceive('validatePoint')->andReturnUsing(fn ($snapshot, $point) => $point['lon'] === 0.0
+                ? ['status' => 'CHOOSE', 'point' => null, 'checks' => ['DISTINCT_SOURCE_JUNCTION_OR_EDGE_CHOICES'], 'candidates' => [$candidate]]
+                : ['status' => 'SELECTED', 'point' => $point, 'checks' => [], 'candidates' => []]);
+            $m->shouldNotReceive('review');
+        });
+        Http::fake();
+        $response = $this->postJson('/api/v1/trips/analyze', $this->data())->assertOk()
+            ->assertJsonPath('results.0.status', 'NEEDS_REFINEMENT')
+            ->assertJsonPath('results.0.route', null)
+            ->assertJsonPath('results.0.metrics.distance.value', null)
+            ->assertJsonPath('results.0.diagnostics.issues.0.category', 'ambiguity')
+            ->assertJsonPath('results.0.diagnostics.issues.0.code', 'SNAP_CHOICE_REQUIRED')
+            ->assertJsonPath('results.0.diagnostics.issues.0.location', 'start')
+            ->assertJsonPath('results.0.road_choices.start.candidates.0.point.lon', .00001)
+            ->assertJsonPath('results.0.road_choices.start.point', null);
+        $this->assertSame(['lon' => 0, 'lat' => 0], $response->json('results.0.start'));
+        $this->assertContains('DISTINCT_SOURCE_JUNCTION_OR_EDGE_CHOICES', $response->json('results.0.checks'));
+        Http::assertNothingSent();
+    }
 }

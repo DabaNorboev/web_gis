@@ -2,7 +2,8 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import * as vue from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { stateModule, personalUtils, ComparisonTrips, ComparisonShare, ComparisonTripData, failure } from './support/comparison-trips-dependencies.mjs'
+import { loadComponent } from './support/vue-component.mjs'
+import { stateModule, personalUtils, ComparisonTrips, ComparisonShare, ComparisonTripData, failure, candidateUtils, tripUtils } from './support/comparison-trips-dependencies.mjs'
 
 const a = { lon: 92.87, lat: 56.01 }, b = { lon: 92.89, lat: 56.02 }
 const source = { name: 'Synthetic OSM', engine: 'OSRM', dataset_version: 'test-v1', observed_at: null }
@@ -271,4 +272,97 @@ test('walking comparison links require v2 so the former v1 reader rejects them i
     for (const invalid of [{ ...walking, version: 1 }, { ...legacy, version: 2 }, { ...legacy, version: 2, mode: 'driving' }, { ...walking, mode: 'cycling' }, { ...walking, mode: null }]) {
         assert.deepEqual(personalUtils.parseComparisonTrips(rawFragment(invalid)), { selection: null, invalid: true })
     }
+})
+
+
+test('walking checked street candidates are explicit per-cell inputs, focus their list and keep source and original objects', async () => {
+    const { state, pending, ids, cleanup } = setup(2)
+    const candidate = { point: { lon: 92.87003, lat: 56.01001 }, distance_m: 3, name: 'Synthetic street' }
+    const chosenByServer = { lon: 92.87004, lat: 56.01002 }
+    const events = [], focused = []
+    const group = { open: false, querySelector: () => ({ focus: () => focused.push('candidate') }) }
+    const document = { activeElement: null, getElementById: () => ({ querySelector: selector => { assert.equal(selector, '[data-end="start"]'); return group } }) }
+    const component = loadComponent(new URL('../../resources/js/components/ComparisonTrips.vue', import.meta.url), {
+        '@/components/TripPointPicker.vue': { default: { render: () => null } },
+        '@/utils/comparisonTrips': personalUtils, '@/utils/tripFailure': failure, '@/utils/trips': tripUtils, '@/utils/tripCandidates': candidateUtils,
+    }, { inlineTemplate: false, globals: { document } })
+    try {
+        state.setMode('walking')
+        const originals = JSON.stringify(state.places.value), starts = JSON.stringify(state.starts)
+        const run = state.calculate()
+        for (const [i, request] of pending.entries()) {
+            const value = response(request.selection, ['start', 'target'])
+            value.source = null
+            for (const row of value.results) {
+                row.route_scope = 'street_points'
+                row.status = 'NEEDS_REFINEMENT'
+                row.road_choices = { start: { status: 'UNKNOWN' }, target: { status: 'UNKNOWN' } }
+            }
+            if (i === 0) {
+                value.results[0].road_choices.start = { status: 'CHOOSE', candidates: [candidate] }
+                value.results[0].diagnostics.issues[0].category = 'ambiguity'
+            }
+            request.resolve(value)
+        }
+        await run
+        assert.equal(state.cell('left', ids[0]).options.start[0].point.lon, candidate.point.lon)
+        assert.equal(state.cell('left', ids[0]).source, null)
+        assert.equal(state.cell('left', ids[1]).options.start.length, 0)
+        assert.equal(state.cell('right', ids[0]).options.start.length, 0)
+        assert.equal(state.cell('left', ids[0]).hints.start, undefined)
+        assert.equal(pending.length, 2)
+        const html = await renderToString(vue.createSSRApp(ComparisonTrips, { model: state, invalidLink: false }))
+        assert.match(html, /Улица · старт А/); assert.match(html, /Улица 1 · 3 м/)
+        assert.match(html, /Смещение от проверяемой уличной точки; это не расстояние подхода/)
+        assert.equal((html.match(/Synthetic street/g) ?? []).length, 1)
+        const bindings = component.setup({ model: state, invalidLink: false }, { expose() {}, emit: (...args) => events.push(args) })
+        await bindings.act('left', ids[0], { action: 'choice', location: 'start' })
+        assert.equal(group.open, true); assert.deepEqual(focused, ['candidate']); assert.equal(events.length, 0)
+        await bindings.act('right', ids[0], { action: 'choice', location: 'target' })
+        assert.deepEqual(events.at(-1), ['pick', ids[0], 'right', 'target'])
+        await bindings.act('left', ids[0], { action: 'choice', location: 'unknown' })
+        assert.deepEqual(events.at(-1), ['show', 'left', ids[0]])
+        const selected = bindings.chooseRoad('left', ids[0], 'start', candidate.point)
+        const request = pending.at(-1)
+        assert.equal(request.selection.mode, 'walking')
+        assert.deepEqual(request.selection.start.road, candidate.point)
+        assert.equal(request.selection.start.lon, a.lon); assert.equal(request.selection.places[0].lon, state.places.value[0].point.lon)
+        assert.equal(request.selection.places.length, 1)
+        assert.equal(state.cell('left', ids[0]).options.start.length, 0)
+        const value = response(request.selection, ['target'])
+        value.results[0].road_choices = { start: { status: 'SELECTED', point: chosenByServer }, target: { status: 'UNKNOWN' } }
+        request.resolve(value); await selected
+        assert.deepEqual(JSON.parse(JSON.stringify(state.cell('left', ids[0]).hints.start)), candidate.point)
+        assert.equal(state.cell('left', ids[0]).options.start.length, 0)
+        assert.equal(state.cell('right', ids[0]).hints.start, undefined)
+        assert.equal(state.cell('left', ids[1]).hints.start, undefined)
+        assert.equal(JSON.stringify(state.places.value), originals); assert.equal(JSON.stringify(state.starts), starts)
+    } finally { cleanup() }
+})
+
+test('walking candidate responses from an old input cannot restore lists after a street edit or mode change', async () => {
+    const { state, pending, ids, cleanup } = setup(1)
+    const candidateResponse = request => {
+        const value = response(request.selection, ['start'])
+        value.results[0].road_choices = { start: { status: 'CHOOSE', candidates: [{ point: b, distance_m: 5 }] } }
+        return value
+    }
+    try {
+        state.setMode('walking')
+        const old = state.calculate('left', ids[0])
+        state.setRoad('left', ids[0], 'start', a)
+        pending[0].resolve(candidateResponse(pending[0])); await old
+        assert.equal(state.cell('left', ids[0]).options.start.length, 0)
+        assert.equal(state.cell('left', ids[0]).row, null)
+        const fresh = state.calculate('left', ids[0])
+        pending[1].resolve(candidateResponse(pending[1])); await fresh
+        assert.equal(state.cell('left', ids[0]).options.start.length, 1)
+        const newest = state.calculate('left', ids[0])
+        assert.equal(state.cell('left', ids[0]).options.start.length, 0)
+        state.setMode('driving')
+        pending[2].resolve(candidateResponse(pending[2])); await newest
+        assert.equal(state.cell('left', ids[0]).options.start.length, 0)
+        assert.equal(state.cell('left', ids[0]).hints.start, undefined)
+        assert.equal(state.cell('left', ids[0]).row, null)
+    } finally { cleanup() }
 })
