@@ -15,6 +15,12 @@
 | ETL | Python/PBF fixture suite, без рабочего импорта |
 | Routing/privacy | PHP feature + guard/snap integration, frontend/browser regressions; Nginx privacy при изменении соответствующего слоя |
 
+Для пешего backend без изменений UI: PHP unit/feature для source-chain,
+подготовленного snapshot и API; `python3 -B tests/routing-runtime/test_walking_prepare.py -v`
+для offline-подготовки на синтетических fixtures. Это не запускает ORS/БД.
+Реальная готовность дополнительно требует проверки закреплённого ORS и отказов
+API в изолированном окружении; выполненный протокол — [walking-backend](walking-backend.md).
+
 Количество тестов не является основанием удаления. Разные уровни ловят разные ошибки. Повторы loader-инфраструктуры можно сокращать, сохраняя поведение; стоимость viewport-матрицы менять после проверки покрытия сценариев и времени выполнения.
 
 ## Команды и побочные эффекты

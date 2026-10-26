@@ -1,0 +1,35 @@
+# Optional frozen street-only walking pilot. Combine with the base Compose file.
+# The routing network name also coexists with docker-compose.routing.yml (car).
+services:
+    php:
+        networks: [default, routing]
+
+    local-walking:
+        image: heigit/openrouteservice@sha256:e63d4df17a8df5fa1c0432c27b0c361be33e6f21a7b28496e97b6434b5954ce1
+        entrypoint: ["/bin/sh", "/startup.sh"]
+        volumes:
+            - ./data/prepared/local-routing/ors-foot-20261026-v1:/data:ro
+            - ./docker/walking/start.sh:/startup.sh:ro
+            - ./docker/walking/log4j2.xml:/logging.xml:ro
+        user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+        read_only: true
+        init: true
+        cpus: 2
+        mem_limit: 3g
+        memswap_limit: 3g
+        tmpfs: ["/tmp:size=128m,mode=1777"]
+        cap_drop: [ALL]
+        security_opt: [no-new-privileges:true]
+        logging:
+            driver: none
+        networks: [routing]
+        healthcheck:
+            test: ["CMD-SHELL", "wget -q -T 2 -O - http://127.0.0.1:8082/ors/v2/health | grep -q '\"status\"[[:space:]]*:[[:space:]]*\"ready\"'"]
+            interval: 10s
+            timeout: 2s
+            retries: 12
+            start_period: 30s
+
+networks:
+    routing:
+        internal: true

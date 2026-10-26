@@ -94,7 +94,7 @@ def main(unavailable=False):
     private = request('vehicle-private', {'mode': 'driving', 'start': dict(zip(['lon', 'lat'], c['start']['coordinate'])),
                                          'places': [dict(zip(['lon', 'lat'], c['target']['coordinate']))]})
     assert private['results'][0]['status'] == 'UNKNOWN' and 'ACCESS_REVIEW' in private['results'][0]['checks']
-    request('unsupported-mode', {**base, 'mode': 'walking'}, 422)
+    request('unsupported-mode', {**base, 'mode': 'cycling'}, 422)
     request('oversized-body', {'padding': 'x' * 9000}, 413)
     (OUT / 'legacy-after-integration.json').write_text(json.dumps(smoke(), ensure_ascii=False, indent=2) + '\n')
 

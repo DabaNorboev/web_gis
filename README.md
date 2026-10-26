@@ -56,6 +56,19 @@ Vite работает в отдельном терминале, без `--host`;
 
 [Поездки и ограничения](docs/trips.md) · [Подготовка runtime и запуск](docs/local-routing-integration-2026-10-21.md). Не создавать runtime автоматически из HTTP и не удалять связанные отчёты/источники подготовки.
 
+Пеший **backend/API** имеет отдельный закреплённый ORS runtime; переключатель
+режима в интерфейсе ещё не подключён. При наличии проверенного пешего снимка
+добавить opt-in override явно:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.routing.yml -f docker-compose.walking.yml up -d --no-build --wait --wait-timeout 120 php local-router local-walking
+```
+
+Эта команда может запустить обычный db по зависимости PHP; это команда запуска
+подготовленного окружения, не read-only проверка. Базовый Compose и существующий
+override-симлинк не изменены. Внешний ORS API и ключ не используются. Подготовка
+снимка, контракт `walking`, пределы и свежие проверки — [пеший backend](docs/walking-backend.md).
+
 Интерактивные оболочки при необходимости: `docker compose exec php bash`, `docker compose exec node bash`. UI-компоненты добавляются только в node: [frontend conventions](docs/frontend-structure.md).
 
 ## Проверки

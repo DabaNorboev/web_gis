@@ -175,7 +175,7 @@ class TripAnalysisTest extends TestCase
     {
         Http::fake();
         $data = $this->requestData();
-        $this->postJson('/api/v1/trips/analyze', [...$data, 'mode' => 'walking'])->assertUnprocessable();
+        $this->postJson('/api/v1/trips/analyze', [...$data, 'mode' => 'cycling'])->assertUnprocessable();
         $this->postJson('/api/v1/trips/analyze', [...$data, 'places' => array_fill(0, 4, $data['places'][0])])->assertUnprocessable();
         $data['start']['lon'] = 181;
         $this->postJson('/api/v1/trips/analyze', $data)->assertUnprocessable();
