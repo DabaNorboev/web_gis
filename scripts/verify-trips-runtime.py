@@ -8,12 +8,17 @@ import urllib.parse
 import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-OUT = ROOT / 'data/reports/local-routing-integration-2026-10-21'
+DEFAULT_NO_PATH_CANDIDATES = ROOT / 'data/reports/local-routing-integration-2026-10-21/no-path-candidates.json'
 START = {'lon': 92.8580863, 'lat': 56.0139165}
 TARGET = {'lon': 92.8712982, 'lat': 56.0120993, 'label': 'Контроль 1'}
 
 
-def request(name, data, expected_http=200):
+def write_report(output_dir, name, data):
+    with (output_dir / name).open('x', encoding='utf-8') as report:
+        report.write(json.dumps(data, ensure_ascii=False, indent=2) + '\n')
+
+
+def request(output_dir, name, data, expected_http=200):
     began = time.monotonic()
     req = urllib.request.Request('http://127.0.0.1/api/v1/trips/analyze', json.dumps(data).encode(),
                                  {'Accept': 'application/json', 'Content-Type': 'application/json'})
@@ -26,7 +31,7 @@ def request(name, data, expected_http=200):
         status, headers = response.status, dict(response.headers)
     record = {'request': data, 'response': body, 'http_status': status, 'headers': headers,
               'milliseconds': (time.monotonic() - began) * 1000}
-    (OUT / ('http-' + name + '.json')).write_text(json.dumps(record, ensure_ascii=False, indent=2) + '\n')
+    write_report(output_dir, 'http-' + name + '.json', record)
     assert status == expected_http, (name, status)
     if status == 200:
         assert 'no-store' in headers.get('Cache-Control', '')
@@ -62,15 +67,25 @@ def smoke():
     return results
 
 
-def main(unavailable=False):
+def main(output_dir, no_path_candidates=DEFAULT_NO_PATH_CANDIDATES, unavailable=False):
+    output_dir = pathlib.Path(output_dir)
+    try:
+        output_dir.mkdir()
+    except FileExistsError as exc:
+        raise ValueError(f'Output path already exists (a new directory is required): {output_dir}') from exc
+    if not unavailable:
+        try:
+            island = json.loads(pathlib.Path(no_path_candidates).read_text(encoding='utf-8'))[0]['coordinate']
+        except (OSError, ValueError, KeyError, IndexError, TypeError) as exc:
+            raise ValueError(f'Cannot read no-path candidates input {no_path_candidates}: {exc}') from exc
     if unavailable:
         data = {'mode': 'driving', 'start': START, 'places': [TARGET, {'lon': 92.860414, 'lat': 56.015472, 'label': 'Контроль 2'}]}
-        result = request('container-unavailable', data)
+        result = request(output_dir, 'container-unavailable', data)
         assert [r['status'] for r in result['results']] == ['UNAVAILABLE', 'UNAVAILABLE']
-        (OUT / 'legacy-while-router-down.json').write_text(json.dumps(smoke(), ensure_ascii=False, indent=2) + '\n')
+        write_report(output_dir, 'legacy-while-router-down.json', smoke())
         return
     base = {'mode': 'driving', 'start': START, 'places': [TARGET]}
-    normal = request('ordinary', base)
+    normal = request(output_dir, 'ordinary', base)
     assert normal['results'][0]['status'] == 'AVAILABLE'
     row = normal['results'][0]
     assert row['snaps']['start']['original'] == START and row['snaps']['target']['original'] == {'lon': TARGET['lon'], 'lat': TARGET['lat']}
@@ -78,28 +93,39 @@ def main(unavailable=False):
     assert normal['source']['dataset_version'] == 'osrm-car-20261021-v1' and normal['source']['observed_at'] is None
     cases = {c['id']: c for c in json.loads((ROOT / 'experiments/local-routing-poc/controls.json').read_text())['cases']}
     c = cases['stadium']
-    dubious = request('wall-snap', {'mode': 'driving', 'start': dict(zip(['lon', 'lat'], c['start']['coordinate'])),
+    dubious = request(output_dir, 'wall-snap', {'mode': 'driving', 'start': dict(zip(['lon', 'lat'], c['start']['coordinate'])),
                                   'places': [{**dict(zip(['lon', 'lat'], c['target']['coordinate'])), 'label': 'Стадион'}]})
     assert dubious['results'][0]['status'] == 'NEEDS_REFINEMENT'
     assert 'SNAP_THROUGH_BARRIER' in dubious['results'][0]['checks']
-    island = json.loads((OUT / 'no-path-candidates.json').read_text())[0]['coordinate']
     no_path_place = {'lon': island[0], 'lat': island[1], 'label': 'Изолированная дорога'}
-    isolated = request('no-path', {**base, 'places': [no_path_place]})
+    isolated = request(output_dir, 'no-path', {**base, 'places': [no_path_place]})
     assert isolated['results'][0]['status'] == 'NO_PATH'
-    mixed = request('partial-matrix', {**base, 'places': [TARGET, no_path_place, {'lon': 91, 'lat': 56, 'label': 'Вне пилота'}]})
+    mixed = request(output_dir, 'partial-matrix', {**base, 'places': [TARGET, no_path_place, {'lon': 91, 'lat': 56, 'label': 'Вне пилота'}]})
     assert [r['status'] for r in mixed['results']] == ['AVAILABLE', 'NO_PATH', 'OUTSIDE_PILOT']
-    edge = request('pilot-edge', {**base, 'places': [{'lon': 92.701, 'lat': 56.01}]})
+    edge = request(output_dir, 'pilot-edge', {**base, 'places': [{'lon': 92.701, 'lat': 56.01}]})
     assert edge['results'][0]['status'] == 'OUTSIDE_PILOT'
     c = cases['railway']
-    private = request('vehicle-private', {'mode': 'driving', 'start': dict(zip(['lon', 'lat'], c['start']['coordinate'])),
+    private = request(output_dir, 'vehicle-private', {'mode': 'driving', 'start': dict(zip(['lon', 'lat'], c['start']['coordinate'])),
                                          'places': [dict(zip(['lon', 'lat'], c['target']['coordinate']))]})
     assert private['results'][0]['status'] == 'UNKNOWN' and 'ACCESS_REVIEW' in private['results'][0]['checks']
-    request('unsupported-mode', {**base, 'mode': 'cycling'}, 422)
-    request('oversized-body', {'padding': 'x' * 9000}, 413)
-    (OUT / 'legacy-after-integration.json').write_text(json.dumps(smoke(), ensure_ascii=False, indent=2) + '\n')
+    request(output_dir, 'unsupported-mode', {**base, 'mode': 'cycling'}, 422)
+    request(output_dir, 'oversized-body', {'padding': 'x' * 9000}, 413)
+    write_report(output_dir, 'legacy-after-integration.json', smoke())
+
+
+def cli(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--unavailable', action='store_true')
+    parser.add_argument('--output-dir', type=pathlib.Path, required=True,
+                        help='New results directory; any existing path is rejected')
+    parser.add_argument('--no-path-candidates', type=pathlib.Path, default=DEFAULT_NO_PATH_CANDIDATES,
+                        help='Read-only no-path input (unused with --unavailable)')
+    args = parser.parse_args(argv)
+    try:
+        main(args.output_dir, args.no_path_candidates, args.unavailable)
+    except (OSError, ValueError) as exc:
+        parser.error(str(exc))
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--unavailable', action='store_true')
-    main(parser.parse_args().unavailable)
+    cli()
