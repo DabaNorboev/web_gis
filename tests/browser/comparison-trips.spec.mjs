@@ -309,7 +309,7 @@ test('three sections preserve mounted editors, reading positions and focus, hide
     await page.locator('.comparison-map-return').press('Enter')
     await expect(read).toBeFocused(); expect((await read.boundingBox()).y).toBeCloseTo(position.y, 0)
     expect(service.calls).toHaveLength(count); expect(api.calls).toHaveLength(calls)
-    await testInfo.attach('new-sections-and-compact-results', { body: await page.screenshot({ path: `data/reports/goal10-1-layout-2026-10-24/preview-results-${testInfo.project.name}.png` }), contentType: 'image/png' })
+    await testInfo.attach('new-sections-and-compact-results', { body: await page.screenshot({ path: testInfo.outputPath('preview-results.png') }), contentType: 'image/png' })
 })
 
 test('section overlays hide without deleting the selected park, route, theme or layer preferences', async ({ page, api }) => {
