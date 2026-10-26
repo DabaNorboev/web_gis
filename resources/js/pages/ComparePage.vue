@@ -53,8 +53,10 @@ const personalLink = useComparisonLink({ radius, sides, restore }, trips, {
 })
 const { invalidPersonalLink, shareUrl, personalShareUrl } = personalLink
 function clearPersonalMap() {
+    tripMapSequence++
     mapTripIds.left = null; mapTripIds.right = null; selectedTripId.value = null; pickingTrip.value = null
 }
+watch(trips.mode, clearPersonalMap, { flush: 'sync' })
 function resetPersonal() { personalLink.resetPersonal(); clearPersonalMap() }
 const selectedTrip = computed(() => trips.places.value.find(p => p.id === selectedTripId.value))
 const tripOverlays = computed<Record<SideKey, TripMapOverlay | null>>(() => Object.fromEntries(keys.map(side => {
@@ -62,8 +64,9 @@ const tripOverlays = computed<Record<SideKey, TripMapOverlay | null>>(() => Obje
     if (!place?.point || !start) return [side, null]
     const value = trips.cell(side, place.id), row = value.row
     const data = tripMapData([{ key: 'S', point: start, road: value.hints.start }, { key: '1', point: place.point, road: value.hints.target }],
-        row ? { mode: 'driving', start, results: [{ ...row, index: 0 }], source: value.source, limitation: value.limitation } : null,
-        (['start', 'target'] as const).flatMap(end => value.options[end].length ? [{ key: end === 'start' ? 'S' : '1', label: `${names[side]} · ${end === 'start' ? 'Старт' : place.label || 'Цель'}`, candidates: value.options[end], selected: row?.road_choices?.[end].status === 'SELECTED' ? row.road_choices[end].point : null }] : [])
+        row ? { mode: trips.mode.value, ...(trips.mode.value === 'walking' ? { route_scope: 'street_points' as const } : {}), start, results: [{ ...row, index: 0 }], source: value.source, limitation: value.limitation } : null,
+        (['start', 'target'] as const).flatMap(end => value.options[end].length ? [{ key: end === 'start' ? 'S' : '1', label: `${names[side]} · ${end === 'start' ? 'Старт' : place.label || 'Цель'}`, candidates: value.options[end], selected: row?.road_choices?.[end]?.status === 'SELECTED' ? row.road_choices[end]?.point ?? null : null }] : []),
+        trips.mode.value
     )
     // Request-local indices and scenario labels stop at this adapter.
     for (const feature of data.features) {
@@ -78,9 +81,10 @@ async function showPersonalTrip(side: SideKey, id: string) {
     selectTripContext(id)
     view.value = 'trips'
     activeSide.value = side; mapTripIds[side] = id; pickingTrip.value = null
-    tripMapSequences[side] = ++tripMapSequence
+    const sequence = tripMapSequences[side] = ++tripMapSequence
     await showMap()
-    await nextTick(); void maps[side]?.focusTrip()
+    await nextTick()
+    if (sequence === tripMapSequence && mapTripIds[side] === id) void maps[side]?.focusTrip()
 }
 async function pickPersonalPoint(id: string, side?: SideKey, end?: 'start' | 'target') {
     view.value = 'trips'
@@ -359,8 +363,8 @@ onBeforeUnmount(() => { disposed = true })
                             </div>
                         </template>
                     </ComparisonMapSplit>
-                    <div v-if="view === 'trips' && selectedTrip && !editing" class="comparison-trip-context" aria-live="polite"><p><span class="comparison-map-context-label">{{ pickingTrip ? 'Выбор точки' : 'Цель' }}</span><strong :title="selectedTrip.label">{{ selectedTrip.label || 'Без названия' }}</strong><span>{{ pickingTrip?.end ? `${pickingTrip.end === 'start' ? 'Дорожный старт' : 'Дорожная цель'} ${names[pickingTrip.side!]}` : tripOverlays[activeSide] ? `Поездка ${names[activeSide]}` : `Для ${names[activeSide]}` }}</span></p><template v-if="pickingTrip"><p class="comparison-pick-hint">Нажмите на карту или переместите её стрелками. Исходный адрес сохранится.</p><button type="button" @click="selectPersonalPoint(maps[activeSide]?.centerPoint()!)">Выбрать центр карты</button></template><button v-else-if="mapTripIds[activeSide] !== selectedTrip.id" type="button" @click="showPersonalTrip(activeSide, selectedTrip.id)">Показать поездку {{ names[activeSide] }} к этой цели</button></div>
-                    <div class="comparison-map-footer"><p>{{ view === 'trips' ? 'Белые точки — дорога · пунктир — нерассчитанный подход' : 'Общий масштаб · независимые центры. Слои окружения ограничены кругом.' }}</p><button type="button" class="comparison-map-return" @click="returnToPersonal">{{ pickingTrip && view === 'trips' ? 'Готово · к поездкам' : 'К результатам' }}</button></div>
+                    <div v-if="view === 'trips' && selectedTrip && !editing" class="comparison-trip-context" aria-live="polite"><p><span class="comparison-map-context-label">{{ pickingTrip ? 'Выбор точки' : 'Цель' }}</span><strong :title="selectedTrip.label">{{ selectedTrip.label || 'Без названия' }}</strong><span>{{ pickingTrip?.end ? `${pickingTrip.end === 'start' ? (trips.mode.value === 'walking' ? 'Уличный старт' : 'Дорожный старт') : (trips.mode.value === 'walking' ? 'Уличная цель' : 'Дорожная цель')} ${names[pickingTrip.side!]}` : tripOverlays[activeSide] ? `Поездка ${names[activeSide]}` : `Для ${names[activeSide]}` }}</span></p><template v-if="pickingTrip"><p class="comparison-pick-hint">Нажмите на карту или переместите её стрелками. Исходный адрес сохранится.</p><button type="button" @click="selectPersonalPoint(maps[activeSide]?.centerPoint()!)">Выбрать центр карты</button></template><button v-else-if="mapTripIds[activeSide] !== selectedTrip.id" type="button" @click="showPersonalTrip(activeSide, selectedTrip.id)">Показать поездку {{ names[activeSide] }} к этой цели</button></div>
+                    <div class="comparison-map-footer"><p>{{ view === 'trips' ? (trips.mode.value === 'walking' ? 'Уличная часть · подходы от объектов неизвестны и не нарисованы' : 'Белые точки — дорога · пунктир — нерассчитанный подход') : 'Общий масштаб · независимые центры. Слои окружения ограничены кругом.' }}</p><button type="button" class="comparison-map-return" @click="returnToPersonal">{{ pickingTrip && view === 'trips' ? 'Готово · к поездкам' : 'К результатам' }}</button></div>
                 </aside>
             </div>
         </main>

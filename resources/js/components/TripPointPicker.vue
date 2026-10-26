@@ -28,8 +28,8 @@ const signature = computed(() => `${props.point?.lon}|${props.point?.lat}`)
                 <label v-for="candidate in result.data.candidates" :key="candidate.id"><input type="radio" :name="`trip-label-${label}`" :checked="selectedId === candidate.id" @change="choose(candidate.id)" />{{ candidate.label }} · {{ candidate.object_type === 'building' ? 'здание' : 'адресный объект' }} · {{ candidate.id }}</label>
             </fieldset>
             <p v-if="selected && result?.data.match === 'NEARBY'">До адресного объекта {{ Math.round(selected.distance_m) }} м по прямой.</p>
-            <p class="trip-picker-hint">Подпись не переносит точку и не подтверждает въезд.</p>
-            <details v-if="result"><summary>О подписи</summary><p>{{ result.meta.source }} · снимок {{ result.meta.dataset_import_id ?? 'нет' }}. Дата наблюдения: {{ result.meta.observed_at ?? 'неизвестна' }}. Актуальность: {{ result.meta.quality.freshness === 'UNKNOWN' ? 'неизвестна' : result.meta.quality.freshness }}. {{ result.meta.quality.reason }} {{ result.meta.coverage.reason }} Адресный поиск в пределах 100 м не является привязкой к автомобильной дороге.</p></details>
+            <p class="trip-picker-hint">Подпись не переносит точку и не подтверждает вход или въезд.</p>
+            <details v-if="result"><summary>О подписи</summary><p>{{ result.meta.source }} · снимок {{ result.meta.dataset_import_id ?? 'нет' }}. Дата наблюдения: {{ result.meta.observed_at ?? 'неизвестна' }}. Актуальность: {{ result.meta.quality.freshness === 'UNKNOWN' ? 'неизвестна' : result.meta.quality.freshness }}. {{ result.meta.quality.reason }} {{ result.meta.coverage.reason }} Адресный поиск в пределах 100 м не является проверкой пешего или автомобильного доступа.</p></details>
         </div>
     </section>
 </template>

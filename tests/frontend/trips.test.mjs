@@ -19,6 +19,7 @@ function pageDependencies(deps) {
         }),
         '@/layouts/PlaceLayout.vue': deps.PlaceLayout, '@/components/TripPointPicker.vue': deps.TripPointPicker,
         '@/components/map/TripMap.vue': deps.TripMap,
+        '@/components/WalkingTripDetails.vue': loadComponent(new URL('../../resources/js/components/WalkingTripDetails.vue', import.meta.url), { '@/utils/trips': tripUtils }),
     }
 }
 // Invented values only, unrelated to any saved link or real place.
@@ -37,7 +38,7 @@ test('trip link retains explicit points, order and personal labels without round
 })
 
 test('invalid, duplicate, unsupported or oversized trip links never become a default trip', () => {
-    for (const input of [null, {}, { ...selection, mode: 'walking' }, { ...selection, version: 2 },
+    for (const input of [null, {}, { ...selection, mode: 'cycling' }, { ...selection, version: 2 },
         { ...selection, places: [] }, { ...selection, places: Array(4).fill(selection.places[0]) },
         { ...selection, start: { lon: 181, lat: 56 } }, { ...selection, start: { lon: '92.86', lat: 56 } },
         { ...selection, places: [{ lon: 92.8, lat: 56, label: 'x'.repeat(81) }] }]) {
@@ -107,7 +108,7 @@ function pageHarness(initial = '/trips', reply, dom = {}, realState = false) {
     const deps = { ...vue, vue: { ...vue, onBeforeUnmount: fn => disposed.push(fn) }, onMounted: fn => mounted.push(fn), onBeforeUnmount: fn => disposed.push(fn), useTripAnalysis: () => state, ...utils, window: win,
         document: { title: '', querySelector: () => null, getElementById: () => ({ focus() {}, scrollIntoView() {} }), ...dom } }
     if (!realState) disposed.push(() => state.clear())
-    const page = scope.run(() => loadSetup(new URL('../../resources/js/pages/TripsPage.vue', import.meta.url), ['submit', 'reset', 'returnToForm', 'draft', 'invalidLink', 'chooseRoad', 'mapChoice', 'choose', 'selection', 'candidateGroups', 'add', 'remove', 'activeRoad', 'announcement', 'rowCandidateGroups', 'highlightedCandidate', 'candidateFocus', 'pendingChoiceIndices', 'actionNotices', 'dismissActionNotice', 'openActionNotice', 'dirtyIndices', 'summaryTitle', 'resultEntries', 'nextStep', 'active', 'activePointReady', 'nextPoint', 'allPointsReady', 'saveDraftLink'], { ...pageDependencies(deps), vue: { ...vue, onMounted: deps.onMounted, onBeforeUnmount: deps.onBeforeUnmount } }, { window: win, document: deps.document }))
+    const page = scope.run(() => loadSetup(new URL('../../resources/js/pages/TripsPage.vue', import.meta.url), ['submit', 'reset', 'returnToForm', 'draft', 'invalidLink', 'chooseRoad', 'mapChoice', 'choose', 'selection', 'candidateGroups', 'add', 'remove', 'activeRoad', 'announcement', 'rowCandidateGroups', 'highlightedCandidate', 'candidateFocus', 'pendingChoiceIndices', 'actionNotices', 'dismissActionNotice', 'openActionNotice', 'dirtyIndices', 'summaryTitle', 'resultEntries', 'nextStep', 'active', 'activePointReady', 'nextPoint', 'allPointsReady', 'saveDraftLink', 'mode', 'changeMode', 'resetRoad', 'primaryAction', 'refineFromFailure'], { ...pageDependencies(deps), vue: { ...vue, onMounted: deps.onMounted, onBeforeUnmount: deps.onBeforeUnmount } }, { window: win, document: deps.document }))
     mounted.forEach(fn => fn())
     return { page, win, calls, state, historyEntries, handlers, dispose() { disposed.forEach(fn => fn()); scope.stop() } }
 }
@@ -188,7 +189,7 @@ test('rendered page warns the recipient can see coordinates and labels of every 
 test('trip fetch uses a fixed URL, no-store and no-referrer; selection travels only in POST body', async () => {
     let seen
     const { fetchTrips } = loadModule(new URL('../../resources/js/api/trips.ts', import.meta.url), {}, { fetch: async (url, options) => {
-        seen = { url, options }; return { ok: true, json: async () => ({ results: [] }) }
+        seen = { url, options }; return { ok: true, json: async () => ({ mode: 'driving', start: selection.start, results: selection.places.map((target, index) => ({ index, start: selection.start, target, status: 'UNKNOWN', route: null, snaps: null, metrics: { distance: { value: null }, duration: { value: null } } })) }) }
     } })
     await fetchTrips(selection, new AbortController().signal)
     assert.equal(seen.url, '/api/v1/trips/analyze')
@@ -827,7 +828,7 @@ test('Goal 6 general technical retry cannot keep an earlier full success', async
     } finally { h.dispose() }
 })
 
-for (const change of ['target', 'start', 'remove', 'reset', 'restore', 'new request', 'unmount']) {
+for (const change of ['target', 'start', 'remove', 'reset', 'restore', 'new request', 'unmount', 'mode']) {
     test(`standalone state ignores delivered late response after ${change}`, async () => {
         const pending = []
         let defer = false
@@ -844,6 +845,7 @@ for (const change of ['target', 'start', 'remove', 'reset', 'restore', 'new requ
             if (change === 'restore') h.trips.restore(roadSelection)
             if (change === 'new request') h.trips.chooseRoad('2', alternatives[1].point)
             if (change === 'unmount') h.dispose()
+            if (change === 'mode') h.trips.setMode('walking')
             assert.equal(pending[0].signal.aborted, true)
             const before = {
                 analysis: h.trips.analysis.value, status: h.trips.status.value, error: h.trips.error.value,
@@ -885,4 +887,171 @@ test('page unmount removes history/resize handlers and cancels the connected rea
     assert.equal(h.state.analysis.value, null)
     assert.equal(h.page.candidateGroups.value.length, 0)
     assert.equal(h.page.draft.start.road, undefined)
+})
+
+
+const walkingSelection = { ...selection, mode: 'walking' }
+const street = { start: { lon: .1236, lat: .2347 }, target: { lon: .1242, lat: .2352 } }
+const walkingRow = {
+    ...accepted, start: selection.start, target: selection.places[0], route_scope: 'street_points',
+    street_points: street, selection_kind: 'DIFFERENT_STREET_POINTS',
+    approaches: Object.fromEntries(['start', 'target'].map(end => [end, { status: 'UNKNOWN',
+        original: end === 'start' ? selection.start : selection.places[0], selected_street: street[end],
+        selection_shift_m: end === 'start' ? 33 : 12, distance_m: null, duration_s: null, reason: 'Synthetic approach unknown' }])),
+    address_metrics: { distance: { value: null }, duration: { value: null } },
+    metrics: { distance: { value: 100 }, duration: { value: 480 } },
+}
+
+test('walking links round-trip explicit street points and restore triggers only one walking check', async () => {
+    const value = { ...walkingSelection, start: { ...walkingSelection.start, road: street.start },
+        places: walkingSelection.places.map((p, i) => i ? p : { ...p, road: street.target }) }
+    const h = pageHarness(utils.tripUrl(value), () => ({ mode: 'walking', results: [walkingRow] }))
+    try {
+        await settleTrips()
+        assert.equal(h.page.mode.value, 'walking')
+        assert.deepEqual(h.calls, [value])
+        assert.deepEqual(h.page.selection(), value)
+        assert.deepEqual(utils.parseTripLink(h.win.location.hash).selection, value)
+    } finally { h.dispose() }
+})
+
+test('mode switch clears prior results, candidates, road hints and errors while retaining originals and labels', async () => {
+    const h = tripsHarness(selection, value => Promise.resolve(choiceReply(value)))
+    try {
+        await settleTrips()
+        assert.ok(h.trips.candidateGroups.value.length)
+        h.trips.formError.value = 'Synthetic error'
+        h.trips.invalidLink.value = true
+        h.trips.setMode('walking')
+        assert.equal(h.calls.length, 1)
+        assert.equal(h.trips.mode.value, 'walking')
+        assert.equal(h.trips.analysis.value, null)
+        assert.equal(h.trips.status.value, 'idle')
+        assert.equal(h.trips.error.value, '')
+        assert.equal(h.trips.formError.value, '')
+        assert.equal(h.trips.invalidLink.value, false)
+        assert.equal(h.trips.hasCalculated.value, false)
+        assert.deepEqual(h.trips.candidateGroups.value, [])
+        assert.deepEqual(h.trips.pendingChoiceIndices.value, [])
+        assert.deepEqual(h.trips.failedChoiceIndices.value, [])
+        assert.deepEqual(h.trips.selection(), walkingSelection)
+        h.trips.submit()
+        assert.equal(h.calls.length, 2)
+        assert.equal(h.calls[1].mode, 'walking')
+        await settleTrips()
+        assert.equal(h.trips.draft.start.road, undefined)
+        assert.equal(h.trips.draft.places[0].road, undefined)
+    } finally { h.dispose() }
+})
+
+test('walking response never promotes server choice or snapped coordinates into explicit streets or history', async () => {
+    const reply = { mode: 'walking', results: [{ ...walkingRow, road_choices: {
+        start: { status: 'SELECTED', point: street.start }, target: { status: 'NEEDS_REFINEMENT', point: street.target },
+    } }] }
+    const h = tripsHarness(walkingSelection, () => Promise.resolve(reply))
+    try {
+        await settleTrips()
+        assert.equal(h.trips.draft.start.road, undefined)
+        assert.equal(h.trips.draft.places[0].road, undefined)
+        assert.deepEqual(h.saves.at(-1).value, walkingSelection)
+        h.trips.chooseRoad('S', street.start)
+        assert.equal(h.calls.length, 2)
+        assert.deepEqual(h.calls.at(-1).start, { ...selection.start, road: street.start })
+        await settleTrips()
+        h.trips.resetRoad('S')
+        assert.equal(h.calls.at(-1).start.road, undefined)
+        assert.deepEqual(h.trips.selection().start, selection.start)
+    } finally { h.dispose() }
+})
+
+test('page mode change updates fragment without fetching and history restores the previous mode once', async () => {
+    const h = pageHarness(utils.tripUrl(selection), choiceReply)
+    try {
+        await settleTrips()
+        h.page.changeMode({ target: { value: 'walking' } })
+        assert.equal(h.calls.length, 1)
+        assert.equal(h.state.analysis.value, null)
+        assert.equal(h.page.activeRoad.value, false)
+        assert.deepEqual(utils.parseTripLink(h.win.location.hash).selection, walkingSelection)
+        h.win.history.go(-1)
+        assert.equal(h.calls.length, 2)
+        assert.equal(h.page.mode.value, 'driving')
+        h.win.history.go(1)
+        assert.equal(h.calls.length, 3)
+        assert.equal(h.page.mode.value, 'walking')
+    } finally { h.dispose() }
+})
+
+test('walking renderer distinguishes street metrics, original objects, displacement and unknown approaches', async () => {
+    const component = loadComponent(new URL('../../resources/js/components/WalkingTripDetails.vue', import.meta.url), { '@/utils/trips': tripUtils })
+    const html = await ssr.renderToString(vue.createSSRApp(component, { row: walkingRow }))
+    assert.match(html, /Дорожная часть между выбранными уличными точками/)
+    assert.match(html, /100 м/)
+    assert.match(html, /8 мин.*модельное время/)
+    assert.match(html, /Геометрическое смещение объекта к улице: 33 м/)
+    assert.match(html, /Это не расстояние подхода/)
+    assert.match(html, /Расстояние и время подхода неизвестны/)
+    assert.match(html, /Вход и его доступность не подтверждены/)
+    assert.match(html, /Выбраны другие уличные точки/)
+    assert.match(html, /Полный путь между исходными объектами неизвестен/)
+    const unknown = await ssr.renderToString(vue.createSSRApp(component, { row: { ...walkingRow,
+        metrics: { distance: { value: null }, duration: { value: null } } } }))
+    assert.match(unknown, /Расстояние неизвестно/)
+    assert.match(unknown, /Время неизвестно/)
+    assert.doesNotMatch(unknown, />0 м|>0 мин/)
+})
+
+test('trips form exposes a labelled mode selector and explicit street selection before any walking response', async () => {
+    const html = await renderPage({ mode: 'walking', results: [walkingRow] })
+    assert.match(html, /for="trip-mode">Режим маршрута/)
+    assert.match(html, /<option value="driving"[^>]*>Автомобиль/)
+    assert.match(html, /<option value="walking"[^>]*>Пешком/)
+    const source = readFileSync(new URL('../../resources/js/pages/TripsPage.vue', import.meta.url), 'utf8')
+    assert.match(source, /Выбрать улицу старта на карте/)
+    assert.match(source, /Выбрать улицу места/)
+    assert.match(source, /Сбросить улицу старта/)
+})
+
+
+for (const location of ['start', 'target', 'both_endpoints', 'route', 'unknown']) {
+    test(`walking ambiguity without candidates opens only the proven street picker for ${location}`, async () => {
+        const row = { ...walkingRow, index: 1, status: 'NEEDS_REFINEMENT', route: null, snaps: null,
+            diagnostics: { version: 1, issues: [{ code: 'SNAP_CHOICE_REQUIRED', category: 'ambiguity', stage: 'snap',
+                location, target_index: ['target', 'both_endpoints'].includes(location) ? 1 : null }] },
+            road_choices: { start: { status: 'NEEDS_REFINEMENT' }, target: { status: 'NEEDS_REFINEMENT' } } }
+        const focused = []
+        const h = pageHarness(utils.tripUrl(walkingSelection), () => ({ mode: 'walking', results: [row] }), {
+            getElementById: id => ({ focus() { focused.push(id) }, scrollIntoView() {} }),
+        })
+        try {
+            await settleTrips()
+            assert.equal(h.page.candidateGroups.value.length, 0)
+            const before = h.page.selection()
+            const proven = ['start', 'target', 'both_endpoints'].includes(location)
+            for (const action of ['primary', 'summary']) {
+                await h.page.mapChoice(0)
+                if (action === 'primary') h.page.primaryAction(row)
+                else await h.page.openActionNotice(h.page.actionNotices.value.find(item => item.index === 1))
+                await settleTrips()
+                assert.equal(h.page.activeRoad.value, proven)
+                assert.equal(h.page.active.value, proven ? location === 'target' ? 1 : 'start' : 0)
+                if (!proven) assert.equal(focused.at(-1), 'trip-form')
+                assert.deepEqual(h.page.selection(), before)
+                assert.equal(h.calls.length, 1)
+            }
+        } finally { h.dispose() }
+    })
+}
+
+test('walking both-endpoint secondary refinement selects target street while preserving its original object', async () => {
+    const h = pageHarness(utils.tripUrl(walkingSelection), () => ({ mode: 'walking', results: [] }))
+    try {
+        await settleTrips()
+        const original = { ...h.page.selection().places[1] }
+        await h.page.refineFromFailure(1)
+        assert.equal(h.page.active.value, 1)
+        assert.equal(h.page.activeRoad.value, true)
+        assert.deepEqual(h.page.selection().places[1], original)
+        assert.equal(h.calls.length, 1)
+    } finally { h.dispose() }
 })

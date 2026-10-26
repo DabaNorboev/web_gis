@@ -6,14 +6,14 @@ import { installTripLayers, tripMapData, type TripMapPoint } from '@/utils/tripM
 import { candidateId, sameRoadPoint, candidateMarkerOffsets, type TripCandidateGroup } from '@/utils/tripCandidates'
 import type { TripRoadCandidate } from '@/types/trips'
 import type { Coordinates } from '@/types/transport'
-import type { TripAnalysis } from '@/types/trips'
+import type { TripAnalysis, TripMode } from '@/types/trips'
 import MapThemeControl from '@/components/map/MapThemeControl.vue'
 import { useMapTheme } from '@/composables/useMapTheme'
 import { applyBasemapTheme } from '@/utils/mapTheme'
 import basemap from '@/maps/basemap.json'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
-const props = defineProps<{ points: TripMapPoint[]; analysis: TripAnalysis | null; activeLabel: string; candidateGroups: TripCandidateGroup[]; highlightedCandidate: string | null }>()
+const props = defineProps<{ points: TripMapPoint[]; analysis: TripAnalysis | null; activeLabel: string; candidateGroups: TripCandidateGroup[]; highlightedCandidate: string | null; mode?: TripMode }>()
 const emit = defineEmits<{ select: [point: Coordinates]; candidate: [key: string, point: Coordinates]; 'candidate-focus': [id: string | null, source: 'pointer' | 'focus'] }>()
 const container = ref<HTMLDivElement | null>(null)
 const failed = ref(false)
@@ -70,7 +70,7 @@ function updateCandidateMarkers() {
 }
 let observer: ResizeObserver | undefined
 let timeout: ReturnType<typeof setTimeout> | undefined
-function data() { return tripMapData(props.points, props.analysis, props.candidateGroups) }
+function data() { return tripMapData(props.points, props.analysis, props.candidateGroups, props.mode) }
 function update() { (map?.getSource('trips') as GeoJSONSource | undefined)?.setData(data()); updateCandidateMarkers() }
 function fit() {
     if (!map || !props.points.length) return
@@ -93,6 +93,7 @@ function fit() {
 }
 watch(() => props.points, () => { update(); if (props.points.some(p => !map?.getBounds().contains([p.point.lon, p.point.lat]))) fit() }, { deep: true })
 watch(() => props.analysis, () => { update(); if (props.analysis) fit() })
+watch(() => props.mode, update)
 watch(() => props.candidateGroups, update, { deep: true })
 watch(() => props.highlightedCandidate, updateCandidateMarkers)
 function focusPoint(key: string) {
@@ -143,7 +144,7 @@ onBeforeUnmount(() => { clearTimeout(timeout); observer?.disconnect(); clearCand
     <div ref="container" class="trip-map-canvas" aria-describedby="trip-map-help" aria-label="Карта выбора старта и важных мест" />
     <div v-if="failed" class="trip-map-error" role="status">Подложка карты не загрузилась. Поиск адреса и локальный расчёт доступны. <button type="button" @click="initialize">Повторить карту</button></div>
     <slot name="after-map" />
-    <details class="trip-map-legend"><summary>Обозначения карты</summary><p>Старт и места — исходные точки. Белые точки — проверенные дорожные привязки; пунктир — соединитель, не маршрут. Варианты дороги выбираются явно. Серые точки из ссылки ожидают проверки.</p></details>
+    <details class="trip-map-legend"><summary>Обозначения карты</summary><p v-if="mode === 'walking'">Старт и места — исходные объекты. Серые точки — выбранные улицы; белые — проверенные концы уличного маршрута. Подходы от объектов неизвестны и не нарисованы. Линия показывает только дорожную часть.</p><p v-else>Старт и места — исходные точки. Белые точки — проверенные дорожные привязки; пунктир — соединитель, не маршрут. Варианты дороги выбираются явно. Серые точки из ссылки ожидают проверки.</p></details>
 </template>
 
 <style scoped>

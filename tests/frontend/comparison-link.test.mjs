@@ -212,3 +212,44 @@ test('query history with unchanged personal fragment clears only obsolete A hint
         assert.equal(h.effects.filter(value => value === 'personal').length, 1)
     } finally { h.dispose() }
 })
+
+test('walking history restores its mode and streets once while late driving responses stay discarded', async () => {
+    const legacy = link()
+    const oldHash = '#places=' + encodeURIComponent(JSON.stringify(legacy))
+    const h = harness(oldHash)
+    try {
+        await tick()
+        assert.equal(h.state.mode.value, 'driving')
+        assert.ok(h.calls.every(call => call.selection.mode === 'driving'))
+        h.state.setMode('walking'); await tick()
+        assert.equal(h.calls.length, 2)
+        assert.ok(h.calls.every(call => call.signal.aborted))
+        assert.equal(personalUtils.parseComparisonTrips(h.win.location.hash).selection.mode, 'walking')
+        assert.equal(personalUtils.parseComparisonTrips(h.win.location.hash).selection.version, 2)
+        const walking = { ...link(), version: 2, mode: 'walking', roads: { left: { goal: { start: { lon: 92.91, lat: 56.02 } } } } }
+        h.navigate(query, fragment(walking)); await tick()
+        assert.equal(h.calls.length, 4)
+        assert.equal(h.calls[2].selection.mode, 'walking')
+        assert.equal(h.calls[2].selection.start.road.lon, 92.91)
+        h.navigate(query, oldHash); await tick()
+        assert.equal(h.state.mode.value, 'driving'); assert.equal(h.calls.length, 6)
+        assert.equal(h.state.cell('left', 'goal').hints.start, undefined)
+        for (const call of h.calls.slice(0, 4)) call.resolve({ mode: call.selection.mode, results: [], source: null, limitation: '' })
+        await tick(); await tick()
+        assert.equal(h.state.cell('left', 'goal').status, 'loading')
+        assert.equal(h.state.cell('left', 'goal').row, null)
+        assert.equal(h.writes.length, 1)
+    } finally { h.dispose() }
+})
+
+test('mode edit cancels profile-delayed restore rechecks and does not fetch after profiles arrive', async () => {
+    const h = harness(fragment(link()), false)
+    try {
+        h.state.setMode('walking')
+        h.addresses.load(); h.resolveProfiles()
+        await tick(); await tick()
+        assert.equal(h.calls.length, 0)
+        assert.equal(h.state.mode.value, 'walking')
+        assert.equal(h.state.places.value[0].id, 'goal')
+    } finally { h.dispose() }
+})

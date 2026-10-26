@@ -2,7 +2,7 @@ import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { fetchTrips } from '@/api/trips'
 import { copyPoint, selectedPoint } from '@/utils/trips'
 import type { Coordinates } from '@/types/transport'
-import type { TripAnalysis, TripPoint, TripResult, TripRoadCandidate } from '@/types/trips'
+import type { TripAnalysis, TripPoint, TripResult, TripRoadCandidate, TripMode } from '@/types/trips'
 import type { SideKey } from '@/utils/comparison'
 import type { ComparisonPlace, ComparisonTripHints, ComparisonTripLink } from '@/utils/comparisonTrips'
 
@@ -19,6 +19,7 @@ export interface ComparisonTripCell {
 const sides: SideKey[] = ['left', 'right']
 export function useComparisonTrips() {
     const places = ref<ComparisonPlace[]>([])
+    const mode = ref<TripMode>('driving')
     const starts = reactive<Record<SideKey, { id: string | null; point: Coordinates | null }>>({ left: { id: null, point: null }, right: { id: null, point: null } })
     const cells = reactive<Record<SideKey, Record<string, ComparisonTripCell>>>({ left: Object.create(null), right: Object.create(null) })
     const requests = new Set<AbortController>()
@@ -31,6 +32,14 @@ export function useComparisonTrips() {
         const value = cell(side, id)
         value.epoch = ++epochSequence; value.row = null; value.source = null; value.limitation = ''; value.status = 'idle'; value.error = ''
         if (clearHints) { value.hints = {}; value.options = { start: [], target: [] } }
+    }
+    function setMode(next: TripMode) {
+        if ((next !== 'driving' && next !== 'walking') || next === mode.value) return
+        for (const request of requests) request.abort()
+        requests.clear()
+        for (const side of sides) for (const id of Object.keys(cells[side])) invalidate(side, id, true)
+        formError.value = ''
+        mode.value = next
     }
     function setStart(side: SideKey, id: string | null, point: Coordinates | null) {
         const previous = starts[side]
@@ -74,6 +83,7 @@ export function useComparisonTrips() {
             formError.value = 'Выберите оба адреса и точки личных мест. Для отдельного повтора достаточно адреса его стороны и этой цели.'
             return
         }
+        const requestMode = mode.value
         const tasks: Promise<void>[] = []
         for (const side of onlySide ? [onlySide] : sides) {
             const groups = new Map<string, { id: string; label: string; point: TripPoint; epoch: number }[]>()
@@ -90,21 +100,22 @@ export function useComparisonTrips() {
             for (const group of groups.values()) {
                 const start: TripPoint = { ...starts[side].point!, ...(cell(side, group[0]!.id).hints.start ? { road: cell(side, group[0]!.id).hints.start } : {}) }
                 const controller = new AbortController(); requests.add(controller)
-                const current = (item: typeof group[number]) => !disposed && cells[side][item.id]?.epoch === item.epoch
+                const current = (item: typeof group[number]) => !disposed && mode.value === requestMode && cells[side][item.id]?.epoch === item.epoch
                 const timeout = setTimeout(() => controller.abort(), 20000)
                 tasks.push((async () => {
                     try {
-                        const response = await fetchTrips({ version: 1, mode: 'driving', start, places: group.map(p => ({ ...copyPoint(p.point), label: p.label })) }, controller.signal)
+                        const response = await fetchTrips({ version: 1, mode: requestMode, start, places: group.map(p => ({ ...copyPoint(p.point), label: p.label })) }, controller.signal)
                         for (const [index, item] of group.entries()) if (current(item)) {
                             // Keep request-local index on the row. A single-target retry always has index 0.
                             const row = response.results.find(r => r.index === index)
-                            if (!row || row.start.lon !== start.lon || row.start.lat !== start.lat || row.target.lon !== item.point.lon || row.target.lat !== item.point.lat) {
+                            if (response.mode !== requestMode || !row || row.start.lon !== start.lon || row.start.lat !== start.lat || row.target.lon !== item.point.lon || row.target.lat !== item.point.lat) {
                                 Object.assign(cell(side, item.id), { status: 'error', error: 'Ответ не соответствует выбранным точкам. Повторите расчёт.' }); continue
                             }
                             Object.assign(cell(side, item.id), { row, source: response.source, limitation: response.limitation, status: 'ready' })
                             for (const end of ['start', 'target'] as const) {
                                 const choice = row.road_choices?.[end]
-                                if (choice?.status === 'CHOOSE' || choice?.manual) cell(side, item.id).options[end] = choice.candidates
+                                if (requestMode === 'walking') cell(side, item.id).options[end] = []
+                                else if (choice?.status === 'CHOOSE' || choice?.manual) cell(side, item.id).options[end] = choice.candidates ?? []
                                 else if (choice?.status === 'NONE') cell(side, item.id).options[end] = []
                             }
                         }
@@ -124,6 +135,7 @@ export function useComparisonTrips() {
     }
     function restore(selection: ComparisonTripLink | null) {
         reset()
+        setMode(selection?.mode ?? 'driving')
         if (!selection) return
         places.value = selection.places.map(p => ({ ...p, point: { ...p.point } }))
         for (const side of sides) for (const place of places.value) {
@@ -132,9 +144,9 @@ export function useComparisonTrips() {
         }
     }
     const linkSelection = computed<ComparisonTripLink | null>(() => !places.value.length || places.value.some(p => !p.point) ? null : ({
-        version: 1, places: places.value.map(p => ({ id: p.id, label: p.label, point: { ...p.point! } })),
+        version: mode.value === 'walking' ? 2 : 1, mode: mode.value, places: places.value.map(p => ({ id: p.id, label: p.label, point: { ...p.point! } })),
         roads: Object.fromEntries(sides.map(side => [side, Object.fromEntries(places.value.map(p => [p.id, { ...cell(side, p.id).hints }]))])),
     }))
     onBeforeUnmount(() => { disposed = true; reset() })
-    return { places, starts, cells, cell, setStart, add, setPoint, remove, setRoad, calculate, reset, restore, linkSelection, formError }
+    return { mode, setMode, places, starts, cells, cell, setStart, add, setPoint, remove, setRoad, calculate, reset, restore, linkSelection, formError }
 }

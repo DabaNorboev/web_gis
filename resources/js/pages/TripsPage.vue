@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import PlaceLayout from '@/layouts/PlaceLayout.vue'
+import WalkingTripDetails from '@/components/WalkingTripDetails.vue'
 import TripPointPicker from '@/components/TripPointPicker.vue'
 import TripMap from '@/components/map/TripMap.vue'
 import { useTripsState } from '@/composables/useTripsState'
@@ -8,7 +9,7 @@ import { coordinateLabel, restoreTripLocation, snapDistance, tripDistance, tripD
 import { tripFailureMessage, tripFailureMessages, tripActionNotice, type TripActionNotice, type TripFailureMessage } from '@/utils/tripFailure'
 import type { Coordinates } from '@/types/transport'
 import { candidateId, sameRoadPoint } from '@/utils/tripCandidates'
-import type { TripSelection, TripResult } from '@/types/trips'
+import type { TripMode, TripSelection, TripResult } from '@/types/trips'
 
 const mapView = ref<InstanceType<typeof TripMap> | null>(null)
 const phoneLayout = ref(true)
@@ -34,7 +35,7 @@ const trips = useTripsState({
     },
 })
 const {
-    draft, analysis, status, error, noticeDismissed, hasCalculated, dirtyIndices,
+    draft, mode, resetRoad, analysis, status, error, noticeDismissed, hasCalculated, dirtyIndices,
     pendingChoiceIndices, failedChoiceIndices, invalidLink, formError, editedSinceResult,
     points, candidateGroups, highlightedCandidate, candidateFocus, rowCandidateGroups,
     readPoint, selection, showAvailable, submit,
@@ -59,7 +60,7 @@ const actionNotices = computed<SummaryNotice[]>(() => {
         if (pendingChoiceIndices.value.includes(index) || (!row && status.value === 'loading')) return { index, text: `Место ${index + 1}: проверяем путь`, action: 'result', label: 'К результату' }
         if (failedChoiceIndices.value.includes(index) || (!row && error.value)) return { index, text: `Место ${index + 1}: расчёт не получен; точки сохранены`, action: 'retry', label: 'Повторить расчёт' }
         if (!row) return { index, text: `Место ${index + 1}: ${readPoint(draft.places[index]!) ? 'точки изменены — нужен новый расчёт' : 'выберите точку на карте'}`, action: 'calculate', label: 'К действию' }
-        if (showAvailable(row)) return { index, text: `Место ${index + 1}: путь рассчитан${row.route ? ` · ${tripDistance(row.route.distance_m)}` : ''}`, action: 'result', label: 'К результату' }
+        if (showAvailable(row)) return { index, text: `Место ${index + 1}: ${mode.value === 'walking' ? 'уличная часть рассчитана' : 'путь рассчитан'}${row.route ? ` · ${tripDistance(row.route.distance_m)}` : ''}`, action: 'result', label: 'К результату' }
         return tripActionNotice(row) ?? { index, text: `Место ${index + 1}: нужен расчёт`, action: 'retry', label: 'Повторить расчёт' }
     })
 })
@@ -76,7 +77,7 @@ function primaryAction(row: TripResult, message = tripFailureMessage(row)) {
     if (message.action === 'retry') { submit(); return }
     if (message.action === 'choice') { void openActionNotice({ index: row.index, text: '', action: 'choice', label: message.label, location: message.location }); return }
     if (message.action === 'review') { returnToForm(); return }
-    void refineFromFailure(message.location === 'start' || message.location === 'both_endpoints' ? 'start' : row.index)
+    void refineFromFailure(message.location === 'start' || message.location === 'both_endpoints' ? 'start' : row.index, mode.value === 'walking')
 }
 async function dismissActionNotice() {
     noticeDismissed.value = true
@@ -87,6 +88,12 @@ async function openActionNotice(notice: SummaryNotice) {
     await nextTick()
     const row = analysis.value?.results.find(item => item.index === notice.index)
     const location = notice.location ?? (row ? tripFailureMessage(row).location : 'unknown')
+    if (mode.value === 'walking' && notice.action === 'choice') {
+        if (location === 'start' || location === 'both_endpoints') await mapChoice('start', true)
+        else if (location === 'target') await mapChoice(notice.index, true)
+        else returnToForm()
+        return
+    }
     const index = row && sharedStartRow.value && location === 'start' ? sharedStartRow.value.index : notice.index
     const card = document.getElementById(`trip-result-${index}`)
     if (!card) return
@@ -101,7 +108,7 @@ async function openActionNotice(notice: SummaryNotice) {
 const announcement = computed(() => {
     if (status.value === 'loading') return 'Проверяем пути для выбранных точек.'
     const results = (analysis.value?.results ?? []).map(row => `Поездка ${row.index + 1}: ${showAvailable(row)
-        ? 'путь рассчитан.' : `${sharedStartRow.value && tripFailureMessage(row).location === 'start' ? 'требуется уточнить общий старт' : tripFailureMessages(row).map(message => message.title).join('. ')}.`}`).join(' ')
+        ? (mode.value === 'walking' ? 'уличная часть рассчитана; подходы неизвестны.' : 'путь рассчитан.') : `${sharedStartRow.value && tripFailureMessage(row).location === 'start' ? 'требуется уточнить общий старт' : tripFailureMessages(row).map(message => message.title).join('. ')}.`}`).join(' ')
     const edited = editedSinceResult.value ? `Места ${dirtyIndices.value.map(i => i + 1).join(', ')}: точки изменены. Прежние результаты этих поездок убраны. Повторите расчёт.` : ''
     return [pointAnnouncement.value, (hasCalculated.value || analysis.value) ? summaryTitle.value : '', edited, results, error.value].filter(Boolean).join(' ')
 })
@@ -138,6 +145,15 @@ function chooseRoad(key: string, point: Coordinates) {
     active.value = key === 'S' ? 'start' : Number(key) - 1
     activeRoad.value = true
     trips.chooseRoad(key, point)
+}
+function changeMode(event: Event) {
+    const value = (event.target as HTMLSelectElement).value
+    if (value !== 'driving' && value !== 'walking') return
+    editing()
+    trips.setMode(value as TripMode)
+    activeRoad.value = false
+    pointAnnouncement.value = 'Режим изменён. Нажмите «Рассчитать поездки» для нового расчёта.'
+    saveDraftLink()
 }
 function saveDraftLink() {
     const value = selection()
@@ -189,7 +205,7 @@ function heading(row: TripResult) {
     if (pendingChoiceIndices.value.includes(row.index)) return 'Рассчитываем выбранный вариант'
     if (failedChoiceIndices.value.includes(row.index)) return 'Расчёт недоступен'
     if (row.status !== 'AVAILABLE' && tripFailureMessage(row).action === 'choice') return 'Ожидает выбора дорожной точки'
-    return ({ AVAILABLE: 'Путь рассчитан', NEEDS_REFINEMENT: 'Уточните точку', NO_PATH: 'Путь не найден', UNKNOWN: 'Путь не подтверждён', UNAVAILABLE: 'Расчёт недоступен', OUTSIDE_PILOT: 'Вне пилотной территории' })[row.status]
+    return ({ AVAILABLE: mode.value === 'walking' ? 'Уличная часть рассчитана' : 'Путь рассчитан', NEEDS_REFINEMENT: 'Уточните точку', NO_PATH: 'Путь не найден', UNKNOWN: 'Путь не подтверждён', UNAVAILABLE: 'Расчёт недоступен', OUTSIDE_PILOT: 'Вне пилотной территории' })[row.status]
 }
 function restoreHistory() {
     if (tripLocationKey(window.location) !== restoredLocation) restore()
@@ -199,7 +215,7 @@ function returnToForm() {
     document.getElementById('trip-form')?.scrollIntoView({ block: 'start' })
     document.getElementById('trip-form')?.focus({ preventScroll: true })
 }
-async function refineFromFailure(key: 'start' | number, road = false) {
+async function refineFromFailure(key: 'start' | number, road = mode.value === 'walking') {
     await mapChoice(key, road)
 }
 onMounted(() => { resizeLayout(); window.addEventListener('resize', resizeLayout); document.title = 'Поездки к важным местам — PlaceLens'; restore(); window.addEventListener('popstate', restoreHistory); window.addEventListener('hashchange', restoreHistory) })
@@ -211,7 +227,7 @@ onBeforeUnmount(() => { window.removeEventListener('resize', resizeLayout); wind
         <p class="trip-status-announcement" role="status" aria-live="polite" aria-atomic="true">{{ announcement }}</p>
         <div ref="scrollViewport" @wheel.passive="editing" class="trips-scroll" role="region" aria-label="Рабочая область поездок" tabindex="-1">
         <main id="main-content" class="trips-page">
-            <div class="trip-intro"><p class="trip-eyebrow">Автомобильный пилот · Красноярск</p><h1>Поездки к важным местам</h1><p>От одного старта — отдельная поездка к каждому месту (до трёх), без последовательного посещения.</p><p class="trip-disclaimer">Только автомобиль. Расстояние — по дорожной сети. Время модельное, без актуальных пробок. Парковка и подход не учтены.</p></div>
+            <div class="trip-intro"><p class="trip-eyebrow">{{ mode === 'walking' ? 'Пеший' : 'Автомобильный' }} пилот · Красноярск</p><h1>Поездки к важным местам</h1><p>От одного старта — отдельная поездка к каждому месту (до трёх), без последовательного посещения.</p><p v-if="mode === 'walking'" class="trip-disclaimer">Пешком: только дорожная часть между выбранными уличными точками. Подходы и входы неизвестны. Время модельное; ожидание переходов не учтено.</p><p v-else class="trip-disclaimer">Только автомобиль. Расстояние — по дорожной сети. Время модельное, без актуальных пробок. Парковка и подход не учтены.</p></div>
             <p v-if="invalidLink" role="alert" class="trip-notice">Ссылку не удалось прочитать. Выберите точки заново.</p>
             <div class="trip-workspace">
                 <aside id="trip-map" @pointerdown.capture="editing" @keydown.capture="editing" class="trip-map-panel" aria-label="Выбор точек на карте"><h2>Точки и принятые пути</h2>
@@ -224,7 +240,7 @@ onBeforeUnmount(() => { window.removeEventListener('resize', resizeLayout); wind
                         <TripPointPicker v-if="!activeRoad" :key="String(active)" :point="readPoint(active === 'start' ? draft.start : draft.places[active])" :label="active === 'start' ? 'Старт' : `Место ${active + 1}`" @select="choose" @edit="editing" />
                         <label v-if="typeof active === 'number'" class="trip-step-name" for="step-place-name">Название места {{ active + 1 }}<input id="step-place-name" v-model="draft.places[active]!.label" maxlength="80" @change="saveDraftLink" /></label>
                         </div></Teleport>
-                    </div><p id="trip-map-help" class="trip-hint">Найдите адрес или нажмите на карту. С клавиатуры: стрелки на карте → «Выбрать центр карты».</p><TripMap ref="mapView" :points="points" :analysis="analysis" :active-label="activeLabel" :candidate-groups="candidateGroups" :highlighted-candidate="highlightedCandidate" @select="choose" @candidate="chooseRoad" @candidate-focus="candidateFocus">
+                    </div><p id="trip-map-help" class="trip-hint">Найдите адрес или нажмите на карту. С клавиатуры: стрелки на карте → «Выбрать центр карты».</p><TripMap ref="mapView" :mode="mode" :points="points" :analysis="analysis" :active-label="activeLabel" :candidate-groups="candidateGroups" :highlighted-candidate="highlightedCandidate" @select="choose" @candidate="chooseRoad" @candidate-focus="candidateFocus">
                         <template #after-map>
                             <div class="trip-step-actions">
                                 <p v-if="activeRoad">Выбираете дорожную точку. Исходное место остаётся прежним.</p>
@@ -248,9 +264,9 @@ onBeforeUnmount(() => { window.removeEventListener('resize', resizeLayout); wind
         </section>
 
                     <form id="trip-form" tabindex="-1" class="trip-form" @submit.prevent="submit">
-                        <h2>Выбранные точки</h2>
-                        <fieldset><legend>Старт</legend><p>{{ readPoint(draft.start) ? 'Точка задана ✓' : 'Выберите адрес или точку' }}</p><button type="button" class="trip-pick" :aria-pressed="active === 'start' && !activeRoad" @click="mapChoice('start')">{{ readPoint(draft.start) ? 'Изменить старт' : 'Выбрать старт' }}</button><details v-if="readPoint(draft.start)"><summary>Технические сведения старта</summary><p>{{ coordinateLabel(readPoint(draft.start)!) }}</p><button type="button" class="trip-text-button" @click="mapChoice('start', true)">Изменить дорожную точку старта</button></details></fieldset>
-                        <fieldset v-for="(place, index) in draft.places" :key="index"><legend>Место {{ index + 1 }}</legend><label :for="`place-name-${index}`">Название для себя<input :id="`place-name-${index}`" v-model="place.label" @change="saveDraftLink" maxlength="80" type="text" /></label><p>{{ readPoint(place) ? 'Точка задана ✓' : 'Выберите адрес или точку' }}</p><div class="trip-place-actions"><button type="button" class="trip-pick" :aria-pressed="active === index && !activeRoad" @click="mapChoice(index)">{{ readPoint(place) ? 'Изменить' : 'Выбрать' }} место {{ index + 1 }}</button><button v-if="draft.places.length > 1" type="button" class="trip-text-button" :aria-label="`Убрать место ${index + 1}`" @click="remove(index)">Убрать</button></div><details v-if="readPoint(place)"><summary>Технические сведения места {{ index + 1 }}</summary><p>{{ coordinateLabel(readPoint(place)!) }}</p><button type="button" class="trip-text-button" @click="mapChoice(index, true)">Изменить дорожную точку места {{ index + 1 }}</button></details></fieldset>
+                        <h2>Выбранные точки</h2><label class="trip-mode" for="trip-mode">Режим маршрута<select id="trip-mode" :value="mode" @change="changeMode"><option value="driving">Автомобиль</option><option value="walking">Пешком</option></select></label>
+                        <fieldset><legend>Старт</legend><p>{{ readPoint(draft.start) ? 'Точка задана ✓' : 'Выберите адрес или точку' }}</p><button type="button" class="trip-pick" :aria-pressed="active === 'start' && !activeRoad" @click="mapChoice('start')">{{ readPoint(draft.start) ? 'Изменить старт' : 'Выбрать старт' }}</button><div v-if="mode === 'walking' && readPoint(draft.start)" class="trip-street-selection"><button type="button" class="trip-pick" :aria-pressed="active === 'start' && activeRoad" @click="mapChoice('start', true)">Выбрать улицу старта на карте</button><p v-if="draft.start.road">Выбранная улица старта: {{ coordinateLabel(draft.start.road) }} <button type="button" class="trip-text-button" @click="resetRoad('S')">Сбросить улицу старта</button></p></div><details v-if="readPoint(draft.start)"><summary>Технические сведения старта</summary><p>{{ coordinateLabel(readPoint(draft.start)!) }}</p><button type="button" class="trip-text-button" @click="mapChoice('start', true)">Изменить дорожную точку старта</button></details></fieldset>
+                        <fieldset v-for="(place, index) in draft.places" :key="index"><legend>Место {{ index + 1 }}</legend><label :for="`place-name-${index}`">Название для себя<input :id="`place-name-${index}`" v-model="place.label" @change="saveDraftLink" maxlength="80" type="text" /></label><p>{{ readPoint(place) ? 'Точка задана ✓' : 'Выберите адрес или точку' }}</p><div class="trip-place-actions"><button type="button" class="trip-pick" :aria-pressed="active === index && !activeRoad" @click="mapChoice(index)">{{ readPoint(place) ? 'Изменить' : 'Выбрать' }} место {{ index + 1 }}</button><button v-if="draft.places.length > 1" type="button" class="trip-text-button" :aria-label="`Убрать место ${index + 1}`" @click="remove(index)">Убрать</button></div><div v-if="mode === 'walking' && readPoint(place)" class="trip-street-selection"><button type="button" class="trip-pick" :aria-pressed="active === index && activeRoad" @click="mapChoice(index, true)">Выбрать улицу места {{ index + 1 }} на карте</button><p v-if="place.road">Выбранная улица места {{ index + 1 }}: {{ coordinateLabel(place.road) }} <button type="button" class="trip-text-button" @click="resetRoad(String(index + 1))">Сбросить улицу места {{ index + 1 }}</button></p></div><details v-if="readPoint(place)"><summary>Технические сведения места {{ index + 1 }}</summary><p>{{ coordinateLabel(readPoint(place)!) }}</p><button type="button" class="trip-text-button" @click="mapChoice(index, true)">Изменить дорожную точку места {{ index + 1 }}</button></details></fieldset>
                         <button v-if="draft.places.length < 3" type="button" class="trip-add" @click="add()">Добавить важное место</button>
                         <p v-if="formError" role="alert" class="trip-notice">{{ formError }}</p>
                         <div class="trip-submit-actions"><button class="trip-submit" type="submit" :aria-disabled="status === 'loading'">{{ status === 'loading' ? 'Проверяем пути…' : 'Рассчитать поездки' }}</button><button type="button" class="trip-text-button" @click="reset">Сбросить</button></div>
@@ -276,15 +292,15 @@ onBeforeUnmount(() => { window.removeEventListener('resize', resizeLayout); wind
                             <p v-if="pendingChoiceIndices.includes(row.index)" class="trip-choice-progress">Проверяем маршрут от выбранной дорожной точки. Остальными точками и картой можно пользоваться.</p>
                             <div v-else-if="failedChoiceIndices.includes(row.index)" class="trip-failure"><h4>Расчёт не получен</h4><p>Выбор точки сохранён. Повторите расчёт.</p><button type="button" class="trip-pick" data-trip-action="retry" @click="submit">Повторить расчёт</button></div>
                             <template v-else>
-                                <p v-if="showAvailable(row) && row.route" class="trip-values">{{ tripDistance(row.route.distance_m) }}</p>
-                                <p v-if="showAvailable(row) && row.route" class="trip-model-time">{{ tripDuration(row.route.duration_s) }} — модельное время без актуальных пробок</p>
+                                <WalkingTripDetails v-if="mode === 'walking'" :row="row" /><p v-if="mode === 'driving' && showAvailable(row) && row.route" class="trip-values">{{ tripDistance(row.route.distance_m) }}</p>
+                                <p v-if="mode === 'driving' && showAvailable(row) && row.route" class="trip-model-time">{{ tripDuration(row.route.duration_s) }} — модельное время без актуальных пробок</p>
                                 <p v-if="!showAvailable(row) && sharedStartRow && tripFailureMessages(row).some(item => item.location === 'start')" class="trip-shared-reference">Требуется выбор или уточнение общего старта — <a href="#trip-shared-start" @click.prevent="showSharedStart">см. предупреждение старта</a>.</p>
                                 <div v-if="!showAvailable(row)" :id="`trip-failure-${row.index}`" :data-visible-warning="messagesFor(row).length ? '' : undefined" class="trip-failure" :class="{ 'trip-choice-notice': tripFailureMessage(row).action === 'choice' }">
                                     <div v-for="message in messagesFor(row)" :key="message.location"><h4>{{ message.title }}</h4><p>{{ message.description }}</p>
                                     <div class="trip-place-actions"><button type="button" class="trip-pick" :data-trip-action="message.action === 'retry' ? 'retry' : 'refine'" @click="primaryAction(row, message)">{{ message.label }}</button><button v-if="message.location === 'both_endpoints'" type="button" class="trip-pick" @click="refineFromFailure(row.index)">Уточнить место {{ row.index + 1 }}</button><button v-if="message.action === 'review'" type="button" class="trip-text-button" @click="submit">Повторить расчёт</button></div></div>
                                 </div>
                                 <details v-if="!showAvailable(row) && tripFailureMessage(row).action !== 'choice'" class="trip-failure-details"><summary>Подробности проверки</summary><p>{{ row.reason }}</p><p v-if="row.checks.length">Коды проверки: <code>{{ row.checks.join(', ') }}</code></p><template v-for="end in (['start', 'target'] as const)" :key="end"><p v-if="row.road_choices?.[end]?.diagnostics">{{ end === 'start' ? 'Старт' : 'Место' }}: радиус {{ row.road_choices[end].diagnostics!.radius_m }} м; ближайшая дорожная геометрия среди загруженных ячеек: {{ row.road_choices[end].diagnostics!.nearest_road_distance_m === null ? 'нет данных' : snapDistance(row.road_choices[end].diagnostics!.nearest_road_distance_m!) }}. Это не ближайшая доступная дорога. Данные о входах не подготовлены.</p></template></details>
-                                <details v-if="row.snaps"><summary>Исходные и дорожные точки</summary><p>Исходный старт: {{ coordinateLabel(row.snaps.start.original) }}<br />Начало линии: {{ coordinateLabel(row.snaps.start.matched) }}<br />Смещение: {{ snapDistance(row.snaps.start.distance_m) }}</p><p>Выбранное место: {{ coordinateLabel(row.snaps.target.original) }}<br />Конец линии: {{ coordinateLabel(row.snaps.target.matched) }}<br />Смещение: {{ snapDistance(row.snaps.target.distance_m) }}</p><p>Короткий подход между точками не включён в расстояние и время. Автоматическая привязка не подтверждает вход или парковку.</p></details>
+                                <details v-if="mode === 'driving' && row.snaps"><summary>Исходные и дорожные точки</summary><p>Исходный старт: {{ coordinateLabel(row.snaps.start.original) }}<br />Начало линии: {{ coordinateLabel(row.snaps.start.matched) }}<br />Смещение: {{ snapDistance(row.snaps.start.distance_m) }}</p><p>Выбранное место: {{ coordinateLabel(row.snaps.target.original) }}<br />Конец линии: {{ coordinateLabel(row.snaps.target.matched) }}<br />Смещение: {{ snapDistance(row.snaps.target.distance_m) }}</p><p>Короткий подход между точками не включён в расстояние и время. Автоматическая привязка не подтверждает вход или парковку.</p></details>
 
                             </template>
                             <details v-for="group in rowCandidateGroups(row).filter(group => group.key !== 'S' || !sharedStartRow || row.index === sharedStartRow.index)" :open="!group.selected" :key="group.key" class="trip-candidates" :data-choice-key="group.key" :data-needs-choice="!group.selected" :aria-label="`Дорожные варианты: ${group.label}, поездка ${row.index + 1}`">
@@ -322,6 +338,7 @@ onBeforeUnmount(() => { window.removeEventListener('resize', resizeLayout); wind
 @media(max-width:639px){.trip-action-summary{padding:4px 12px}.trip-action-summary li{gap:8px}.trip-action-summary li button{max-width:100px;padding:6px 8px}}
 .trips-page{width:min(1320px,100%);margin:0 auto;padding:28px 24px 60px;color:#273b31}.trip-intro{max-width:800px;margin-bottom:26px}.trip-eyebrow{font-size:12px;letter-spacing:.05em;color:#607767}.trip-intro h1{font-size:clamp(26px,3vw,34px);font-weight:600;line-height:1.2;margin:8px 0 14px}.trip-intro p{line-height:1.6;margin:10px 0}.trip-disclaimer{font-size:14px;color:#607366}.trip-workspace{display:grid;grid-template-columns:400px minmax(0,1fr);gap:30px;align-items:start}.trip-form,.trip-result,.trip-sources{background:#fcfdf9;border:1px solid #dce5da;border-radius:14px;padding:18px}.trip-form fieldset{min-width:0;margin:18px 0 0;padding:14px 0 0;border:0;border-top:1px solid #e1e7dd}.trip-form legend{font-size:16px;font-weight:600;padding:0 5px 0 0}.trip-form label{display:block;font-size:12px;color:#516958}.trip-form input,.trip-form select{display:block;width:100%;min-height:42px;margin-top:5px;padding:8px 10px;border:1px solid #bfcebd;border-radius:8px;font-size:14px;color:#273b31;background:#fff}.trip-coordinates{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-top:12px}.trip-hint{font-size:12px;color:#607366;line-height:1.6;margin:12px 0 0}.trip-place-actions{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px}button{cursor:pointer;min-height:40px;font-size:13px}button:disabled,button[aria-disabled=true]{cursor:wait;opacity:.65}.trip-pick,.trip-add{padding:8px 11px;border:1px solid #c5d4c3;border-radius:8px;color:#2d6450;background:#f3f7ed}.trip-pick[aria-pressed=true]{background:#e3efda;border-color:#2d6450}.trip-add{margin-top:18px}.trip-text-button{padding:7px 5px;color:#496451;text-decoration:underline;text-underline-offset:3px}.trip-submit-actions{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:20px}.trip-submit{background:#2d6450;color:#fff;border-radius:9px;padding:11px 17px;font-weight:600}.trip-notice{font-size:14px;line-height:1.6;padding:14px;border:1px solid #dfd7b7;border-radius:10px;background:#fff8e8;margin:16px 0}.trip-notice button{text-decoration:underline}.trip-results{margin-top:26px}.trip-results h2,.trip-map-panel h2{font-size:19px;font-weight:600;margin:0 0 14px}.trip-result{margin-bottom:12px}.trip-result h3{font-size:17px;font-weight:600;overflow-wrap:anywhere}.trip-result p{font-size:13px;line-height:1.65;margin-top:10px}.trip-result-status{color:#607366}.trip-result .trip-values{font-size:25px;font-weight:600;color:#2d6450}.trip-model-time{font-size:14px;font-weight:400;color:#607366}.trip-candidates{margin-top:16px;padding:16px;border:1px solid #c5d4c3;border-radius:12px}.trip-candidates button{margin:6px 8px 6px 0}.trip-place-actions{flex-wrap:wrap}.trip-result details{font-size:12px;line-height:1.7;margin-top:12px;overflow-wrap:anywhere}.trip-result summary,.trip-sources summary{cursor:pointer;font-size:13px;font-weight:600;min-height:32px;padding-top:6px}.trip-result>.trip-pick{margin-top:12px}.trip-sources{font-size:12px;line-height:1.7}.trip-sources p{margin:12px 0}.trip-sources code{overflow-wrap:anywhere}.trip-sources a,.trip-back-form{color:#2d6450;text-decoration:underline;text-underline-offset:3px}.trip-map-panel{grid-column:2;grid-row:1;position:sticky;top:18px;scroll-margin-top:16px;min-width:0}.trip-map-panel>.trip-hint{margin-bottom:12px}.trip-back-form{display:none;min-height:40px;padding:8px 0;font-size:13px}#trip-form{scroll-margin-top:16px}:is(button,a,input,select,summary):focus-visible{outline:3px solid #2d6450;outline-offset:3px}@media(max-width:900px){.trip-workspace{grid-template-columns:minmax(0,1fr);gap:28px}.trip-map-panel{position:static;grid-column:1;grid-row:1}.trip-form-results{grid-column:1;grid-row:2}.trip-back-form{display:inline-flex}.trips-page{padding:22px 16px 40px}.trip-intro{margin-bottom:20px}}
 
+.trip-mode{display:grid;gap:6px;margin:12px 0}.trip-mode select{border:1px solid #bccbb9;border-radius:8px;padding:9px;background:white;color:#243e2e}.trip-street-selection{margin-top:12px}
 .trip-status-announcement{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
 .trip-failure{margin-top:14px;padding:16px;border:1px solid #c69d4b;border-left:4px solid #b88627;border-radius:10px;background:#fff5df;color:#513b16;overflow-wrap:anywhere}
 .trip-failure h4{display:flex;align-items:flex-start;gap:9px;font-size:15px;font-weight:650;line-height:1.5}

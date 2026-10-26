@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import WalkingTripDetails from '@/components/WalkingTripDetails.vue'
 import type { useComparisonTrips } from '@/composables/useComparisonTrips'
 import type { SideKey } from '@/utils/comparison'
 import { coordinateLabel, snapDistance } from '@/utils/trips'
 const props = defineProps<{ model: ReturnType<typeof useComparisonTrips> }>()
-const { places, cell } = props.model
+const { mode, places, cell } = props.model
 const keys: SideKey[] = ['left', 'right']
 const names = { left: 'А', right: 'Б' }
 const sources = computed(() => {
@@ -20,11 +21,14 @@ const sources = computed(() => {
 })
 </script>
 <template>
-    <section class="comparison-trip-data" aria-label="Данные автомобильных поездок">
-        <h2>Автомобильные поездки</h2>
+    <section class="comparison-trip-data" :aria-label="mode === 'walking' ? 'Данные пеших маршрутов' : 'Данные автомобильных поездок'">
+        <h2>{{ mode === 'walking' ? 'Пешие маршруты' : 'Автомобильные поездки' }}</h2>
         <p>От точки каждого адреса строится отдельная поездка к каждой цели. Это не последовательное посещение мест. Обратные поездки не рассчитаны.</p>
+        <template v-if="mode === 'driving'">
         <p>Расстояние — по дорожной сети. Время — вычисленная оценка по статическому графу, без актуальных пробок. Подход к дороге и парковка не рассчитаны; точка адреса и дорожная привязка не подтверждают вход или въезд.</p>
         <p>Неоднозначная привязка требует выбора в своей поездке. Радиус проверки — 35 м; каждый дорожный выбор перепроверяется сервером. Пунктирный соединитель не входит в метры и секунды.</p>
+        </template>
+        <p v-else>Пеший пилот рассчитывает только уличную часть между явно выбранными уличными точками. Полный путь между объектами, подходы к улице и доступ к входам не рассчитаны. Время — статическая модель без полевой проверки скорости и ожиданий; наличие пути не подтверждает доступность для коляски.</p>
         <p>При нехватке данных нет вывода о преимуществе другой стороны. Сравнивается только длина двух подтверждённых поездок одного источника и снимка.</p>
         <p>Ссылка с личными местами содержит читаемые браузером точки, подписи и дорожный выбор во фрагменте. Она хранится в истории браузера; при открытии маршруты проверяются заново.</p>
         <p v-if="!sources.length">Расчёт ещё не получен. Данные источника появятся после проверки поездок.</p>
@@ -37,7 +41,8 @@ const sources = computed(() => {
             <details v-if="cell(side, place.id).row" class="trip-source"><summary>Точки и проверка · {{ names[side] }} → {{ place.label || 'Без названия' }}</summary>
                 <p>Исходный старт: {{ coordinateLabel(cell(side, place.id).row!.start) }}. Исходная цель: {{ coordinateLabel(cell(side, place.id).row!.target) }}.</p>
                 <p>{{ cell(side, place.id).row!.reason }}</p><p>Коды: {{ cell(side, place.id).row!.checks.join(', ') || 'нет' }}.</p>
-                <template v-if="cell(side, place.id).row!.snaps"><p>Дорожный старт: {{ coordinateLabel(cell(side, place.id).row!.snaps!.start.matched) }} · смещение {{ snapDistance(cell(side, place.id).row!.snaps!.start.distance_m) }}.</p><p>Дорожная цель: {{ coordinateLabel(cell(side, place.id).row!.snaps!.target.matched) }} · смещение {{ snapDistance(cell(side, place.id).row!.snaps!.target.distance_m) }}.</p></template>
+                <WalkingTripDetails v-if="mode === 'walking'" :row="cell(side, place.id).row!" />
+                <template v-else-if="cell(side, place.id).row!.snaps"><p>Дорожный старт: {{ coordinateLabel(cell(side, place.id).row!.snaps!.start.matched) }} · смещение {{ snapDistance(cell(side, place.id).row!.snaps!.start.distance_m) }}.</p><p>Дорожная цель: {{ coordinateLabel(cell(side, place.id).row!.snaps!.target.matched) }} · смещение {{ snapDistance(cell(side, place.id).row!.snaps!.target.distance_m) }}.</p></template>
             </details>
         </template></template>
     </section>

@@ -7,7 +7,7 @@ import { stateModule, personalUtils, ComparisonTrips, ComparisonShare, Compariso
 const a = { lon: 92.87, lat: 56.01 }, b = { lon: 92.89, lat: 56.02 }
 const source = { name: 'Synthetic OSM', engine: 'OSRM', dataset_version: 'test-v1', observed_at: null }
 function response(selection, statuses = []) {
-    return { mode: 'driving', start: selection.start, source, limitation: 'Synthetic, no actual traffic or parking.', results: selection.places.map((target, index) => {
+    return { mode: selection.mode ?? 'driving', start: selection.start, source, limitation: 'Synthetic, no actual traffic or parking.', results: selection.places.map((target, index) => {
         const available = !statuses[index]
         const snap = point => ({ original: point, matched: point.road ?? { lon: point.lon + .00001, lat: point.lat }, distance_m: 1 })
         return { index, start: selection.start, target, label: target.label, status: available ? 'AVAILABLE' : 'UNKNOWN', reason: 'Text says start, never used for location', checks: [],
@@ -133,11 +133,11 @@ test('newer failed request and reset/restore with same ID reject all previous re
     } finally { cleanup() }
 })
 test('fragment roundtrip bounds validates duplicates, versions, points, labels, hints and encoded size', () => {
-    const value = { version: 1, places: [{ id: 'work', label: '<Работа & учёба>', point: a }], roads: { left: { work: { target: b } } } }
+    const value = { version: 1, mode: 'driving', places: [{ id: 'work', label: '<Работа & учёба>', point: a }], roads: { left: { work: { target: b } } } }
     const encoded = personalUtils.comparisonTripsFragment(value)
     assert.ok(encoded.startsWith('#places=')); assert.ok(!encoded.includes('?'))
     assert.deepEqual(JSON.parse(JSON.stringify(personalUtils.parseComparisonTrips(encoded).selection)), value)
-    for (const invalid of [{ ...value, version: 2 }, { ...value, places: [] }, { ...value, places: [...value.places, ...value.places] }, { ...value, places: [{ ...value.places[0], point: { lon: 181, lat: 1 } }] }, { ...value, roads: { left: { foreign: { target: b } } } }, { ...value, places: [{ ...value.places[0], label: 'x'.repeat(81) }] }])
+    for (const invalid of [{ ...value, mode: 'cycling' }, { ...value, mode: null }, { ...value, version: 2 }, { ...value, places: [] }, { ...value, places: [...value.places, ...value.places] }, { ...value, places: [{ ...value.places[0], point: { lon: 181, lat: 1 } }] }, { ...value, roads: { left: { foreign: { target: b } } } }, { ...value, places: [{ ...value.places[0], label: 'x'.repeat(81) }] }])
         assert.equal(personalUtils.parseComparisonTrips('#places=' + encodeURIComponent(JSON.stringify(invalid))).invalid, true)
     for (const invalid of ['#places=bad', encoded + '&places={}', '#places=' + 'x'.repeat(16000)]) assert.equal(personalUtils.parseComparisonTrips(invalid).invalid, true)
     assert.deepEqual(personalUtils.parseComparisonTrips('#main-content'), { selection: null, invalid: false })
@@ -171,4 +171,104 @@ test('real component renders a compact pair, escaped labels, null refusals and s
         assert.match(share, /Получатель увидит личные точки, подписи и дорожный выбор/)
         assert.ok(share.indexOf('Получатель увидит') < share.indexOf('Ссылка с личными местами'))
     } finally { cleanup() }
+})
+
+test('mode switch aborts all cells without fetching and preserves original IDs points and labels', async () => {
+    const { state, pending, ids, resolve, cleanup } = setup(2)
+    try {
+        state.setRoad('left', ids[0], 'start', a)
+        state.setRoad('right', ids[1], 'target', b)
+        const original = JSON.stringify(state.places.value), starts = JSON.stringify(state.starts)
+        const old = state.calculate()
+        state.cell('right', ids[0]).options.target = [{ point: b, distance_m: 2 }]
+        state.cell('right', ids[1]).error = 'old error'; state.formError.value = 'old form error'
+        const count = pending.length
+        state.setMode('walking')
+        assert.equal(state.mode.value, 'walking'); assert.equal(pending.length, count)
+        assert.equal(state.linkSelection.value.version, 2)
+        assert.ok(pending.every(p => p.signal.aborted))
+        assert.equal(JSON.stringify(state.places.value), original); assert.equal(JSON.stringify(state.starts), starts)
+        for (const side of ['left', 'right']) for (const id of ids) {
+            const value = state.cell(side, id)
+            assert.equal(value.row, null); assert.equal(value.status, 'idle'); assert.equal(value.source, null)
+            assert.deepEqual(JSON.parse(JSON.stringify(value.hints)), {}); assert.equal(value.options.target.length, 0)
+            assert.equal(value.error, ''); assert.equal(value.limitation, '')
+        }
+        assert.equal(state.formError.value, '')
+        pending.forEach(p => resolve(p)); await old
+        assert.ok(ids.every(id => !state.cell('left', id).row && !state.cell('right', id).row))
+        const fresh = state.calculate('left', ids[0]), request = pending.at(-1)
+        assert.equal(request.selection.mode, 'walking'); assert.equal(request.selection.start.road, undefined)
+        request.resolve({ ...response(request.selection), mode: 'driving' }); await fresh
+        assert.equal(state.cell('left', ids[0]).status, 'error')
+        assert.equal(state.cell('left', ids[0]).row, null)
+    } finally { cleanup() }
+})
+test('walking has independent partial results, never adopts engine matches or car candidates, and shows manual choices before request', async () => {
+    const { state, pending, ids, resolve, cleanup } = setup(2)
+    try {
+        state.setMode('walking')
+        const before = await renderToString(vue.createSSRApp(ComparisonTrips, { model: state, invalidLink: false }))
+        assert.match(before, /for="comparison-trip-mode"[^>]*>Режим маршрута/)
+        assert.match(before, /Уличная точка старта А/); assert.match(before, /Уличная точка цели Б/)
+        const run = state.calculate()
+        for (const request of pending) {
+            const value = response(request.selection, [null, 'target'])
+            for (const row of value.results) {
+                row.route_scope = 'street_points'
+                row.selection_kind = 'DIFFERENT_STREET_POINTS'
+                row.street_points = { start: a, target: b }
+                row.approaches = Object.fromEntries(['start', 'target'].map(end => [end, { status: 'UNKNOWN', selection_shift_m: 50, distance_m: null, duration_s: null }]))
+                row.metrics.distance.scope = 'street_points'
+                row.metrics.duration.scope = 'street_points'
+                if (row.route) row.route.scope = 'street_points'
+                row.road_choices = { start: { status: 'NEEDS_REFINEMENT', manual: true } }
+            }
+            request.resolve(value)
+        }
+        await run
+        assert.equal(state.cell('left', ids[0]).row.status, 'AVAILABLE')
+        assert.equal(state.cell('left', ids[1]).row.status, 'UNKNOWN')
+        assert.equal(state.cell('left', ids[1]).row.metrics.distance.value, null)
+        assert.deepEqual(JSON.parse(JSON.stringify(state.cell('left', ids[0]).hints)), {})
+        assert.equal(state.cell('left', ids[0]).options.start.length, 0)
+        const fact = personalUtils.pairedTripFact(state.cell('left', ids[0]), state.cell('right', ids[0]), 'walking')
+        assert.match(fact, /уличных частей/); assert.match(fact, /Полный путь от объектов и подходы не рассчитаны/)
+        const after = await renderToString(vue.createSSRApp(ComparisonTrips, { model: state, invalidLink: false }))
+        assert.match(after, /Только уличная часть/); assert.match(after, /Уличная точка старта А/)
+        assert.doesNotMatch(after, /модель, без пробок/)
+        const data = await renderToString(vue.createSSRApp(ComparisonTripData, { model: state }))
+        assert.match(data, /Выбраны другие уличные точки/); assert.match(data, /Подход от объекта к улице неизвестен/)
+        assert.match(data, /Полный путь между исходными объектами неизвестен/); assert.doesNotMatch(data, /Радиус проверки — 35 м/)
+    } finally { cleanup() }
+})
+test('old comparison links default to driving while new walking links retain mode and per-cell streets', () => {
+    const legacy = { version: 1, places: [{ id: 'work', label: 'Synthetic', point: a }], roads: { left: { work: { target: b } } } }
+    const old = '#places=' + encodeURIComponent(JSON.stringify(legacy))
+    assert.equal(personalUtils.parseComparisonTrips(old).selection.mode, 'driving')
+    const walking = { ...legacy, version: 2, mode: 'walking' }
+    const parsed = personalUtils.parseComparisonTrips(personalUtils.comparisonTripsFragment(walking)).selection
+    assert.deepEqual(JSON.parse(JSON.stringify(parsed)), walking)
+})
+
+test('walking comparison links require v2 so the former v1 reader rejects them instead of using driving', () => {
+    const legacy = { version: 1, places: [{ id: 'work', label: 'Synthetic', point: a }], roads: {} }
+    const rawFragment = value => '#places=' + encodeURIComponent(JSON.stringify(value))
+    // The previous reader accepted only version 1 and always routed it as driving.
+    const previousReader = hash => {
+        const input = JSON.parse(new URLSearchParams(hash.slice(1)).get('places'))
+        return input.version === 1 ? { mode: 'driving' } : null
+    }
+    const driving = personalUtils.parseComparisonTrips(rawFragment(legacy)).selection
+    assert.equal(driving.version, 1); assert.equal(driving.mode, 'driving')
+    const drivingEncoded = personalUtils.comparisonTripsFragment(driving)
+    assert.deepEqual(previousReader(drivingEncoded), { mode: 'driving' })
+    const walking = { ...legacy, version: 2, mode: 'walking' }
+    const encoded = personalUtils.comparisonTripsFragment(walking)
+    assert.equal(personalUtils.parseComparisonTrips(encoded).selection.version, 2)
+    assert.equal(previousReader(encoded), null)
+    assert.equal(personalUtils.comparisonTripsFragment({ ...walking, version: 1 }), encoded)
+    for (const invalid of [{ ...walking, version: 1 }, { ...legacy, version: 2 }, { ...legacy, version: 2, mode: 'driving' }, { ...walking, mode: 'cycling' }, { ...walking, mode: null }]) {
+        assert.deepEqual(personalUtils.parseComparisonTrips(rawFragment(invalid)), { selection: null, invalid: true })
+    }
 })

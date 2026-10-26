@@ -11,10 +11,12 @@ export function stateModule(fetchTrips, vueOverride) {
     })
 }
 export const personalState = stateModule(() => { throw new Error('Unexpected route calculation in SSR') })
+export const WalkingTripDetails = loadComponent(new URL('../../../resources/js/components/WalkingTripDetails.vue', import.meta.url), { '@/utils/trips': tripUtils })
 export const ComparisonTrips = loadComponent(new URL('../../../resources/js/components/ComparisonTrips.vue', import.meta.url), {
     '@/components/TripPointPicker.vue': { default: { render: () => null } },
     '@/utils/comparisonTrips': personalUtils, '@/utils/tripFailure': failure, '@/utils/trips': tripUtils, '@/utils/tripCandidates': candidateUtils,
+    '@/components/WalkingTripDetails.vue': WalkingTripDetails,
 })
 
 export const ComparisonShare = loadComponent(new URL('../../../resources/js/components/ComparisonShare.vue', import.meta.url))
-export const ComparisonTripData = loadComponent(new URL('../../../resources/js/components/ComparisonTripData.vue', import.meta.url), { '@/utils/trips': tripUtils })
+export const ComparisonTripData = loadComponent(new URL('../../../resources/js/components/ComparisonTripData.vue', import.meta.url), { '@/utils/trips': tripUtils, '@/components/WalkingTripDetails.vue': WalkingTripDetails })
