@@ -56,12 +56,7 @@ jobs:
       - name: Run unit and feature tests
         run: composer test
 
-      - name: Verify migrations on PostgreSQL
-        env:
-          DB_DATABASE: web_gis_test
-        run: php artisan migrate --force
-
-      - name: Run PostGIS integration tests
+      - name: Run full PostGIS suite (guarded migrations, write fixtures and read-only queries)
         run: composer test:postgis
 
   frontend:
@@ -81,5 +76,45 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check frontend types
+        run: npm run typecheck
+
+      - name: Test frontend behavior
+        run: npm test
+
       - name: Build frontend
         run: npm run build
+
+      - name: Install smoke browser and system dependencies
+        run: npx playwright install --with-deps chromium
+
+      - name: Smoke test comparison in Chromium (local fixtures, no database)
+        run: npm run test:smoke
+
+      - name: Upload browser diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compare-smoke-diagnostics
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  osm-preparation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Build the offline preparation image
+        run: docker build -t web-gis-osm-etl:ci docker/etl
+
+      - name: Test PBF preparation on small fixtures
+        run: >-
+          docker run --rm --network=none --memory=1g --cpus=2
+          --user "$(id -u):$(id -g)" -v "$PWD:/work:ro"
+          web-gis-osm-etl:ci python -m unittest discover -s tests/etl -v

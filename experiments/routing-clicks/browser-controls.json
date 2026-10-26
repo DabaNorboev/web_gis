@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "frozen_at": "2026-10-23T13:12:41.022701+00:00",
+  "reference": {
+    "lon": 92.8712982,
+    "lat": 56.0120993
+  },
+  "selection": "Real browser clicks on visible buildings/courtyard; pixels refer to recorded screenshots, coordinates read from form. Initial block from first Goal 5 turn.",
+  "cases": [
+    {
+      "id": "click_building_centre",
+      "point": {
+        "lon": 92.86478382283354,
+        "lat": 56.013586034415766
+      },
+      "pixel": [
+        868,
+        686
+      ]
+    },
+    {
+      "id": "click_building_corner",
+      "point": {
+        "lon": 92.86607288686668,
+        "lat": 56.01365466121493
+      },
+      "pixel": [
+        952,
+        678
+      ]
+    },
+    {
+      "id": "click_courtyard",
+      "point": {
+        "lon": 92.86196015876004,
+        "lat": 56.01385196258363
+      },
+      "pixel": [
+        684,
+        655
+      ]
+    },
+    {
+      "id": "click_courtyard_shift",
+      "point": {
+        "lon": 92.86200619676129,
+        "lat": 56.01385196258363
+      },
+      "pixel": [
+        687,
+        655
+      ]
+    },
+    {
+      "id": "click_building_edge",
+      "point": {
+        "lon": 92.86478382283354,
+        "lat": 56.013483093988185
+      },
+      "pixel": [
+        868,
+        698
+      ]
+    },
+    {
+      "id": "click_initial_block",
+      "point": {
+        "lon": 92.86009561971184,
+        "lat": 56.01347636134341
+      },
+      "pixel": [
+        683,
+        604
+      ]
+    }
+  ]
+}

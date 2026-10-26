@@ -1,0 +1,1195 @@
+{
+    "version": 1,
+    "frozen_at": "2026-10-23T13:10:49+00:00",
+    "manifest_sha256": "cd62979bb110e446addd6c4221e731990b7e553a679a85921562b9ed557683cc",
+    "reference": {
+        "lon": 92.8712982,
+        "lat": 56.0120993
+    },
+    "anchors": {
+        "lenina": [
+            92.8608847327261,
+            56.013183262064594
+        ],
+        "centre_block": [
+            92.86009561971184,
+            56.01347636134341
+        ],
+        "solnechny": [
+            92.9215002,
+            56.1117399
+        ],
+        "right_bank": [
+            93.0410044,
+            56.0046333
+        ],
+        "kapitanskaya": [
+            92.8952795,
+            55.9979911
+        ],
+        "railway": [
+            92.8314134,
+            56.0077276
+        ],
+        "stadium": [
+            92.8648439,
+            56.0133186
+        ],
+        "industrial": [
+            92.9894382,
+            56.0702166
+        ]
+    },
+    "buildings": {
+        "way\/71888335": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [
+                        92.8603526,
+                        56.0131056
+                    ],
+                    [
+                        92.8603522,
+                        56.0131225
+                    ],
+                    [
+                        92.8603397,
+                        56.0132137
+                    ],
+                    [
+                        92.8614148,
+                        56.0132609
+                    ],
+                    [
+                        92.8614299,
+                        56.0131528
+                    ],
+                    [
+                        92.8603526,
+                        56.0131056
+                    ]
+                ]
+            ]
+        },
+        "way\/71888306": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [
+                        92.8596151,
+                        56.0133514
+                    ],
+                    [
+                        92.859593,
+                        56.0135192
+                    ],
+                    [
+                        92.8607543,
+                        56.013567
+                    ],
+                    [
+                        92.8607764,
+                        56.0133991
+                    ],
+                    [
+                        92.8596151,
+                        56.0133514
+                    ]
+                ]
+            ]
+        },
+        "way\/223499926": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [
+                        92.9219868,
+                        56.1118429
+                    ],
+                    [
+                        92.9218824,
+                        56.1118026
+                    ],
+                    [
+                        92.9218106,
+                        56.111862
+                    ],
+                    [
+                        92.9217867,
+                        56.111853
+                    ],
+                    [
+                        92.9217616,
+                        56.1118737
+                    ],
+                    [
+                        92.9217855,
+                        56.1118827
+                    ],
+                    [
+                        92.9216898,
+                        56.1119619
+                    ],
+                    [
+                        92.9218472,
+                        56.1120211
+                    ],
+                    [
+                        92.9218396,
+                        56.1120274
+                    ],
+                    [
+                        92.9218873,
+                        56.1120453
+                    ],
+                    [
+                        92.9218949,
+                        56.112039
+                    ],
+                    [
+                        92.9219838,
+                        56.1120724
+                    ],
+                    [
+                        92.9220556,
+                        56.1120131
+                    ],
+                    [
+                        92.9218668,
+                        56.111942
+                    ],
+                    [
+                        92.9219868,
+                        56.1118429
+                    ]
+                ]
+            ]
+        },
+        "way\/861308599": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [
+                        93.0405967,
+                        56.0049909
+                    ],
+                    [
+                        93.0407538,
+                        56.0048191
+                    ],
+                    [
+                        93.0403329,
+                        56.0046558
+                    ],
+                    [
+                        93.0402449,
+                        56.0047336
+                    ],
+                    [
+                        93.0405967,
+                        56.0049909
+                    ]
+                ]
+            ]
+        },
+        "way\/242172304": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [
+                        92.895565,
+                        55.9977187
+                    ],
+                    [
+                        92.8956662,
+                        55.9977397
+                    ],
+                    [
+                        92.8958068,
+                        55.9975367
+                    ],
+                    [
+                        92.8957056,
+                        55.9975158
+                    ],
+                    [
+                        92.895565,
+                        55.9977187
+                    ]
+                ]
+            ]
+        },
+        "way\/124009548": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [
+                        92.8311722,
+                        56.0080009
+                    ],
+                    [
+                        92.8315985,
+                        56.0078996
+                    ],
+                    [
+                        92.8315074,
+                        56.0077788
+                    ],
+                    [
+                        92.8312456,
+                        56.0078411
+                    ],
+                    [
+                        92.8310809,
+                        56.0078803
+                    ],
+                    [
+                        92.8311722,
+                        56.0080009
+                    ]
+                ]
+            ]
+        },
+        "way\/61718066": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [
+                        92.8636357,
+                        56.0134212
+                    ],
+                    [
+                        92.8636023,
+                        56.0136339
+                    ],
+                    [
+                        92.8661301,
+                        56.0137577
+                    ],
+                    [
+                        92.8661634,
+                        56.0135453
+                    ],
+                    [
+                        92.863671,
+                        56.0134229
+                    ],
+                    [
+                        92.8636357,
+                        56.0134212
+                    ]
+                ]
+            ]
+        },
+        "way\/1526637784": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [
+                        92.9893886,
+                        56.070303
+                    ],
+                    [
+                        92.989585,
+                        56.0702555
+                    ],
+                    [
+                        92.9894878,
+                        56.0701302
+                    ],
+                    [
+                        92.9892914,
+                        56.0701777
+                    ],
+                    [
+                        92.9893886,
+                        56.070303
+                    ]
+                ]
+            ]
+        }
+    },
+    "cases": [
+        {
+            "id": "lenina_centre",
+            "group": "lenina",
+            "variant": "centre",
+            "building_id": "way\/71888335",
+            "point": {
+                "lon": 92.860884759249,
+                "lat": 56.013183251158
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "lenina_centre_e3",
+            "group": "lenina",
+            "variant": "centre_e3",
+            "building_id": "way\/71888335",
+            "point": {
+                "lon": 92.860932877222,
+                "lat": 56.013183305415
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "lenina_centre_w3",
+            "group": "lenina",
+            "variant": "centre_w3",
+            "building_id": "way\/71888335",
+            "point": {
+                "lon": 92.860836641277,
+                "lat": 56.013183196883
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "lenina_centre_n3",
+            "group": "lenina",
+            "variant": "centre_n3",
+            "building_id": "way\/71888335",
+            "point": {
+                "lon": 92.860884662376,
+                "lat": 56.013210205854
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "lenina_centre_s3",
+            "group": "lenina",
+            "variant": "centre_s3",
+            "building_id": "way\/71888335",
+            "point": {
+                "lon": 92.860884856122,
+                "lat": 56.013156296462
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "lenina_edge",
+            "group": "lenina",
+            "variant": "edge",
+            "building_id": "way\/71888335",
+            "point": {
+                "lon": 92.860892274487,
+                "lat": 56.013129246076
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "lenina_edge_e3",
+            "group": "lenina",
+            "variant": "edge_e3",
+            "building_id": "way\/71888335",
+            "point": {
+                "lon": 92.860940392392,
+                "lat": 56.01312930033
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "lenina_edge_w3",
+            "group": "lenina",
+            "variant": "edge_w3",
+            "building_id": "way\/71888335",
+            "point": {
+                "lon": 92.860844156581,
+                "lat": 56.013129191804
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "lenina_corner",
+            "group": "lenina",
+            "variant": "corner",
+            "building_id": "way\/71888335",
+            "point": {
+                "lon": 92.8603526,
+                "lat": 56.0131056
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "lenina_exterior5",
+            "group": "lenina",
+            "variant": "exterior5",
+            "building_id": "way\/71888335",
+            "point": {
+                "lon": 92.860898507176,
+                "lat": 56.013084457369
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "centre_block_centre",
+            "group": "centre_block",
+            "variant": "centre",
+            "building_id": "way\/71888306",
+            "point": {
+                "lon": 92.860184702386,
+                "lat": 56.013459151422
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "centre_block_centre_e3",
+            "group": "centre_block",
+            "variant": "centre_e3",
+            "building_id": "way\/71888306",
+            "point": {
+                "lon": 92.8602328207,
+                "lat": 56.013459205952
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "centre_block_centre_w3",
+            "group": "centre_block",
+            "variant": "centre_w3",
+            "building_id": "way\/71888306",
+            "point": {
+                "lon": 92.860136584072,
+                "lat": 56.013459096873
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "centre_block_centre_n3",
+            "group": "centre_block",
+            "variant": "centre_n3",
+            "building_id": "way\/71888306",
+            "point": {
+                "lon": 92.860184605025,
+                "lat": 56.013486106116
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "centre_block_centre_s3",
+            "group": "centre_block",
+            "variant": "centre_s3",
+            "building_id": "way\/71888306",
+            "point": {
+                "lon": 92.860184799747,
+                "lat": 56.013432196727
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "centre_block_edge",
+            "group": "centre_block",
+            "variant": "edge",
+            "building_id": "way\/71888306",
+            "point": {
+                "lon": 92.860087331284,
+                "lat": 56.013539548406
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "centre_block_edge_e3",
+            "group": "centre_block",
+            "variant": "edge_e3",
+            "building_id": "way\/71888306",
+            "point": {
+                "lon": 92.860135449698,
+                "lat": 56.013539602974
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "centre_block_edge_w3",
+            "group": "centre_block",
+            "variant": "edge_w3",
+            "building_id": "way\/71888306",
+            "point": {
+                "lon": 92.86003921287,
+                "lat": 56.013539493819
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "centre_block_corner",
+            "group": "centre_block",
+            "variant": "corner",
+            "building_id": "way\/71888306",
+            "point": {
+                "lon": 92.8596151,
+                "lat": 56.0133514
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "centre_block_exterior5",
+            "group": "centre_block",
+            "variant": "exterior5",
+            "building_id": "way\/71888306",
+            "point": {
+                "lon": 92.860042305971,
+                "lat": 56.013576724587
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "solnechny_centre",
+            "group": "solnechny",
+            "variant": "centre",
+            "building_id": "way\/223499926",
+            "point": {
+                "lon": 92.92182618802,
+                "lat": 56.111912350031
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "solnechny_centre_e3",
+            "group": "solnechny",
+            "variant": "centre_e3",
+            "building_id": "way\/223499926",
+            "point": {
+                "lon": 92.921874429205,
+                "lat": 56.11191238055
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "solnechny_centre_w3",
+            "group": "solnechny",
+            "variant": "centre_w3",
+            "building_id": "way\/223499926",
+            "point": {
+                "lon": 92.921777946835,
+                "lat": 56.111912319492
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "solnechny_centre_n3",
+            "group": "solnechny",
+            "variant": "centre_n3",
+            "building_id": "way\/223499926",
+            "point": {
+                "lon": 92.921826133381,
+                "lat": 56.111939304347
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "solnechny_centre_s3",
+            "group": "solnechny",
+            "variant": "centre_s3",
+            "building_id": "way\/223499926",
+            "point": {
+                "lon": 92.921826242659,
+                "lat": 56.111885395714
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "solnechny_edge",
+            "group": "solnechny",
+            "variant": "edge",
+            "building_id": "way\/223499926",
+            "point": {
+                "lon": 92.9217867,
+                "lat": 56.111853
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "solnechny_edge_e3",
+            "group": "solnechny",
+            "variant": "edge_e3",
+            "building_id": "way\/223499926",
+            "point": {
+                "lon": 92.921834941111,
+                "lat": 56.111853030535
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "solnechny_edge_w3",
+            "group": "solnechny",
+            "variant": "edge_w3",
+            "building_id": "way\/223499926",
+            "point": {
+                "lon": 92.92173845889,
+                "lat": 56.111852969446
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "solnechny_corner",
+            "group": "solnechny",
+            "variant": "corner",
+            "building_id": "way\/223499926",
+            "point": {
+                "lon": 92.9219868,
+                "lat": 56.1118429
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "solnechny_exterior5",
+            "group": "solnechny",
+            "variant": "exterior5",
+            "building_id": "way\/223499926",
+            "point": {
+                "lon": 92.921758683673,
+                "lat": 56.11181089167
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "right_bank_centre",
+            "group": "right_bank",
+            "variant": "centre",
+            "building_id": "way\/861308599",
+            "point": {
+                "lon": 93.040577294345,
+                "lat": 56.004905032291
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "right_bank_centre_e3",
+            "group": "right_bank",
+            "variant": "centre_e3",
+            "building_id": "way\/861308599",
+            "point": {
+                "lon": 93.04062540216,
+                "lat": 56.004905016455
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "right_bank_centre_w3",
+            "group": "right_bank",
+            "variant": "centre_w3",
+            "building_id": "way\/861308599",
+            "point": {
+                "lon": 93.04052918653,
+                "lat": 56.004905048108
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "right_bank_centre_n3",
+            "group": "right_bank",
+            "variant": "centre_n3",
+            "building_id": "way\/861308599",
+            "point": {
+                "lon": 93.040577322592,
+                "lat": 56.004931987096
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "right_bank_centre_s3",
+            "group": "right_bank",
+            "variant": "centre_s3",
+            "building_id": "way\/861308599",
+            "point": {
+                "lon": 93.040577266098,
+                "lat": 56.004878077485
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "right_bank_edge",
+            "group": "right_bank",
+            "variant": "edge",
+            "building_id": "way\/861308599",
+            "point": {
+                "lon": 93.0407538,
+                "lat": 56.0048191
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "right_bank_edge_e3",
+            "group": "right_bank",
+            "variant": "edge_e3",
+            "building_id": "way\/861308599",
+            "point": {
+                "lon": 93.040801907708,
+                "lat": 56.004819084095
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "right_bank_edge_w3",
+            "group": "right_bank",
+            "variant": "edge_w3",
+            "building_id": "way\/861308599",
+            "point": {
+                "lon": 93.040705692292,
+                "lat": 56.004819115886
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "right_bank_corner",
+            "group": "right_bank",
+            "variant": "corner",
+            "building_id": "way\/861308599",
+            "point": {
+                "lon": 93.0405967,
+                "lat": 56.0049909
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "right_bank_exterior5",
+            "group": "right_bank",
+            "variant": "exterior5",
+            "building_id": "way\/861308599",
+            "point": {
+                "lon": 93.040814323318,
+                "lat": 56.004789633901
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "kapitanskaya_centre",
+            "group": "kapitanskaya",
+            "variant": "centre",
+            "building_id": "way\/242172304",
+            "point": {
+                "lon": 92.895685915695,
+                "lat": 55.997627700073
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "kapitanskaya_centre_e3",
+            "group": "kapitanskaya",
+            "variant": "centre_e3",
+            "building_id": "way\/242172304",
+            "point": {
+                "lon": 92.895734014403,
+                "lat": 55.997627740747
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "kapitanskaya_centre_w3",
+            "group": "kapitanskaya",
+            "variant": "centre_w3",
+            "building_id": "way\/242172304",
+            "point": {
+                "lon": 92.895637816988,
+                "lat": 55.99762765938
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "kapitanskaya_centre_n3",
+            "group": "kapitanskaya",
+            "variant": "centre_n3",
+            "building_id": "way\/242172304",
+            "point": {
+                "lon": 92.895685843099,
+                "lat": 55.997654654873
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "kapitanskaya_centre_s3",
+            "group": "kapitanskaya",
+            "variant": "centre_s3",
+            "building_id": "way\/242172304",
+            "point": {
+                "lon": 92.895685988292,
+                "lat": 55.997600745273
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "kapitanskaya_edge",
+            "group": "kapitanskaya",
+            "variant": "edge",
+            "building_id": "way\/242172304",
+            "point": {
+                "lon": 92.895565,
+                "lat": 55.9977187
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "kapitanskaya_edge_e3",
+            "group": "kapitanskaya",
+            "variant": "edge_e3",
+            "building_id": "way\/242172304",
+            "point": {
+                "lon": 92.895613098821,
+                "lat": 55.997718740721
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "kapitanskaya_edge_w3",
+            "group": "kapitanskaya",
+            "variant": "edge_w3",
+            "building_id": "way\/242172304",
+            "point": {
+                "lon": 92.89551690118,
+                "lat": 55.99771865926
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "kapitanskaya_corner",
+            "group": "kapitanskaya",
+            "variant": "corner",
+            "building_id": "way\/242172304",
+            "point": {
+                "lon": 92.895565,
+                "lat": 55.9977187
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "kapitanskaya_exterior5",
+            "group": "kapitanskaya",
+            "variant": "exterior5",
+            "building_id": "way\/242172304",
+            "point": {
+                "lon": 92.895517122053,
+                "lat": 55.997754732307
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "railway_centre",
+            "group": "railway",
+            "variant": "centre",
+            "building_id": "way\/124009548",
+            "point": {
+                "lon": 92.831339713535,
+                "lat": 56.00788995029
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "railway_centre_e3",
+            "group": "railway",
+            "variant": "centre_e3",
+            "building_id": "way\/124009548",
+            "point": {
+                "lon": 92.831387824863,
+                "lat": 56.007890016068
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "railway_centre_w3",
+            "group": "railway",
+            "variant": "centre_w3",
+            "building_id": "way\/124009548",
+            "point": {
+                "lon": 92.831291602208,
+                "lat": 56.007889884494
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "railway_centre_n3",
+            "group": "railway",
+            "variant": "centre_n3",
+            "building_id": "way\/124009548",
+            "point": {
+                "lon": 92.831339596112,
+                "lat": 56.007916904972
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "railway_centre_s3",
+            "group": "railway",
+            "variant": "centre_s3",
+            "building_id": "way\/124009548",
+            "point": {
+                "lon": 92.831339830958,
+                "lat": 56.007862995608
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "railway_edge",
+            "group": "railway",
+            "variant": "edge",
+            "building_id": "way\/124009548",
+            "point": {
+                "lon": 92.831460650386,
+                "lat": 56.007789924964
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "railway_edge_e3",
+            "group": "railway",
+            "variant": "edge_e3",
+            "building_id": "way\/124009548",
+            "point": {
+                "lon": 92.831508761589,
+                "lat": 56.007789990694
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "railway_edge_w3",
+            "group": "railway",
+            "variant": "edge_w3",
+            "building_id": "way\/124009548",
+            "point": {
+                "lon": 92.831412539183,
+                "lat": 56.007789859215
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "railway_corner",
+            "group": "railway",
+            "variant": "corner",
+            "building_id": "way\/124009548",
+            "point": {
+                "lon": 92.8311722,
+                "lat": 56.0080009
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "railway_exterior5",
+            "group": "railway",
+            "variant": "exterior5",
+            "building_id": "way\/124009548",
+            "point": {
+                "lon": 92.831505620692,
+                "lat": 56.007752730435
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "stadium_centre",
+            "group": "stadium",
+            "variant": "centre",
+            "building_id": "way\/61718066",
+            "point": {
+                "lon": 92.864882855652,
+                "lat": 56.013589606652
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "stadium_centre_e3",
+            "group": "stadium",
+            "variant": "centre_e3",
+            "building_id": "way\/61718066",
+            "point": {
+                "lon": 92.864930974138,
+                "lat": 56.01358965935
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "stadium_centre_w3",
+            "group": "stadium",
+            "variant": "centre_w3",
+            "building_id": "way\/61718066",
+            "point": {
+                "lon": 92.864834737166,
+                "lat": 56.013589553936
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "stadium_centre_n3",
+            "group": "stadium",
+            "variant": "centre_n3",
+            "building_id": "way\/61718066",
+            "point": {
+                "lon": 92.864882761562,
+                "lat": 56.013616561351
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "stadium_centre_s3",
+            "group": "stadium",
+            "variant": "centre_s3",
+            "building_id": "way\/61718066",
+            "point": {
+                "lon": 92.864882949742,
+                "lat": 56.013562651953
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "stadium_edge",
+            "group": "stadium",
+            "variant": "edge",
+            "building_id": "way\/61718066",
+            "point": {
+                "lon": 92.864818754457,
+                "lat": 56.013479271761
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "stadium_edge_e3",
+            "group": "stadium",
+            "variant": "edge_e3",
+            "building_id": "way\/61718066",
+            "point": {
+                "lon": 92.864866872806,
+                "lat": 56.013479324483
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "stadium_edge_w3",
+            "group": "stadium",
+            "variant": "edge_w3",
+            "building_id": "way\/61718066",
+            "point": {
+                "lon": 92.864770636109,
+                "lat": 56.01347921902
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "stadium_corner",
+            "group": "stadium",
+            "variant": "corner",
+            "building_id": "way\/61718066",
+            "point": {
+                "lon": 92.8636357,
+                "lat": 56.0134212
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "stadium_exterior5",
+            "group": "stadium",
+            "variant": "exterior5",
+            "building_id": "way\/61718066",
+            "point": {
+                "lon": 92.86479393599,
+                "lat": 56.013436552521
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "industrial_centre",
+            "group": "industrial",
+            "variant": "centre",
+            "building_id": "way\/1526637784",
+            "point": {
+                "lon": 92.989438199951,
+                "lat": 56.070216600087
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "industrial_centre_e3",
+            "group": "industrial",
+            "variant": "centre_e3",
+            "building_id": "way\/1526637784",
+            "point": {
+                "lon": 92.989486389091,
+                "lat": 56.070216604201
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "industrial_centre_w3",
+            "group": "industrial",
+            "variant": "centre_w3",
+            "building_id": "way\/1526637784",
+            "point": {
+                "lon": 92.989390010811,
+                "lat": 56.070216595955
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "industrial_centre_n3",
+            "group": "industrial",
+            "variant": "centre_n3",
+            "building_id": "way\/1526637784",
+            "point": {
+                "lon": 92.98943819258,
+                "lat": 56.070243554612
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "industrial_centre_s3",
+            "group": "industrial",
+            "variant": "centre_s3",
+            "building_id": "way\/1526637784",
+            "point": {
+                "lon": 92.989438207321,
+                "lat": 56.070189645563
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "industrial_edge",
+            "group": "industrial",
+            "variant": "edge",
+            "building_id": "way\/1526637784",
+            "point": {
+                "lon": 92.989536345294,
+                "lat": 56.07019277959
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "industrial_edge_e3",
+            "group": "industrial",
+            "variant": "edge_e3",
+            "building_id": "way\/1526637784",
+            "point": {
+                "lon": 92.989584534404,
+                "lat": 56.070192783665
+            },
+            "inside_selected_building": false
+        },
+        {
+            "id": "industrial_edge_w3",
+            "group": "industrial",
+            "variant": "edge_w3",
+            "building_id": "way\/1526637784",
+            "point": {
+                "lon": 92.989488156184,
+                "lat": 56.070192775496
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "industrial_corner",
+            "group": "industrial",
+            "variant": "corner",
+            "building_id": "way\/1526637784",
+            "point": {
+                "lon": 92.9893886,
+                "lat": 56.070303
+            },
+            "inside_selected_building": true
+        },
+        {
+            "id": "industrial_exterior5",
+            "group": "industrial",
+            "variant": "exterior5",
+            "building_id": "way\/1526637784",
+            "point": {
+                "lon": 92.989610023409,
+                "lat": 56.070174897374
+            },
+            "inside_selected_building": false
+        }
+    ]
+}

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlaceLens · эксперимент с продуктовыми магазинами</title>
+  <link rel="stylesheet" href="/vendor/maplibre-gl.css">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header><strong>PlaceLens</strong><span class="badge">Изолированный PoC</span><span>Красноярск</span></header>
+  <main>
+    <section class="intro">
+      <p class="eyebrow">ПРОДУКТОВЫЕ МАГАЗИНЫ В ДАННЫХ OSM</p>
+      <h1>Что найдено рядом с двумя адресами</h1>
+      <p>Выберите два конкретных адресных объекта. Радиус одинаков для обоих вариантов.</p>
+      <p class="notice">Данные OSM: <strong>полнота и актуальность неизвестны</strong>. Число найденных элементов не означает число всех работающих магазинов.</p>
+      <details><summary>Как читать результат и карту</summary>
+        <p>Только shop=supermarket, convenience, grocery. Элементы OSM не объединяются по названию, адресу или близости. Один магазин может быть нанесён несколькими элементами.</p>
+        <p>Расстояние по прямой: до точки OSM либо ближайшей части исходной геометрии. Внутри полигона — 0 м. Это сферическая модель AEQD, не путь и не расстояние до входа. Пограничные результаты требуют проверки точности.</p>
+        <p>Точка адреса — исходный узел или служебная точка контура, не подтверждённый вход. Разные объекты одного адреса предлагаются отдельно. Адресный поиск здесь экспериментальный и отличается от основного PlaceLens.</p>
+        <p>Карта полностью локальная: уличные линии из того же PBF, без внешних тайлов и декоративных POI. Контуры/линии магазинов показаны целиком; список и карта используют один набор элементов. Нажмите на объект или строку списка для выделения.</p>
+      </details>
+      <p id="snapshot" class="subtle" role="status">Загрузка сведений о снимке…</p>
+    </section>
+    <section class="toolbar" aria-label="Общие настройки сравнения">
+      <fieldset><legend>Общий радиус</legend>
+        <label><input type="radio" name="radius" value="300">300 м</label>
+        <label><input type="radio" name="radius" value="500" checked>500 м</label>
+      </fieldset>
+      <button id="compare" disabled>Показать найденные объекты</button>
+      <span id="status" role="status" aria-live="polite">Выберите два адреса</span>
+    </section>
+    <section class="columns" aria-label="Два варианта">
+      <article id="left" class="variant">
+        <h2><span class="letter">A</span> Первый адрес</h2>
+        <label for="left-search">Улица и номер дома</label>
+        <input id="left-search" type="search" placeholder="Например, Ленина 102" autocomplete="off">
+        <div id="left-options" class="options" aria-live="polite"></div>
+        <div id="left-choice" class="choice">Адрес пока не выбран</div>
+        <div id="left-map" class="map" aria-label="Карта первого адреса"></div>
+        <p id="left-map-status" class="subtle"></p>
+        <div id="left-result" class="result"><p>После выбора появится список элементов OSM.</p></div>
+      </article>
+      <article id="right" class="variant">
+        <h2><span class="letter second">B</span> Второй адрес</h2>
+        <label for="right-search">Улица и номер дома</label>
+        <input id="right-search" type="search" placeholder="Например, Молокова 28" autocomplete="off">
+        <div id="right-options" class="options" aria-live="polite"></div>
+        <div id="right-choice" class="choice">Адрес пока не выбран</div>
+        <div id="right-map" class="map" aria-label="Карта второго адреса"></div>
+        <p id="right-map-status" class="subtle"></p>
+        <div id="right-result" class="result"><p>После выбора появится список элементов OSM.</p></div>
+      </article>
+    </section>
+    <footer>© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a> · <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener noreferrer">ODbL 1.0</a>.
+      Ноль результатов означает только отсутствие найденных объектов в выбранном снимке, а не отсутствие магазинов на местности. PoC не оценивает качество района и не выбирает лучший адрес.</footer>
+  </main>
+</body>
+</html>
