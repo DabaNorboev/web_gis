@@ -44,7 +44,7 @@ API в изолированном окружении; выполненный п�
 | `docker compose exec php composer test` | PHP unit/feature | Script предварительно делает `artisan config:clear`; конфигурация тестов использует SQLite in-memory |
 | `docker compose exec php composer test:postgis` | Оба GIS-набора | Script делает `config:clear`; работает с `web_gis_test`, пишет fixtures/тестовые схемы в write-наборе |
 | `sh scripts/init-test-db.sh` | Создание тестовой БД/PostGIS | DDL через контейнер db: создаёт `web_gis_test` и extension при отсутствии. Не запускать как проверку документации |
-| `PYTHONDONTWRITEBYTECODE=1 python3 tests/security/test_trip_nginx.py` | Nginx synthetic privacy | Использует уже работающий nginx-контейнер, запускает отдельный процесс/порт и временные файлы; живой Nginx не перезагружает |
+| `PYTHONDONTWRITEBYTECODE=1 python3 tests/security/test_trip_nginx.py` | Nginx synthetic privacy | Python 3 + Docker CLI/daemon; одноразовый контейнер без сети, временные файлы в tmpfs; при отсутствии получает образ проекта |
 
 `composer setup`, install/update, миграции, импорты и acceptance-скрипты не входят в безопасный универсальный «запустить всё». Изучать их отдельные эффекты перед использованием.
 
@@ -100,7 +100,42 @@ docker run --rm --network=none --memory=1g --cpus=2 \
 
 Это маленькие PBF-fixtures; создание/сборка image — отдельная операция. CI собирает image с тегом `web-gis-osm-etl:ci` и запускает ту же fixture suite. Постоянный ETL Compose-сервис не нужен.
 
-Nginx privacy проверяет production config отдельным synthetic canary: безопасный access format, no-referrer, ошибки upstream/размер тела, отсутствие записи тела на диск. Не читает живые журналы. Сейчас этот тест запускается отдельно и **не включён в CI**; расширение CI предложено в аудите, но этой документационной правкой не реализовано.
+Nginx privacy запускается локально и в самостоятельном job `nginx-privacy` в
+`.github/workflows/tests.yml` одной командой:
+
+```bash
+python3 -B tests/security/test_trip_nginx.py -v
+```
+
+Нужны Python 3 (только стандартная библиотека), Docker CLI и доступ к Docker daemon.
+Тест читает literal image из nginx-секции `docker-compose.yml` (сейчас
+`nginx:1.27-alpine`), но не запускает Compose и не читает `.env`. Если образа нет,
+Docker получает его из registry; для этого нужен интернет. Приложение, PHP, БД,
+OSRM и ORS не нужны.
+
+Runner создаёт уникально названный контейнер с `--network=none`, read-only root и
+`/tmp` в tmpfs. Порты не публикуются, запросы идут по loopback внутри контейнера.
+Монтируются только production `docker/nginx/nginx.conf` и общий shell-probe,
+оба read-only; рабочих volumes, socket и журналов приложения внутри нет.
+Технические подстановки меняют только временные пути, loopback-порт, include
+fastcgi_params и закрытый upstream. Проверяются config/startup, фиксированные
+классы access log, отсутствие query/Referer/координат/тела/canary в тестовых
+серверных журналах, no-referrer, 502, оба лимита 413, no-store для resolve-point
+включая ошибки, пустой body temp directory и штатное завершение Nginx.
+
+Общий бюджет создания/получения образа и выполнения — 120 секунд;
+`--timeout <секунды>` задаёт бюджет до 240 секунд. Удаление только собственного
+контейнера выполняется в finally при успехе, ошибке, timeout, SIGINT и SIGTERM
+с отдельным пределом 15 секунд. При недоступном daemon ошибка удаления явно
+сообщается; SIGKILL/потеря хоста не позволяют гарантировать cleanup. Образ остаётся
+в Docker cache, tmpfs удаляется вместе с контейнером. Диагностика сообщает только
+фиксированные этапы/категории ошибок, без сырых Docker/Nginx/client logs.
+
+Для отрицательного контроля можно передать `--config /tmp/<копия>.conf` с
+намеренно небезопасным форматом логирования; production-файл менять не нужно.
+Набор assertions остаётся тем же. CI job имеет `contents: read`, timeout 5 минут
+и запускает ту же команду без services/зависимостей других jobs. Наличие job и
+локальные прогоны не означают, что workflow уже исполнился на GitHub.
 
 ## Acceptance и отчётность
 
