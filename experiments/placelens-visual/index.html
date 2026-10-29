@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f5f5f0">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237058a5'/%3E%3Cpath d='M8 8h7a6 6 0 0 1 0 12h-3v5H8Zm4 4v4h3a2 2 0 0 0 0-4Z' fill='white'/%3E%3C/svg%3E">
+<title>PlaceLens Visual — адреса, цели и сравнение</title>
+<link rel="stylesheet" href="style.css?v=9b78a02da1">
+<link rel="stylesheet" href="visual.css?v=4b8d4d2e2b">
+<script src="data.js?v=004626a842" defer></script>
+<script src="app.js?v=40f1619e47" defer></script>
+<script src="visual.js?v=018045572a" defer></script>
+</head>
+<body>
+<a class="skip" href="#results">К сравнению</a>
+<header class="topbar"><a class="brand" href="./index.html?demo=empty" aria-label="PlaceLens, начать заново"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="m5 8 11-5 11 5v16l-11 5L5 24Zm0 0 11 6 11-6M16 14v15" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="16" cy="14" r="3" fill="currentColor"/></svg>PlaceLens<span>.</span></a><span class="city">Красноярск</span><div class="top-actions"><span class="demo-label">Демо · синтетические данные</span><button class="quiet" data-action="demo">Открыть пример</button><button class="icon-button" data-action="states" aria-label="Состояния макета">···</button></div></header>
+<div class="workspace">
+<aside class="sidebar" aria-label="Настройки адресов и целей"><div id="setup"></div></aside>
+<main class="main" id="main">
+<header id="working-heading" class="working-heading"></header>
+<section class="map-section" aria-label="Схематичная карта">
+<div id="map-toolbar" class="map-toolbar"></div>
+<div id="map" class="map"><div id="map-art" class="map-art">            <svg viewBox="0 0 1000 370" preserveAspectRatio="none" aria-hidden="true">
+              <defs><pattern id="blocks" width="110" height="76" patternUnits="userSpaceOnUse" patternTransform="rotate(-13)"><rect width="110" height="76" fill="#eeeae2"/><rect x="12" y="13" width="28" height="17" rx="2" fill="#dedbd3"/><rect x="51" y="13" width="40" height="13" rx="2" fill="#dedbd3"/><rect x="12" y="43" width="18" height="20" rx="2" fill="#e0ddd6"/><rect x="42" y="41" width="48" height="20" rx="2" fill="#dedbd3"/><path d="M0 0H110V76" stroke="#faf9f5" stroke-width="11" fill="none"/></pattern><pattern id="trees" width="25" height="25" patternUnits="userSpaceOnUse"><circle cx="9" cy="9" r="4.5" fill="#a9c4a5" opacity=".5"/><circle cx="21" cy="20" r="3" fill="#a9c4a5" opacity=".5"/></pattern></defs>
+              <rect width="1000" height="370" fill="url(#blocks)"/>
+              <path d="M0 306Q195 260 355 307T690 309T1030 273V400H0Z" fill="#b9d6dc"/><path d="M0 297Q195 251 355 298T690 300T1030 264" stroke="#d8e6df" stroke-width="14" fill="none"/>
+              <g id="park-layer"><path d="M48 87 179 57 216 179 85 207Z" fill="#c3d6b7"/><path d="M48 87 179 57 216 179 85 207Z" fill="url(#trees)"/><path d="M580 190 704 163 731 253 610 278Z" fill="#c9d9bd"/><path d="m76 102 112 66m-93-85 52 102m-27-111 52 105" fill="none" stroke="#e2e9d5" stroke-width="3"/></g>
+              <path d="M-20 234 1020 25M295-20 399 318M772-20 850 291M-20 57 1000 253" stroke="#fffdf7" stroke-width="16" fill="none"/>
+              <path d="M-20 234 1020 25" stroke="#ecd8b4" stroke-width="9" fill="none"/><path d="M295-20 399 318" stroke="#e8dac1" stroke-width="8" fill="none"/>
+              <g class="map-street-labels" fill="#8d8a80" font-family="system-ui,sans-serif" font-size="10" letter-spacing="1"><text x="454" y="124" transform="rotate(-11 454 124)">ПРОСПЕКТ МИРА</text><text x="363" y="220" transform="rotate(73 363 220)">УЛ. ВЕЙНБАУМА</text><text x="710" y="197" transform="rotate(11 710 197)">УЛ. КАРЛА МАРКСА</text><text x="79" y="137" transform="rotate(-13 79 137)" fill="#698164">ПАРК</text><text x="617" y="229" transform="rotate(-13 617 229)" fill="#698164">СКВЕР</text><text x="505" y="349" fill="#5c8d9c" letter-spacing="8" font-size="16">ЕНИСЕЙ</text></g>
+              <g id="radius-layer"><circle id="radius-a" cx="293" cy="155" r="103" fill="#7360bc" fill-opacity=".06" stroke="#7865b7" stroke-opacity=".45" stroke-dasharray="5 5"/><circle id="radius-b" cx="704" cy="113" r="103" fill="#5384b9" fill-opacity=".06" stroke="#386da6" stroke-opacity=".45" stroke-dasharray="5 5"/></g>
+              <g id="stops-layer" fill="#fff" stroke="#7292a6" stroke-width="2"><rect x="240" y="167" width="9" height="9" rx="2"/><rect x="404" y="132" width="9" height="9" rx="2"/><rect x="646" y="82" width="9" height="9" rx="2"/><rect x="729" y="78" width="9" height="9" rx="2"/><rect x="732" y="207" width="9" height="9" rx="2"/><rect x="301" y="216" width="9" height="9" rx="2"/></g>
+              <g id="route-lines" fill="none" stroke-linejoin="round" stroke-linecap="round"><path d="M306 167 384 151 402 216 550 246" stroke="#fff" stroke-width="9"/><path d="M306 167 384 151 402 216 550 246" stroke="#7560bd" stroke-width="4"/><path d="M718 125 654 138 675 220 565 243" stroke="#fff" stroke-width="9"/><path d="M718 125 654 138 675 220 565 243" stroke="#bd734f" stroke-width="4" stroke-dasharray="9 5"/><g fill="#fff" stroke-width="3"><circle cx="306" cy="167" r="5" stroke="#7560bd"/><circle cx="718" cy="125" r="5" stroke="#bd734f"/><circle cx="550" cy="246" r="5" stroke="#7560bd"/><circle cx="565" cy="243" r="5" stroke="#bd734f"/></g></g>
+            </svg>
+<div id="map-markers"></div></div>
+<div class="map-attribution" id="map-context">Схема · не для навигации</div>
+<div id="map-callout" class="map-callout" hidden></div></div>
+<div id="layer-menu" class="layer-menu" hidden><strong>Слои схемы</strong><label><input type="checkbox" checked data-layer="radius-layer"> Радиус окружения</label><label><input type="checkbox" checked data-layer="stops-layer"> Официальные остановки</label><label><input type="checkbox" checked data-layer="park-layer"> Парки и скверы</label><p>Все объекты синтетические.</p></div>
+<div id="map-key" class="map-key"></div>
+<section id="goal-inspector" class="goal-inspector" aria-label="Подробности выбранной цели" hidden></section>
+</section>
+<section id="results" class="results" tabindex="-1" aria-label="Сравнение"><div id="result-content"></div></section>
+</main>
+</div>
+<nav class="mobile-dock" aria-label="Основные экраны"><button data-action="screen" data-value="comparison">▤ <span>Сравнение</span></button><button data-action="screen" data-value="map">⌖ <span>Карта</span></button><button data-action="screen" data-value="settings">☷ <span>Настройки</span></button></nav>
+<dialog id="dialog" aria-labelledby="dialog-title"><div id="dialog-content"></div></dialog>
+<div class="toast" id="toast" role="status" hidden></div><div id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+</body></html>

@@ -1,0 +1,19 @@
+{
+  "app.js": "70f5e7c0633811e23323a1e16344883d9854ae031ac472ede623ed38b7a9c038",
+  "README.md": "dc0bbfd281769e3d310a28be12ee70fb639d0a45c84431c5adbf07ebfc821214",
+  "style.css": "fbbd783dc4a5b3e7ebabc1cc83cbe93ca7b04bb94d536265589d13b1be4de195",
+  "visual.css": "0f1f695920c4573d43504c9093df9aaf979c300c5588b58d2788d6762b67803b",
+  "QA.md": "ec795480a79bf21aa46e366b9ed1c1bcb6e6451790b9d4fcf7d339f526afed47",
+  "visual.js": "e65cb7dd5a8e1ea06f2bb39626f57de63a142d32878c506d38d2ab052535e774",
+  "bundle.py": "485eea757ccdf9c5ae6539ee9d6842ca758ef143604da755696e80b6616fb260",
+  "index.html": "2e001a62fc2394b70666ddb1923475cf1c8f0006db675d33ffd65bf592564c11",
+  "PlaceLens-visual.html": "7660eeb5f3695e33b1416f50ef2649965ab9fa28de87add5f546464af49448d6",
+  "inputs/interface-v2-plan-section-g1.1-decisions.md": "f66c4411fc554c64e522b771eaf88e5660d2a359a4746eb6419ed141ddfbbefc",
+  "assets/OFL-Golos-Text.txt": "ff532f9e8789f09a9fdffc3c0954eedfb0a48be77b2e2eb90f5f82e4f347f50c",
+  "assets/GolosText-variable.ttf": "17bb58fb69aec2dfb047a2ebf52534023e9b688c97a6b7ac795b0a72912c2063",
+  "screenshots/desktop-1440x900.jpg": "ac9cb21d0350ee93485358614cc7e14ee028652e1c4225b7a442464d16b0bfb4",
+  "screenshots/mobile-map-390x844.jpg": "46fd39e425c57c0f755dc5457b43c8b95727dd3fff860db50b625f252db16b72",
+  "screenshots/mobile-320x740.jpg": "6637ec384d298a38f15dbd73a07dba36fe63298bd679f6e4e4fe3f14b7a57169",
+  "screenshots/desktop-1280x560.jpg": "b8e6465398a2940bc2c222ec2ab0c6ddb2d7edee3c302e3aad46de1515079d8f",
+  "screenshots/mobile-compare-390x844.jpg": "72d93bc5114159d1305be0373f649577962354260dc008463c8f03cfb5f608f3"
+}
