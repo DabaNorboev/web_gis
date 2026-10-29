@@ -12,3 +12,5 @@
 @media(max-width:760px){button{min-width:44px}.brand{min-height:44px}.top-actions .quiet,.top-actions .icon-button{min-height:44px;min-width:44px}.result-tabs button,.metric-name{min-width:44px}.add-goal{min-height:44px}}
 .inspector-heading{display:flex;align-items:flex-start;gap:10px}.inspector-heading>div{flex:1;min-width:0}.inspector-heading>div>span{display:block;font-size:11px;color:#746186;margin-top:4px}.inspector-close{flex:none}
 @media(max-width:760px){.inspector-heading{display:flex}.inspector-heading>div>span{font-size:12px}}
+
+.orientation-preview{border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:12px;margin-top:14px}.orientation-preview h3{font-size:13px;font-weight:600;margin-bottom:8px}.orientation-preview-row{display:flex;align-items:flex-start;gap:9px;padding:8px 0;font-size:13px;line-height:1.5}.orientation-preview-row+.orientation-preview-row{border-top:1px solid var(--line)}.orientation-preview-row>div{min-width:0}.orientation-preview-row strong{font-weight:600}.orientation-preview-row small{display:block;font-size:11px;color:var(--purple);font-weight:600}.orientation-preview-row>.badge{margin-top:1px}
