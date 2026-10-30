@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-const props = defineProps<{ addressUrl: string; personalUrl: string | null }>()
+const props = defineProps<{ addressUrl: string; personalUrl: string | null; sessionOrientations?: boolean }>()
 const menu = ref<HTMLDetailsElement | null>(null)
 const status = ref('')
 const fallback = ref<string | null>(null)
@@ -23,6 +23,7 @@ defineExpose({ reset })
     <details ref="menu" class="comparison-share" @keydown="escape">
         <summary>Поделиться</summary>
         <div class="comparison-share-menu" aria-label="Поделиться сравнением">
+            <p v-if="sessionOrientations">Ориентиры действуют в этом сеансе и не входят в ссылку</p>
             <button type="button" @click="copy(false)">Ссылка на сравнение адресов</button>
             <p>Только адреса А/Б и радиус окружения.</p>
             <div class="comparison-share-personal">

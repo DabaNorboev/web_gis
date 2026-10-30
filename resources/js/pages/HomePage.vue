@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import '../../css/home-workspace.css'
-import { computed, nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, provide, reactive, ref, watch } from 'vue'
 import type { AddressMapState } from '@/utils/addressMap'
 import type { Coordinates } from '@/types/transport'
 import { MapPin, MoveUpRight } from '@lucide/vue'
@@ -10,6 +10,9 @@ import { useSidebarWidth } from '@/composables/useSidebarWidth'
 import { profileUrl } from '@/utils/metricDisplay'
 import AddressPicker from '@/components/AddressPicker.vue'
 import HomeWorkspaceMap from '@/components/home/HomeWorkspaceMap.vue'
+import HomeOrientationDialog from '@/components/home/HomeOrientationDialog.vue'
+import { useHomeOrientations } from '@/composables/useHomeOrientations'
+import type { HomeOrientationContext } from '@/types/homeOrientations'
 import HomeTripsPanel from '@/components/home/HomeTripsPanel.vue'
 import HomeTripCell from '@/components/home/HomeTripCell.vue'
 import type { HomeResultView } from '@/types/homeResults'
@@ -75,6 +78,11 @@ const tripsInput: HomeTripsInput = {
     },
 }
 const trips = useHomeTrips(tripsInput)
+const orientations = useHomeOrientations(home, trips)
+const orientationDialog = ref<InstanceType<typeof HomeOrientationDialog> | null>(null)
+provide<HomeOrientationContext>('home-orientations', { owner: orientations, enabled: isWorkspace,
+    edit: (target, event) => orientationDialog.value?.open(target, event.currentTarget as HTMLElement),
+})
 const tripsPanel = ref<InstanceType<typeof HomeTripsPanel> | null>(null)
 const location = useHomeLocation(home, trips, scenario => {
     if (scenario) { workspaceScenario.value = scenario; section.value = scenario === 'addresses' ? 'overview' : 'trips'; tripsPanel.value?.changeScenario(scenario) }
@@ -227,7 +235,7 @@ function resetSelection() { home.resetPoint() }
                         <p>Остановки, парки, вода и дороги рядом. Найдите адрес, изучите окружение и добавьте второй вариант для сравнения.</p>
                     </section>
 
-                    <ComparisonShare v-if="isWorkspace" :address-url="location.ordinaryUrl.value" :personal-url="location.personalUrl.value" />
+                    <ComparisonShare v-if="isWorkspace" :address-url="location.ordinaryUrl.value" :personal-url="location.personalUrl.value" session-orientations />
                     <section v-if="isWorkspace" v-show="workspaceScenario === 'addresses'" class="home-address-selection" aria-label="Выбранные адреса">
                         <div v-for="side in (['left', 'right'] as const)" :key="side" class="home-address-slot" :aria-label="`Адрес ${side === 'left' ? 'А' : 'Б'}`">
                             <h2><span class="home-side-badge" :class="{ 'is-b': side === 'right' }">{{ side === 'left' ? 'А' : 'Б' }}</span><span>{{ sides[side].knownAddress?.label ?? sides[side].id ?? 'Адрес не выбран' }}</span></h2>
@@ -288,6 +296,8 @@ function resetSelection() { home.resetPoint() }
                     </HomeTripsPanel>
                 </div>
             </section>
+            <HomeOrientationDialog ref="orientationDialog" :owner="orientations" />
+            <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ orientations.announcement.value }}</p>
         </main>
     </PlaceLayout>
 </template>

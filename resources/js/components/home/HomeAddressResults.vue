@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import HomeOrientationButton from './HomeOrientationButton.vue'
 import HomeMetricCell from '@/components/home/HomeMetricCell.vue'
 import HomeTripCell from '@/components/home/HomeTripCell.vue'
 import HomeResultDialog from '@/components/home/HomeResultDialog.vue'
@@ -77,7 +78,7 @@ function entryFor(side: SideKey, id: string) { return props.entries.find(entry =
                     <tbody v-if="view !== 'surroundings'" class="home-trip-rows">
                         <tr class="home-section-row"><th :colspan="model.selectedSides.value.length + 1" scope="colgroup">Поездки <span>{{ trips.addresses.mode.value === 'walking' ? 'Модель уличной части · подходы неизвестны' : 'Автомодель · без пробок, подходов и парковки' }}</span></th></tr>
                         <tr v-for="place in trips.addresses.places.value" :key="place.id" :data-goal-id="place.id">
-                            <th scope="row"><span class="home-goal-label">{{ place.label || 'Без названия' }}</span><HomeResultDialog v-if="!single" :title="`Сопоставимость: ${place.label || 'Без названия'}`" :label="`Сопоставимость поездок: ${place.label || 'Без названия'}`"><p>{{ pairedTripFact(trips.addresses.cell('left', place.id), trips.addresses.cell('right', place.id), trips.addresses.mode.value) }}</p><p>Сравнивается длина подтверждённых поездок одного источника и снимка; преимущества по неизвестному пути нет.</p></HomeResultDialog></th>
+                            <th scope="row"><span class="home-goal-label">{{ place.label || 'Без названия' }}</span><HomeOrientationButton :target="{ kind: 'trip', scenario: 'addresses', placeId: place.id, mode: trips.addresses.mode.value }" :label="place.label || 'Без названия'" /><HomeResultDialog v-if="!single" :title="`Сопоставимость: ${place.label || 'Без названия'}`" :label="`Сопоставимость поездок: ${place.label || 'Без названия'}`"><p>{{ pairedTripFact(trips.addresses.cell('left', place.id), trips.addresses.cell('right', place.id), trips.addresses.mode.value) }}</p><p>Сравнивается длина подтверждённых поездок одного источника и снимка; преимущества по неизвестному пути нет.</p></HomeResultDialog></th>
                             <td v-for="side in model.selectedSides.value" :key="side" :data-side="side"><HomeTripCell v-if="entryFor(side, place.id)" :entry="entryFor(side, place.id)!" :actions="actions" :mode="trips.addresses.mode.value" /></td>
                         </tr>
                         <tr v-if="!trips.addresses.places.value.length"><td :colspan="model.selectedSides.value.length + 1" class="home-cell-note">Добавьте общие цели в редакторе слева. Профиль окружения уже доступен.</td></tr>
@@ -86,7 +87,7 @@ function entryFor(side: SideKey, id: string) { return props.entries.find(entry =
                         <tr class="home-section-row"><th :colspan="model.selectedSides.value.length + 1" scope="colgroup">Окружение <span>{{ model.radius.value }} м · расстояния по прямой · входы и доступ не проверены</span></th></tr>
                         <template v-for="row in rows" :key="row.category + row.key">
                             <tr :id="comparisonRowId(row)" tabindex="-1" :data-metric-id="`${row.category}:${row.key}`">
-                                <th scope="row"><span>{{ row.label }}</span><small class="home-metric-caption">{{ metricExplanation(row).short }}</small></th>
+                                <th scope="row"><span>{{ row.label }}</span><HomeOrientationButton v-if="row.category === 'transport' && row.key === 'nearest_stop_distance'" :target="{ kind: 'stop' }" :label="row.label" /><small class="home-metric-caption">{{ metricExplanation(row).short }}</small></th>
                                 <td v-for="side in model.selectedSides.value" :key="side" :data-side="side"><HomeMetricCell :row="row" :side="side" :profile="model.sides[side].profile" :status="model.sides[side].status" :radius="model.radius.value" @retry="model.loadSide(side)" @show-map="showRow(side, row)" /></td>
                             </tr>
                             <tr v-if="differences(row).length" class="home-conditions-row"><td :colspan="model.selectedSides.value.length + 1"><ul aria-label="Различия условий сравнения"><li v-for="note in differences(row)" :key="note">{{ note }}</li></ul></td></tr>

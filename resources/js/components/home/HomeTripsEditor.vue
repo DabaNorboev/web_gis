@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import HomeOrientationButton from './HomeOrientationButton.vue'
 import TripPointPicker from '@/components/TripPointPicker.vue'
 import { homeStandaloneTrip } from '@/composables/useHomeTrips'
 import type { HomeTripRef, HomeTripsInput, HomeTripsPort } from '@/types/homeWorkspace'
@@ -27,6 +28,7 @@ const standalonePlaces = computed(() => draft.places.map((place, index) => ({ pl
             <p>{{ places.length }}/3 общих целей. От каждого доступного выбранного адреса — отдельная поездка.</p>
             <article v-for="(place, index) in places" :key="place.id" class="goal-editor">
                 <label :for="`home-goal-${place.id}`">Название общей цели<input :id="`home-goal-${place.id}`" v-model="place.label" maxlength="80" autocomplete="off" /></label>
+                <HomeOrientationButton :target="{ kind: 'trip', scenario: 'addresses', placeId: place.id, mode }" :label="place.label || 'Без названия'" />
                 <details class="goal-point-editor"><summary>{{ place.point ? 'Изменить точку цели' : 'Задать точку цели' }}</summary><TripPointPicker :point="place.point" :label="`Общая цель ${index + 1} · ${place.label || 'Без названия'}`" @select="addresses.setPoint(place.id, $event)" />
                 <button type="button" @click="emit('pickGoal', { scenario: 'addresses', side: input.activeSide.value, placeId: place.id })">Выбрать цель на карте</button>
                 <button v-if="place.point" type="button" @click="addresses.setPoint(place.id, null)">Убрать точку</button></details>
@@ -43,6 +45,7 @@ const standalonePlaces = computed(() => draft.places.map((place, index) => ({ pl
             <button type="button" @click="input.activate({ kind: 'pick-start', scenario: 'standalone' }); emit('showMap', false)">Выбрать старт на карте</button>
             <article v-for="{ place, index, trip } in standalonePlaces" :key="trip.placeId" class="goal-editor">
                 <label :for="`home-${trip.placeId}`">Название отдельной цели<input :id="`home-${trip.placeId}`" v-model="place.label" maxlength="80" autocomplete="off" /></label>
+                <HomeOrientationButton :target="{ kind: 'trip', scenario: 'standalone', placeId: trip.placeId, mode }" :label="place.label || 'Без названия'" />
                 <TripPointPicker :point="standalone.readPoint(place)" :label="`Отдельная цель ${index + 1} · ${place.label || 'Без названия'}`" @select="emit('chooseOriginal', index, $event)" />
                 <button type="button" @click="emit('pickGoal', trip)">Выбрать отдельную цель на карте</button>
                 <button v-if="draft.places.length > 1" type="button" :aria-label="`Удалить отдельную цель ${place.label}`" @click="standalone.removePlace(index)">Удалить цель</button>

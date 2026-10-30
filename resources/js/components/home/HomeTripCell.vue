@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { computed, inject } from 'vue'
+import HomeOrientationStatus from './HomeOrientationStatus.vue'
+import HomeOrientationButton from './HomeOrientationButton.vue'
+import type { HomeOrientationContext } from '@/types/homeOrientations'
 import HomeResultDialog from '@/components/home/HomeResultDialog.vue'
 import WalkingTripDetails from '@/components/WalkingTripDetails.vue'
 import { acceptedTrip } from '@/utils/comparisonTrips'
@@ -7,10 +11,14 @@ import { tripFailureMessages } from '@/utils/tripFailure'
 import { sameRoadPoint } from '@/utils/tripCandidates'
 import type { HomeTripEntry, HomeTripActions } from '@/types/homeResults'
 import type { TripMode } from '@/types/trips'
-defineProps<{ entry: HomeTripEntry; actions: HomeTripActions; mode: TripMode }>()
+const props = defineProps<{ entry: HomeTripEntry; actions: HomeTripActions; mode: TripMode }>()
+const context = inject<HomeOrientationContext | null>('home-orientations', null)
+const target = computed(() => ({ kind: 'trip' as const, scenario: props.entry.trip.scenario, placeId: props.entry.trip.placeId, mode: props.mode }))
+const orientation = computed(() => context?.enabled.value ? context.owner.find(target.value) : null)
+const orientationCell = computed(() => orientation.value?.cells.find(cell => cell.side === (props.entry.trip.scenario === 'addresses' ? props.entry.trip.side : 'start')))
 </script>
 <template>
-    <article class="trip-result home-trip-cell" :class="{ 'is-ready': !entry.loading && !entry.error && acceptedTrip(entry.row) }" :aria-label="entry.title" :aria-busy="entry.loading">
+    <article class="trip-result home-trip-cell" :class="{ 'home-orientation-changed': orientationCell && context?.owner.highlighted.value.includes(orientationCell.key), 'is-ready': !entry.loading && !entry.error && acceptedTrip(entry.row) }" :aria-label="entry.title" :aria-busy="entry.loading">
         <span class="sr-only">{{ entry.title }}</span>
         <p v-if="entry.loading" role="status">Проверяем…</p>
         <template v-else-if="entry.error"><p role="status">{{ entry.error }}</p><button type="button" :disabled="!entry.canCalculate" @click="actions.retry(entry.trip)">Повторить эту поездку</button></template>
@@ -46,6 +54,8 @@ defineProps<{ entry: HomeTripEntry; actions: HomeTripActions; mode: TripMode }>(
             <button type="button" :disabled="!entry.canCalculate" @click="actions.retry(entry.trip)">Повторить эту поездку</button>
         </template>
         <template v-else><p>Нужен расчёт этой поездки.</p><button type="button" :disabled="!entry.canCalculate" @click="actions.retry(entry.trip)">Рассчитать эту поездку</button></template>
+        <HomeOrientationStatus v-if="orientation && orientationCell" :group="orientation" :cell="orientationCell" />
+        <HomeOrientationButton v-if="entry.trip.scenario === 'standalone'" :target="target" :label="entry.title" />
         <details v-for="group in entry.groups.filter(group => group.candidates.length && !entry.loading)" :key="group.end" open>
             <summary>{{ mode === 'walking' ? 'Уличная' : 'Дорожная' }} точка · {{ group.end === 'start' ? 'старт' : 'цель' }}</summary>
             <p>Смещение от проверяемой точки не является расстоянием подхода. Каждый выбор перепроверяется.</p>

@@ -47,6 +47,13 @@ function setup() {
         standaloneEffects: { saveSelection: (value, mode) => standaloneSaves.push([clone(value), mode]), beginRun: reveal => async current => { if (current()) settled.push(reveal) } },
     }
     const model = scope.run(() => adapter.useHomeTrips(input))
+    const orientationMath = loadModule(path('utils/homeOrientation.ts'))
+    const orientationModule = loadModule(path('composables/useHomeOrientations.ts'), { vue: hooks,
+        './useHomeTrips': adapter, '@/utils/comparisonTrips': personal, '@/utils/trips': tripUtils,
+        '@/utils/metricDisplay': { formatMetric: metric => metric.value === null ? 'Неизвестно' : `${metric.value} м` },
+        '@/utils/homeMetricPresentation': { homeMetricStateText: state => `Профиль: ${state}` }, '@/utils/homeOrientation': orientationMath })
+    const orientationHome = { sides, selectedSides: vue.computed(() => ['left', 'right'].filter(side => !!sides[side].id)) }
+    const orientations = scope.run(() => orientationModule.useHomeOrientations(orientationHome, model))
     const resolve = (request, statuses, edit = value => value) => request.resolve({ ok: true, json: async () => edit(response(request.selection, statuses)) })
     const setSide = (side, id, point = a) => { Object.assign(sides[side], { id, status: id ? 'ready' : 'empty', profile: id ? { address: { id, label: `Synthetic ${side}` }, point, radius_m: input.radius.value } : null }) }
     const addGoal = (point = goal) => { const id = model.addresses.add(); if (id && point) model.addresses.setPoint(id, point); return id }
@@ -57,15 +64,15 @@ function setup() {
     }
     const WalkingTripDetails = loadComponent(path('components/WalkingTripDetails.vue'), { '@/utils/trips': tripUtils })
     const ComparisonTripData = loadComponent(path('components/ComparisonTripData.vue'), { '@/utils/trips': tripUtils, '@/components/WalkingTripDetails.vue': WalkingTripDetails })
-    const HomeTripsEditor = loadComponent(path('components/home/HomeTripsEditor.vue'), { '@/components/TripPointPicker.vue': { render: () => null }, '@/composables/useHomeTrips': adapter })
+    const HomeTripsEditor = loadComponent(path('components/home/HomeTripsEditor.vue'), { './HomeOrientationButton.vue': { render: () => null }, '@/components/TripPointPicker.vue': { render: () => null }, '@/composables/useHomeTrips': adapter })
     const HomeResultDialog = loadComponent(path('components/home/HomeResultDialog.vue'))
-    const HomeTripCell = loadComponent(path('components/home/HomeTripCell.vue'), { '@/components/home/HomeResultDialog.vue': HomeResultDialog,
+    const HomeTripCell = loadComponent(path('components/home/HomeTripCell.vue'), { './HomeOrientationButton.vue': { render: () => null }, './HomeOrientationStatus.vue': { render: () => null }, '@/components/home/HomeResultDialog.vue': HomeResultDialog,
         '@/components/WalkingTripDetails.vue': WalkingTripDetails, '@/utils/comparisonTrips': personal, '@/utils/trips': tripUtils,
         '@/utils/tripFailure': failures, '@/utils/tripCandidates': candidates })
     const panelDeps = { '@/components/home/HomeTripCell.vue': HomeTripCell, '@/components/home/HomeTripsEditor.vue': HomeTripsEditor, '@/components/TripPointPicker.vue': { render: () => null }, '@/components/ComparisonTripData.vue': ComparisonTripData,
         '@/components/WalkingTripDetails.vue': WalkingTripDetails, '@/composables/useHomeTrips': adapter, '@/utils/comparisonTrips': personal,
         '@/utils/trips': tripUtils, '@/utils/tripFailure': failures, '@/utils/tripCandidates': candidates }
-    return { model, input, context, sides, requests, saves, standaloneSaves, settled, adapter, resolve, setSide, addGoal, independent,
+    return { orientations, model, input, context, sides, requests, saves, standaloneSaves, settled, adapter, resolve, setSide, addGoal, independent,
         render: () => renderToString(vue.createSSRApp(loadComponent(path('components/home/HomeTripsPanel.vue'), panelDeps), { model, input })),
         panel() { const component = loadComponent(path('components/home/HomeTripsPanel.vue'), panelDeps, { inlineTemplate: false }); return scope.run(() => component.setup({ model, input }, { expose() {}, emit() {} })) },
         async dispose() { cleanups.forEach(fn => fn()); scope.stop(); requests.forEach(request => resolve(request)); await tick() },
@@ -382,5 +389,107 @@ test('restoring an absent draft retains the global walking mode without invalida
         assert.equal(h.model.standalone.mode.value, 'walking')
         assert.equal(h.model.standalone.analysis.value, result)
         assert.equal(h.requests.length, 2)
+    } finally { await h.dispose() }
+})
+
+const orientationTarget = (id, mode = 'driving', scenario = 'addresses') => ({ kind: 'trip', scenario, placeId: id, mode })
+function setOrientation(h, target, value) { h.orientations.begin(target); assert.equal(h.orientations.apply(value), ''); h.orientations.finish() }
+test('session orientations follow stable draft identity, modes, scenarios, removal and URL restore', async () => {
+    const h = setup()
+    try {
+        h.setSide('left', 'synthetic:a'); const id = h.addGoal(), target = orientationTarget(id)
+        assert.equal(h.orientations.find(target).threshold, null)
+        setOrientation(h, target, '5')
+        h.model.addresses.places.value[0].label = 'Переименовано'
+        h.model.addresses.setPoint(id, b)
+        h.setSide('left', 'synthetic:b', b); h.setSide('left', null)
+        h.input.radius.value = 300
+        assert.equal(h.orientations.find(target).threshold, 5)
+        h.model.addresses.setMode('walking')
+        const walking = orientationTarget(id, 'walking')
+        assert.equal(h.orientations.find(walking).threshold, null)
+        setOrientation(h, walking, '10')
+        h.model.addresses.setMode('driving')
+        assert.equal(h.orientations.find(target).threshold, 5)
+        h.independent()
+        const independentId = h.adapter.homeStandaloneTrip(h.model, 0).placeId
+        const independent = orientationTarget(independentId, 'driving', 'standalone')
+        assert.equal(h.orientations.find(independent).threshold, null)
+        setOrientation(h, independent, '7')
+        h.model.addresses.remove(id); const next = h.addGoal()
+        assert.notEqual(next, id); assert.equal(h.orientations.find(orientationTarget(next)).threshold, null)
+        assert.equal(h.orientations.find(independent).threshold, 7)
+        setOrientation(h, orientationTarget(next), '8')
+        const link = clone(h.model.addresses.linkSelection.value)
+        h.model.addresses.restore(link)
+        assert.equal(h.orientations.find(orientationTarget(next)).threshold, null, 'restore cannot inherit by repeated local ID')
+        h.model.standalone.restore(h.model.standalone.selection())
+        const restoredId = h.adapter.homeStandaloneTrip(h.model, 0).placeId
+        assert.notEqual(restoredId, independentId)
+        assert.equal(h.orientations.find(orientationTarget(restoredId, 'driving', 'standalone')).threshold, null)
+    } finally { await h.dispose() }
+})
+test('orientations evaluate accepted raw seconds only, preserve running request, state and geometry, invalid edits and first response', async () => {
+    const h = setup()
+    try {
+        h.setSide('left', 'synthetic:a'); const id = h.addGoal(), target = orientationTarget(id)
+        const run = h.model.addresses.calculate()
+        const request = h.requests[0], epoch = h.model.addresses.cell('left', id).epoch
+        h.orientations.begin(target); h.orientations.apply('5')
+        assert.equal(h.orientations.current.value.cells[0].result.status, 'unavailable')
+        assert.equal(h.orientations.current.value.cells[0].state, 'loading')
+        assert.equal(h.requests.length, 1); assert.equal(request.signal.aborted, false)
+        h.resolve(request, [], value => { value.results[0].route.duration_s = 300.01; return value }); await run
+        assert.equal(h.orientations.current.value.cells[0].result.status, 'over')
+        assert.match(h.orientations.current.value.cells[0].result.text, /менее 1 мин/)
+        h.orientations.finish(); assert.deepEqual(h.orientations.highlighted.value, []); assert.equal(h.orientations.announcement.value, '')
+        const row = h.model.addresses.cell('left', id).row, geometry = clone(row.route.geometry)
+        show(h, trip('left', id))
+        const sequence = h.model.map.value?.overlay.sequence
+        assert.equal(typeof sequence, 'number')
+        h.orientations.begin(target); h.orientations.apply('6')
+        assert.equal(h.orientations.current.value.cells[0].result.status, 'within')
+        assert.notEqual(h.orientations.apply('-4'), '')
+        assert.equal(h.orientations.current.value.threshold, 6)
+        assert.deepEqual(h.orientations.highlighted.value, [], 'no timer or accent while dialog is open')
+        h.orientations.finish(); assert.equal(h.orientations.highlighted.value.length, 1)
+        assert.match(h.orientations.announcement.value, /В ориентире/)
+        assert.equal(h.requests.length, 1); assert.equal(h.model.addresses.cell('left', id).row, row)
+        assert.equal(h.model.addresses.cell('left', id).epoch, epoch)
+        assert.equal(h.model.map.value?.overlay.sequence, sequence); assert.deepEqual(row.route.geometry, geometry)
+        h.model.addresses.cell('left', id).status = 'loading'
+        assert.deepEqual(h.orientations.highlighted.value, [], 'a new request removes the old accent immediately')
+        h.model.addresses.cell('left', id).status = 'ready'
+        h.orientations.begin(target); h.orientations.apply('7'); h.orientations.finish()
+        assert.deepEqual(h.orientations.highlighted.value, []); assert.equal(h.orientations.announcement.value, '')
+        h.orientations.begin(target); h.orientations.apply(''); h.orientations.finish()
+        assert.equal(h.orientations.find(target).threshold, null)
+        for (const edit of [cell => { cell.status = 'loading' }, cell => { cell.error = 'Ошибка' }, cell => { cell.row.status = 'NEEDS_REFINEMENT' }, cell => { cell.row.snaps = null }]) {
+            const cell = h.model.addresses.cell('left', id)
+            cell.status = 'ready'; cell.error = ''; cell.row = clone(row); cell.row.status = 'AVAILABLE'
+            edit(cell); setOrientation(h, target, '9')
+            assert.equal(h.orientations.find(target).cells[0].result.status, 'unavailable')
+        }
+    } finally { await h.dispose() }
+})
+test('stop orientation preserves zero, guards unknown/stale/coverage/method and stays independent of radius', async () => {
+    const h = setup()
+    try {
+        h.setSide('left', 'synthetic:a')
+        const metric = { value: 0, unit: 'm', quality: { availability: 'AVAILABLE', freshness: 'UNKNOWN', method: 'DERIVED', reason: 'Причина' } }
+        const profile = { ...h.sides.left.profile, blocks: { transport: { status: 'READY', data: { metrics: { nearest_stop_distance: metric }, coverage: { status: 'COVERED', reason: 'Охват' } } } } }
+        h.sides.left.profile = profile
+        const target = { kind: 'stop' }
+        setOrientation(h, target, '150')
+        assert.equal(h.orientations.find(target).cells[0].result.status, 'within')
+        metric.value = 150.001; h.sides.left.profile = { ...profile }
+        assert.equal(h.orientations.find(target).cells[0].result.status, 'over')
+        for (const mutate of [() => { metric.value = null }, () => { metric.quality.freshness = 'STALE' }, () => { metric.quality.method = null }, () => { profile.blocks.transport.data.coverage.status = 'PARTIAL' }, () => { metric.quality.availability = 'INSUFFICIENT_DATA' }]) {
+            metric.value = 0; metric.quality = { availability: 'AVAILABLE', freshness: 'UNKNOWN', method: 'DERIVED', reason: 'Причина' }; profile.blocks.transport.data.coverage.status = 'COVERED'
+            mutate(); h.sides.left.profile = { ...profile }
+            assert.equal(h.orientations.find(target).cells[0].result.status, 'unavailable')
+        }
+        h.input.radius.value = 300
+        assert.equal(h.orientations.find(target).threshold, 150)
     } finally { await h.dispose() }
 })

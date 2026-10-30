@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { computed, inject, nextTick, ref } from 'vue'
+import HomeOrientationStatus from './HomeOrientationStatus.vue'
+import type { HomeOrientationContext } from '@/types/homeOrientations'
 import type { ComparisonSide } from '@/composables/useAddressComparison'
 import type { AddressProfile } from '@/types/profile'
 import { comparisonMetric, type ComparisonRow } from '@/utils/comparisonPresentation'
@@ -32,10 +34,13 @@ function openDetails(event: MouseEvent) { returnFocus = true; trigger.value = ev
 async function restoreFocus() { if (!returnFocus) return; await nextTick(); trigger.value?.focus() }
 function showMap() { returnFocus = false; dialog.value?.close(); emit('showMap') }
 const statusText = computed(() => homeMetricStateText(props.status, null))
+const context = inject<HomeOrientationContext | null>('home-orientations', null)
+const orientation = computed(() => context?.enabled.value && props.row.category === 'transport' && props.row.key === 'nearest_stop_distance' ? context.owner.find({ kind: 'stop' }) : null)
+const orientationCell = computed(() => orientation.value?.cells.find(cell => cell.side === props.side))
 </script>
 
 <template>
-    <div class="home-metric-cell">
+    <div class="home-metric-cell" :class="{ 'home-orientation-changed': orientationCell && context?.owner.highlighted.value.includes(orientationCell.key) }">
         <template v-if="ready && metric">
             <strong class="home-cell-value" :class="{ 'home-cell-value--missing': metric.value === null }">{{ formatMetric(metric) }}</strong>
             <div class="home-cell-note">
@@ -52,6 +57,7 @@ const statusText = computed(() => homeMetricStateText(props.status, null))
             <button class="home-cell-actions" type="button" @click="emit('retry')">Повторить расчёт</button>
         </div>
         <p v-else class="home-cell-note">{{ statusText }}</p>
+        <HomeOrientationStatus v-if="orientation && orientationCell" :group="orientation" :cell="orientationCell" />
         <div class="home-cell-actions"><button type="button" :aria-label="`Подробности: ${row.label}, ${sideName}`" @click="openDetails">ⓘ</button></div>
         <dialog ref="dialog" class="home-result-dialog" :aria-labelledby="`home-details-${side}-${row.category}-${row.key}`" @close="restoreFocus">
             <div class="home-result-dialog-content">
