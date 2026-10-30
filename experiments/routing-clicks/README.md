@@ -68,4 +68,4 @@ docker compose exec -T -e LOG_CHANNEL=stderr -e 'PGOPTIONS=-c default_transactio
 Nginx. `summarize.py <каталог отчёта>` проверяет соответствие выборок и сохранение
 прежних успехов, затем создаёт `comparison-final.json`, не затирая прежний файл.
 
-Итог и ограничения: `docs/local-routing-clicks-2026-10-23.md`.
+Итог и ограничения: `docs/history/local-routing-clicks-2026-10-23.md`.

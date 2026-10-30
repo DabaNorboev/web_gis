@@ -1,3 +1,9 @@
+---
+status: current
+updated: 2026-10-27
+verified: not verified
+---
+
 # Проверки PlaceLens
 
 Статус: текущая карта команд и их эффектов; точечные команды сверены с конфигурацией 27.10.2026. Приведённые команды не означают, что они выполнены при обновлении документации.
@@ -19,7 +25,7 @@
 подготовленного snapshot и API; `python3 -B tests/routing-runtime/test_walking_prepare.py -v`
 для offline-подготовки на синтетических fixtures. Это не запускает ORS/БД.
 Реальная готовность дополнительно требует проверки закреплённого ORS и отказов
-API в изолированном окружении; выполненный протокол — [walking-backend](walking-backend.md).
+API в изолированном окружении; выполненный протокол — [walking-backend](features/walking-backend.md).
 
 Пеший UI дополнительно проверяется `walking-contract.test.mjs`, регрессиями
 состояния в `trips.test.mjs`/`comparison-trips.test.mjs`/`comparison-link.test.mjs`
@@ -62,6 +68,83 @@ API в изолированном окружении; выполненный п�
 
 Файлы и фильтры — примеры выбора, не постоянный минимум для любой задачи. Полный прогон нужен при изменении общих зависимостей/стенда или риске за пределами выбранного набора. Для правки только документации достаточно проверок первой строки основной таблицы.
 
+## Проверка документации
+
+После любых правок docs запускать `scripts/check-docs` (эквивалент: `python3 -B scripts/check-docs`). Он проверяет шапки, значения статуса/дат, относительные ссылки и якоря, достижимость документов из индекса и входящие ссылки из tracked Markdown, включая README/AGENTS. Сеть, приложение, БД и runtime не запускаются; файлы не изменяются.
+
+Предел размера — 40 KiB (40 960 байт UTF-8), вычисляется как `len(text.encode('utf-8'))`: превышение в `features/` и `plans/` даёт ошибку и ненулевой exit code; в остальных текущих документах — предупреждение. Для исторических материалов в `history/`, `archive/` и `research/` размер не диагностируется; шапки, индекс и переносимые ссылки по-прежнему проверяются. Ссылки на ignored `data/reports` в исторических документах выводятся как `INFO`, а в `features/`, `plans/` и `data/` — как `WARN`: локальное свидетельство нельзя считать доступным в checkout. Это граница проверки, а не подтверждение сохранности входов. Ошибки обычных ссылок и якорей не понижаются до INFO.
+
+Проверяются все Markdown в docs, включая локальные untracked-планы; `--exclude` удалён по [событию G2/current](plans/roadmap.md#убрать-временное-исключение-плана-интерфейса). Если план интерфейса защищён от изменений отдельным поручением, его ошибки остаются в результате и отчёте. Они не исправляются обходом checker или изменением защищённого плана.
+
+Регрессии checker: `python3 -B tests/docs/test_check_docs.py -v` — только временные Markdown-fixtures. Проверка документации не подтверждает поведение приложения или свежесть исторических прогонов. При переносе документов дополнительно проверяются точные ссылки на них из tracked Markdown вне docs.
+
+### Размер контекста без запуска сессий
+
+Команда ниже только читает UTF-8 файлы. Она перечисляет AGENTS, индекс и все прямые Markdown-ссылки AGENTS как кандидатов чтения по задаче; это не требование загружать их все. Ссылки не раскрываются рекурсивно. Типовой набор здесь — `AGENTS.md + docs/README.md + один контракт поездок`. Символы и байты не пересчитываются в токены.
+
+```bash
+python3 -B - <<'PY'
+from pathlib import Path
+import re
+import subprocess
+
+root = Path.cwd()
+agents = (root / 'AGENTS.md').read_text(encoding='utf-8')
+paths = {'AGENTS.md', 'docs/README.md'}
+paths.update(re.findall(r'\]\((docs/[^)#]+)(?:#[^)]*)?\)', agents))
+def size(name, revision=None):
+    blob = (subprocess.check_output(['git', 'show', f'{revision}:{name}'], cwd=root)
+            if revision else (root / name).read_bytes())
+    return len(blob), len(blob.decode('utf-8'))
+print('file\tUTF-8 bytes\tcharacters')
+for name in sorted(paths):
+    byte_count, char_count = size(name)
+    print(f'{name}\t{byte_count}\t{char_count}')
+sample = ['AGENTS.md', 'docs/README.md', 'docs/features/trips.md']
+sizes = [size(name) for name in sample]
+print('Typical set: ' + ' + '.join(sample))
+print('TOTAL\t' + str(sum(v[0] for v in sizes)) + '\t' + str(sum(v[1] for v in sizes)))
+old_revision = '0f30b60'
+old_sample = ['AGENTS.md', 'docs/README.md', 'docs/trips.md']
+for label, revision, names in [('BEFORE ' + old_revision, old_revision, old_sample),
+                               ('AFTER working tree', None, sample)]:
+    measured = [size(name, revision) for name in names]
+    print(label)
+    for name, (byte_count, char_count) in zip(names, measured):
+        print(f'{name}\t{byte_count}\t{char_count}')
+    print('TOTAL\t' + str(sum(v[0] for v in measured)) + '\t' + str(sum(v[1] for v in measured)))
+PY
+```
+
+### Сопоставление размеров до и после реорганизации
+
+Замер 27.10.2026 выполнен командой выше: «до» — содержимое объектов `git show 0f30b60:<путь>`, «после» — текущие файлы рабочего дерева, без нового коммита. Checkout не выполнялся. Старое и новое имя trips сопоставлены явно; не подменять рабочую копию содержимым HEAD.
+
+| Файл набора | До: байты UTF-8 | До: символы | После: байты UTF-8 | После: символы |
+|---|---:|---:|---:|---:|
+| AGENTS.md | 9 669 | 5 649 | 12 292 | 7 170 |
+| Индекс docs/README.md | 14 411 | 9 492 | 9 617 | 5 891 |
+| Контракт trips (docs/trips.md → docs/features/trips.md) | 17 333 | 10 592 | 23 042 | 13 912 |
+| **Всего** | **41 413** | **25 733** | **44 951** | **26 973** |
+
+Основная доля в обоих наборах — trips: 41.9% байтов до и 51.3% после. Общий объём вырос на 8.5% по байтам и 4.8% по символам. Это размеры, не фактические токены. В рабочей версии trips также сохранены ранее существовавшие незакоммиченные уточнения интерфейса, поэтому сравнение не изолирует эффект одного переноса файлов. Строка после относится к этому замеру; дальнейшие изменения измеряются повторно, а не считаются прежним результатом.
+
+### Будущий замер реальных токенов
+
+Процедура выполняется только отдельным заданием; в доводке docs сессии не запускаются. После фиксации документации взять старый `0f30b60` и новый коммит в двух отдельных чистых копиях, не переключая рабочее дерево с интерфейсом. Зафиксировать одинаковые версию клиента, модель, effort, настройки и инструменты. Для каждой из трёх задач запускать новую сессию без resume и без вложения всей документации:
+
+1. «Найди контракт личных точек поездок и перечисли правила приватности. Только чтение, без изменений и запуска приложения».
+2. «Найди команды проверки небольшой правки frontend и объясни их побочные эффекты. Только чтение, команды не выполнять».
+3. «Сопоставь ограничения пешего и автомобильного режимов по текущим контрактам. Только чтение, без запуска runtime».
+
+В подготовленной копии пример будущего запуска (переменные задаются исполнителем; сейчас не выполнялся):
+
+```bash
+codex exec --json --sandbox read-only "$context_task_prompt" > "$context_events_file"
+```
+
+В сохранённом JSONL смотреть `turn.completed.usage`: записать `input_tokens`, `cached_input_tokens`, `output_tokens` и `reasoning_output_tokens`, если поле доступно. Эти события и JSON-режим описаны в [официальной документации](https://learn.chatgpt.com/docs/non-interactive-mode#make-output-machine-readable). Сохранить вместе с числами commit, дословный prompt, модель/effort, число прочитанных документов, время и результат задачи; отсутствие счётчика записать как неизвестность. Cache учитывать отдельно, а не суммировать повторно с input. Полные prompts/tool outputs из журнала не публиковать. Сравнивать три пары успешных результатов, не объяснять экономию только разницей байтов; ошибки и различия cache отмечать отдельно.
+
 ## PHP и PostGIS
 
 Конфигурации — `phpunit.xml`, `phpunit.postgis.xml`; CI запускает обычный `composer test` и полный `composer test:postgis`. `tests/Support/PostgisDatabase.php` и `tests/PostgisTestCase.php` проверяют конфигурацию до подключения, затем фактическую БД и режим.
@@ -82,7 +165,7 @@ docker compose exec php composer test:postgis -- --testsuite=PostGISWrite
 
 ## Frontend и browser
 
-`npm test` исполняет настоящие исходные TS-модули/composables и SFC через тестовые loaders, подменяя явно выбранные зависимости. `tests/frontend/support/vue-component.mjs` — единственное место преобразования модулей: TypeScript CommonJS transform и Vue SFC compiler. `loadModule` читает TS, `loadComponent` компилирует SSR или client render/setup, `loadSetup` открывает явно перечисленные bindings двух страниц для существующих state-тестов. Импорты передаются по точным спецификаторам; неизвестный модуль и отсутствующий именованный экспорт приводят к ошибке. Тесты самостоятельных поездок исполняют настоящий `useTripsState` через `loadModule`: доменные сценарии обращаются к его API, а проверки страницы/SSR сохраняют настоящую связь с composable; транспорт/API и DOM подменяются явно. Browser globals передаются отдельно и не записываются в `globalThis`; общего кэша вычисленных модулей нет. Карты используют явную таблицу зависимостей CityMap, CSS обозначен отдельной зависимостью без Node runtime. `trip-overlay.test.mjs` исполняет настоящий tripOverlay и настоящий CityMap через тот же loader; управляются только MapLibre/DOM/очередь кадров. Проверяются повторная установка/очистка собственных слоёв, актуальный ID кандидата и исходные координаты, независимость сторон и отмена отложенной камеры. Регрессии loader — `vue-component-loader.test.mjs`; [протокол переноса R1](frontend-loader-r1-2026-10-25.md). Отдельные SSR-проверки всё ещё используют старую MetricCard; [аудит](structure-quality-audit-2026-10-25.md) предлагает перенос регрессий, а не простое удаление теста.
+`npm test` исполняет настоящие исходные TS-модули/composables и SFC через тестовые loaders, подменяя явно выбранные зависимости. `tests/frontend/support/vue-component.mjs` — единственное место преобразования модулей: TypeScript CommonJS transform и Vue SFC compiler. `loadModule` читает TS, `loadComponent` компилирует SSR или client render/setup, `loadSetup` открывает явно перечисленные bindings двух страниц для существующих state-тестов. Импорты передаются по точным спецификаторам; неизвестный модуль и отсутствующий именованный экспорт приводят к ошибке. Тесты самостоятельных поездок исполняют настоящий `useTripsState` через `loadModule`: доменные сценарии обращаются к его API, а проверки страницы/SSR сохраняют настоящую связь с composable; транспорт/API и DOM подменяются явно. Browser globals передаются отдельно и не записываются в `globalThis`; общего кэша вычисленных модулей нет. Карты используют явную таблицу зависимостей CityMap, CSS обозначен отдельной зависимостью без Node runtime. `trip-overlay.test.mjs` исполняет настоящий tripOverlay и настоящий CityMap через тот же loader; управляются только MapLibre/DOM/очередь кадров. Проверяются повторная установка/очистка собственных слоёв, актуальный ID кандидата и исходные координаты, независимость сторон и отмена отложенной камеры. Регрессии loader — `vue-component-loader.test.mjs`; [протокол переноса R1](history/frontend-loader-r1-2026-10-25.md). Отдельные SSR-проверки всё ещё используют старую MetricCard; [аудит](research/structure-quality-audit.md) предлагает перенос регрессий, а не простое удаление теста.
 
 `playwright.config.mjs` задаёт четыре viewport и один worker. `tests/browser/server.mjs` собирает настоящий app во временный каталог, не читает `.env`, не пишет опубликованные assets и не проксирует к backend. API fixtures синтетические, MapLibre/DOM настоящие. Итоги Playwright в рабочем дереве — отдельный побочный эффект.
 

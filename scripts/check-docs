@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""Check documentation metadata, local links/anchors and index reachability. No writes."""
+import argparse
+import datetime
+import pathlib
+import re
+import subprocess
+import sys
+import unicodedata
+import urllib.parse
+
+STATUSES = {'current', 'plan', 'hypothesis', 'history', 'superseded'}
+
+
+def prose(text, preserve_inline=True):
+    """Exclude fenced code and inline examples from link/heading discovery."""
+    lines, fence = [], None
+    for line in text.splitlines():
+        marker = re.match(r'^\s*(`{3,}|~{3,})', line)
+        if marker:
+            token = marker[1]
+            if fence is None:
+                fence = token
+            elif token[0] == fence[0] and len(token) >= len(fence):
+                fence = None
+            lines.append('')
+        else:
+            lines.append('' if fence else re.sub(r'`+[^`]*`+', lambda m: m[0].strip('`') if preserve_inline else '', line))
+    return '\n'.join(lines)
+
+
+def anchors(text):
+    counts, result = {}, set()
+    for heading in re.findall(r'^#{1,6}\s+(.+?)\s*#*$', prose(text), re.M):
+        heading = re.sub(r'<[^>]+>', '', heading).lower()
+        slug = ''.join(c for c in heading if c in '-_ ' or unicodedata.category(c)[0] in 'LNM')
+        slug = slug.replace(' ', '-')
+        number = counts.get(slug, 0)
+        counts[slug] = number + 1
+        result.add(slug if not number else f'{slug}-{number}')
+    result.update(re.findall(r'\bid=["\']([^"\']+)', prose(text)))
+    return result
+
+
+def links(text):
+    text = prose(text, preserve_inline=False)
+    # Inline links/images, plus reference definitions. Nested labels are allowed.
+    result = re.findall(r'\]\(\s*(<[^>]+>|[^\s)]+)(?:\s+["\'][^\n]*["\'])?\s*\)', text)
+    result += re.findall(r'^\s*\[[^\]]+\]:\s*(<[^>]+>|\S+)', text, re.M)
+    return [target.strip('<>') for target in result]
+
+
+def check(root, size_limit=40 * 1024, extra_files=(), notices=None):
+    root = pathlib.Path(root).resolve()
+    notices = [] if notices is None else notices
+    files = sorted((root / 'docs').rglob('*.md'))
+    errors, warnings, graph = [], [], {}
+    documents = {p.resolve(): p.read_text(encoding='utf-8') for p in files}
+    if root / 'docs/README.md' not in documents:
+        errors.append('docs/README.md: missing documentation index')
+    # Root entry points are checked too, but don't require front matter.
+    for name in ('README.md', 'AGENTS.md', *extra_files):
+        p = root / name
+        if p.exists():
+            documents[p] = p.read_text(encoding='utf-8')
+    for path, text in documents.items():
+        name = path.relative_to(root).as_posix()
+        graph[path] = set()
+        if path in files:
+            match = re.match(r'\A---\n(.*?)\n---(?:\n|$)', text, re.S)
+            fields = {}
+            if not match:
+                errors.append(f'{name}: missing front matter')
+            else:
+                for line in match[1].splitlines():
+                    key, sep, value = line.partition(':')
+                    if sep:
+                        if key in fields:
+                            errors.append(f'{name}: duplicate metadata field {key}')
+                        fields[key] = value.strip()
+                if fields.get('status') not in STATUSES:
+                    errors.append(f'{name}: invalid status')
+                try:
+                    datetime.date.fromisoformat(fields.get('updated', ''))
+                except ValueError:
+                    errors.append(f'{name}: invalid updated date')
+                verified = fields.get('verified', '')
+                if verified not in ('code', 'not verified'):
+                    try:
+                        if not verified.startswith('run '):
+                            raise ValueError
+                        datetime.date.fromisoformat(verified[4:])
+                    except ValueError:
+                        errors.append(f'{name}: invalid verified value')
+            folder = path.relative_to(root).parts[1] if len(path.relative_to(root).parts) > 2 else ''
+            if folder in ('history', 'archive') and fields.get('status') not in ('history', 'superseded'):
+                errors.append(f'{name}: historical directory requires history or superseded status')
+            if len(text.encode('utf-8')) > size_limit and folder not in ('history', 'archive', 'research'):
+                message = f'{name}: larger than {size_limit // 1024} KiB'
+                (errors if folder in ('features', 'plans') else warnings).append(message)
+            if re.search(r'\d{4}-\d{2}-\d{2}', path.name) and 'history' not in path.relative_to(root).parts:
+                warnings.append(f'{name}: dated filename outside history')
+        for target in links(text):
+            parsed = urllib.parse.urlsplit(target)
+            if parsed.scheme or parsed.netloc:
+                continue
+            raw = urllib.parse.unquote(parsed.path)
+            # Historical absolute links outside this checkout are evidence, not portable contracts.
+            if raw.startswith('/'):
+                if any(part in path.relative_to(root).parts for part in ('history', 'archive', 'research')):
+                    notices.append(f'{name}: absolute historical reference (not checked)')
+                else:
+                    errors.append(f'{name}: absolute local target; use a relative link')
+                continue
+            raw = re.sub(r':\d+(?::\d+)?$', '', raw)
+            destination = (path.parent / raw).resolve() if raw else path
+            try:
+                relative = destination.relative_to(root).as_posix()
+            except ValueError:
+                if any(part in path.relative_to(root).parts for part in ('history', 'archive', 'research', 'experiments')):
+                    notices.append(f'{name}: historical reference outside checkout (not checked)')
+                else:
+                    errors.append(f'{name}: local target outside checkout; use a portable link')
+                continue
+            if relative.startswith(('data/', 'test-results/', 'playwright-report/', 'public/build/')):
+                # These are local evidence/inputs and are deliberately absent from a clean checkout.
+                active = path.relative_to(root).parts[:2] in (
+                    ('docs', 'features'), ('docs', 'plans'), ('docs', 'data'))
+                message = f'{name}: local generated evidence/input {target} (not checked)'
+                if active and (relative == 'data/reports' or relative.startswith('data/reports/')):
+                    warnings.append(message)
+                else:
+                    notices.append(f'{name}: local generated evidence/input (not checked)')
+                continue
+            if not destination.exists():
+                errors.append(f'{name}: missing local target {target}')
+                continue
+            if destination in documents:
+                graph[path].add(destination)
+                if parsed.fragment and urllib.parse.unquote(parsed.fragment) not in anchors(documents[destination]):
+                    errors.append(f'{name}: missing anchor {target}')
+        if path in files and fields.get('replaces'):
+            # replaces is descriptive metadata; its target must also be indexed as a normal link.
+            if '\n' in fields['replaces']:
+                errors.append(f'{name}: invalid replaces value')
+    seen, pending = set(), [root / 'docs/README.md']
+    while pending:
+        path = pending.pop()
+        if path not in seen:
+            seen.add(path)
+            pending.extend(graph.get(path, ()))
+    for path in files:
+        if path.resolve() not in seen:
+            errors.append(f'{path.relative_to(root)}: not reachable from docs/README.md')
+    return sorted(set(errors)), sorted(set(warnings)), len(files)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.parse_args()
+    root = pathlib.Path(__file__).resolve().parents[1]
+    extra = []
+    if (root / '.git').exists():
+        result = subprocess.run(['git', '-C', str(root), 'ls-files', '-z', '--', '*.md'],
+                                capture_output=True, text=True)
+        if result.returncode:
+            print('ERROR: cannot list tracked Markdown files')
+            return 1
+        extra = [name for name in result.stdout.split('\0') if name and not name.startswith('docs/')]
+    notices = []
+    errors, warnings, count = check(root, extra_files=extra, notices=notices)
+    for message in errors:
+        print('ERROR:', message)
+    for message in warnings:
+        print('WARN:', message)
+    notices = sorted(set(notices))
+    for message in notices:
+        print('INFO:', message)
+    print(f'Documentation: {count} files, {len(errors)} errors, {len(warnings)} warnings, {len(notices)} informational notes')
+    return bool(errors)
+
+
+if __name__ == '__main__':
+    sys.exit(main())

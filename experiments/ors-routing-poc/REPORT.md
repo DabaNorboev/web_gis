@@ -122,7 +122,7 @@ Warm-цифры включают локальный HTTP helper, относят�
 
 ## Свидетельства, проверки и сохранность
 
-Ignored-каталог [data/reports/ors-routing-poc-2026-10-26](../../data/reports/ors-routing-poc-2026-10-26/):
+Ignored-каталог [data/reports/ors-routing-poc-2026-10-26](../../data/reports/ors-routing-poc-2026-10-26):
 
 - `freeze.json` — HEAD, хеши исходного дерева и пяти исходных входов;
 - `walking/`, `driving/`: конфигурация, графы, server.log, `responses.json`,

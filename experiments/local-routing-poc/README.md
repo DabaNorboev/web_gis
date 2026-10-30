@@ -2,7 +2,7 @@
 
 Изолированный эксперимент по заданию от 21.10.2026. Laravel/Vue, рабочая БД,
 Compose, исходные данные и существующие PoC сохраняются. Нет публичного роутера.
-Исторический аудит: `docs/local-routing-audit-2026-10-21.md`.
+Исторический аудит: `docs/research/local-routing-audit.md`.
 
 ## Этап 2: ожидаемый результат и проверки
 
@@ -145,7 +145,7 @@ docker exec -e 'PGOPTIONS=-c default_transaction_read_only=on' web_gis-php-1 \
 git diff --check
 ```
 
-Полный отчёт и граница продолжения: `docs/local-routing-decision-2026-10-21.md`.
+Полный отчёт и граница продолжения: `docs/history/local-routing-decision-2026-10-21.md`.
 
 Уточнение при интеграции: первоначальный SQL-аудит пропускал `vehicle=private`.
 Иерархия `motorcar → motor_vehicle → vehicle → access` исправлена также здесь,
@@ -156,4 +156,4 @@ git diff --check
 `data/reports/local-routing-integration-2026-10-21/geometry-review-access-corrected.json`.
 Дальнейшая production-защита дополнительно проверяет полную область,
 нерассчитанные подходы и исходные node annotations; результаты интеграции —
-`docs/local-routing-integration-2026-10-21.md`.
+`docs/history/local-routing-integration-2026-10-21.md`.
