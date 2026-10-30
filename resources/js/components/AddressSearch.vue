@@ -30,6 +30,8 @@ function submit() {
     else void search()
 }
 function blur(event: FocusEvent) {
+    // Changing presentation must not cancel a search already in flight.
+    if (event.relatedTarget instanceof Element && event.relatedTarget.closest('[data-interface-switch]')) return
     if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) close()
 }
 </script>
