@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-10-29
+updated: 2026-10-31
 verified: not verified
 ---
 
@@ -16,3 +16,4 @@ verified: not verified
 - [Второй интерфейс PlaceLens — незавершённый план](interface-v2-plan.md).
 - [UX следующей итерации самостоятельного макета — решения и критерии](interface-prototype-ux.md).
 - [G4: этапы интеграции обновлённого интерфейса в приложение](interface-integration.md).
+- [Исправления UX после оценки владельца — U1–U4](interface-usability-corrections.md).
