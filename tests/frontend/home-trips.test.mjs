@@ -64,8 +64,8 @@ function setup() {
     }
     const WalkingTripDetails = loadComponent(path('components/WalkingTripDetails.vue'), { '@/utils/trips': tripUtils })
     const ComparisonTripData = loadComponent(path('components/ComparisonTripData.vue'), { '@/utils/trips': tripUtils, '@/components/WalkingTripDetails.vue': WalkingTripDetails })
-    const HomeTripsEditor = loadComponent(path('components/home/HomeTripsEditor.vue'), { './HomeOrientationButton.vue': { render: () => null }, '@/components/TripPointPicker.vue': { render: () => null }, '@/composables/useHomeTrips': adapter })
     const HomeResultDialog = loadComponent(path('components/home/HomeResultDialog.vue'))
+    const HomeTripsEditor = loadComponent(path('components/home/HomeTripsEditor.vue'), { './HomeResultDialog.vue': HomeResultDialog, '@lucide/vue': { Pencil: { render: () => null }, Trash2: { render: () => null } }, './HomeOrientationInput.vue': { render: () => null }, '@/components/TripPointPicker.vue': { render: () => null }, '@/composables/useHomeTrips': adapter })
     const HomeTripCell = loadComponent(path('components/home/HomeTripCell.vue'), { './HomeOrientationButton.vue': { render: () => null }, './HomeOrientationStatus.vue': { render: () => null }, '@/components/home/HomeResultDialog.vue': HomeResultDialog,
         '@/components/WalkingTripDetails.vue': WalkingTripDetails, '@/utils/comparisonTrips': personal, '@/utils/trips': tripUtils,
         '@/utils/tripFailure': failures, '@/utils/tripCandidates': candidates })

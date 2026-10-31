@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import HomeTripsEditor from '@/components/home/HomeTripsEditor.vue'
 import HomeTripCell from '@/components/home/HomeTripCell.vue'
 import ComparisonTripData from '@/components/ComparisonTripData.vue'
@@ -11,7 +11,7 @@ import type { Coordinates } from '@/types/transport'
 import type { TripMode } from '@/types/trips'
 
 const props = defineProps<{ model: HomeTripsPort; input: HomeTripsInput; editorTarget?: string }>()
-const emit = defineEmits<{ showMap: [focus: boolean]; scenario: [value: 'addresses' | 'standalone']; run: [] }>()
+const emit = defineEmits<{ showMap: [focus: boolean]; scenario: [value: 'addresses' | 'standalone']; run: []; focusPoint: [point: Coordinates] }>()
 const { addresses, standalone } = props.model
 const { mode, places } = addresses
 const { draft } = standalone
@@ -52,7 +52,13 @@ function changeScenario(value: 'addresses' | 'standalone') {
     if (trip) props.input.activate({ kind: 'trip', trip })
     else props.input.activate({ kind: 'profile', side: props.input.activeSide.value })
 }
-defineExpose({ changeScenario })
+const editor = ref<InstanceType<typeof HomeTripsEditor> | null>(null)
+async function editGoal(value: 'addresses' | 'standalone', placeId: string) {
+    scenario.value = value
+    await nextTick()
+    await editor.value?.openGoal(value, placeId)
+}
+defineExpose({ changeScenario, editGoal })
 function changeMode(event: Event) {
     const value = (event.target as HTMLSelectElement).value
     if (value === 'driving' || value === 'walking') addresses.setMode(value as TripMode)
@@ -62,7 +68,13 @@ function pickGoal(trip: HomeTripRef) { props.input.activate({ kind: 'pick-goal',
 function pickStreet(trip: HomeTripRef, end: 'start' | 'target') { props.input.activate({ kind: 'pick-street', trip, end }); emit('showMap', false) }
 function chooseOriginal(index: number, point: Coordinates) {
     const place = index < 0 ? draft.start : draft.places[index]
-    if (place) { place.lon = String(point.lon); place.lat = String(point.lat) }
+    if (place) {
+        place.lon = String(point.lon); place.lat = String(point.lat)
+        // The geometry guard clears the old result context. This explicit choice
+        // opens the current draft again, keeping its editor on the same scenario.
+        const trip = homeStandaloneTrip(props.model, Math.max(0, index))
+        if (trip) props.input.activate({ kind: 'trip', trip })
+    }
 }
 function standaloneIndex(trip: HomeTripRef) { return draft.places.findIndex((_, index) => homeStandaloneTrip(props.model, index)?.placeId === trip.placeId) }
 function road(trip: HomeTripRef, end: 'start' | 'target', point: Coordinates | null) {
@@ -100,7 +112,7 @@ const actions: HomeTripActions = { show, pickStreet, road, retry, selectedRoad, 
 <template>
     <section class="home-trips" aria-label="Поездки единого пространства">
         <Teleport :to="editorTarget || 'body'" :disabled="!editorTarget" defer>
-            <HomeTripsEditor :model="model" :input="input" :scenario="scenario" :available="available" :busy="busy" :picking="picking" @change-mode="changeMode" @pick-goal="pickGoal" @choose-original="chooseOriginal" @show-map="emit('showMap', $event)" @run="emit('run')" />
+            <HomeTripsEditor ref="editor" :model="model" :input="input" :scenario="scenario" :available="available" :busy="busy" :picking="picking" @focus-point="emit('focusPoint', $event)" @change-mode="changeMode" @pick-goal="pickGoal" @choose-original="chooseOriginal" @show-map="emit('showMap', $event)" @run="emit('run')" />
         </Teleport>
         <slot name="results" :entries="entries" :actions="actions" :scenario="scenario">
             <template v-if="scenario === 'addresses'"><p v-for="place in places" :key="place.id">{{ pairedTripFact(addresses.cell('left', place.id), addresses.cell('right', place.id), mode) }}</p></template>

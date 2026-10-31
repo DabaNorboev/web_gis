@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useHomeTableColumns } from '@/composables/useHomeTableColumns'
 import { computed, ref } from 'vue'
 import HomeOrientationButton from './HomeOrientationButton.vue'
 import HomeMetricCell from '@/components/home/HomeMetricCell.vue'
@@ -10,10 +11,10 @@ import ComparisonFacts from '@/components/ComparisonFacts.vue'
 import OverviewTopics from '@/components/OverviewTopics.vue'
 import { useOverviewTopics } from '@/composables/useOverviewTopics'
 import { comparisonGroups, comparisonExtraRows, comparisonMetric, type ComparisonRow } from '@/utils/comparisonPresentation'
+import { pairedTripFact } from '@/utils/comparisonTrips'
 import { comparisonRowId } from '@/utils/comparisonFacts'
 import { comparisonDifferences, type SideKey } from '@/utils/comparison'
-import { pairedTripFact } from '@/utils/comparisonTrips'
-import { homeMetricStateText, metricExplanation } from '@/utils/homeMetricPresentation'
+import { homeMetricStateText } from '@/utils/homeMetricPresentation'
 import { mappedNearestId } from '@/utils/mapAnalysis'
 import type { HomeWorkspace } from '@/composables/useHomeWorkspace'
 import type { HomeTripRef, HomeTripsPort } from '@/types/homeWorkspace'
@@ -23,6 +24,8 @@ const props = defineProps<{ model: HomeWorkspace; trips: HomeTripsPort; entries:
 const emit = defineEmits<{ 'update:view': [view: HomeResultView]; expand: []; focusLayer: [side: SideKey, layer: MapLayerKey, id?: string]; selectStop: [side: SideKey, id: number] }>()
 const { includes, selection } = useOverviewTopics()
 const showAll = ref(false)
+const table = ref<HTMLTableElement | null>(null)
+const columns = useHomeTableColumns(table, computed(() => props.model.selectedSides.value.length + 1))
 const names = { left: 'А', right: 'Б' }
 const tabs = [{ id: 'overview', label: 'Обзор' }, { id: 'trips', label: 'Поездки' }, { id: 'surroundings', label: 'Окружение' }, { id: 'data', label: 'Данные' }] as const
 const single = computed(() => props.model.selectedSides.value.length === 1 ? props.model.selectedSides.value[0]! : null)
@@ -71,25 +74,40 @@ function entryFor(side: SideKey, id: string) { return props.entries.find(entry =
                 <p v-if="model.sides[side].status !== 'ready'" :role="model.sides[side].status === 'loading' ? 'status' : 'alert'">{{ names[side] }} · {{ homeMetricStateText(model.sides[side].status) }} <button v-if="!['loading', 'empty'].includes(model.sides[side].status)" type="button" @click="model.loadSide(side)">Повторить {{ names[side] }}</button></p>
             </div>
             <template v-if="view !== 'data' && model.selectedSides.value.length">
-                <table class="home-result-table" :class="{ 'is-single': single }">
+                <table ref="table" class="home-result-table" :class="{ 'is-single': single }">
                     <caption class="sr-only">{{ single ? `Профиль ${names[single]}` : 'Общая матрица А/Б' }} · поездки и окружение</caption>
-                    <thead><tr><th scope="col">{{ view === 'surroundings' ? 'Окружение' : 'Места и показатели' }}</th><th v-for="side in model.selectedSides.value" :key="side" scope="col"><span class="home-column-heading"><span class="home-side-badge" :class="{ 'is-b': side === 'right' }">{{ names[side] }}</span><span>{{ model.sides[side].knownAddress?.label ?? model.sides[side].id }}</span></span></th></tr></thead>
+                    <colgroup><col v-for="(size, index) in columns.sizes.value" :key="index" :style="{ width: `${size}%` }" /></colgroup>
+                    <thead><tr>
+                        <th scope="col">
+                            {{ view === 'surroundings' ? 'Окружение' : 'Места и показатели' }}
+                            <button class="home-column-reset" type="button" aria-label="Сбросить ширину колонок" @click="columns.reset">↺</button>
+                            <span class="home-column-resizer" role="separator" tabindex="0" aria-label="Ширина названий" aria-orientation="vertical"
+                                :aria-valuenow="Math.round(columns.sizes.value[0] ?? 17)" :aria-valuemin="columns.minimum.value" :aria-valuemax="columns.maximum(0)"
+                                @keydown="columns.key($event, 0)" @pointerdown="columns.pointer($event, 0)" @dblclick="columns.reset" />
+                        </th>
+                        <th v-for="(side, index) in model.selectedSides.value" :key="side" scope="col">
+                            <span class="home-column-heading"><span class="home-side-badge" :class="{ 'is-b': side === 'right' }">{{ names[side] }}</span><span>{{ model.sides[side].knownAddress?.label ?? model.sides[side].id }}</span></span>
+                            <span v-if="index < model.selectedSides.value.length - 1" class="home-column-resizer" role="separator" tabindex="0" :aria-label="`Ширина ${names[side]}`" aria-orientation="vertical"
+                                :aria-valuenow="Math.round(columns.sizes.value[index + 1] ?? 0)" :aria-valuemin="columns.minimum.value" :aria-valuemax="columns.maximum(index + 1)"
+                                @keydown="columns.key($event, index + 1)" @pointerdown="columns.pointer($event, index + 1)" @dblclick="columns.reset" />
+                        </th>
+                    </tr></thead>
                     <tbody v-if="view !== 'surroundings'" class="home-trip-rows">
-                        <tr class="home-section-row"><th :colspan="model.selectedSides.value.length + 1" scope="colgroup">Поездки <span>{{ trips.addresses.mode.value === 'walking' ? 'Модель уличной части · подходы неизвестны' : 'Автомодель · без пробок, подходов и парковки' }}</span></th></tr>
-                        <tr v-for="(place, goalIndex) in trips.addresses.places.value" :key="place.id" :data-goal-id="place.id" :data-map-selected="selectedTrip?.placeId === place.id">
-                            <th scope="row"><span class="home-goal-label"><small>Цель {{ goalIndex + 1 }} · </small>{{ place.label || 'Без названия' }}</span><HomeOrientationButton :target="{ kind: 'trip', scenario: 'addresses', placeId: place.id, mode: trips.addresses.mode.value }" :label="place.label || 'Без названия'" /><HomeResultDialog v-if="!single" :title="`Сопоставимость: ${place.label || 'Без названия'}`" :label="`Сопоставимость поездок: ${place.label || 'Без названия'}`"><p>{{ pairedTripFact(trips.addresses.cell('left', place.id), trips.addresses.cell('right', place.id), trips.addresses.mode.value) }}</p><p>Сравнивается длина подтверждённых поездок одного источника и снимка; преимущества по неизвестному пути нет.</p></HomeResultDialog></th>
-                            <td v-for="side in model.selectedSides.value" :key="side" :data-side="side" :data-map-selected="selectedTrip?.placeId === place.id && selectedTrip?.scenario === 'addresses' && selectedTrip.side === side"><HomeTripCell v-if="entryFor(side, place.id)" :entry="entryFor(side, place.id)!" :actions="actions" :mode="trips.addresses.mode.value" /></td>
+                        <tr class="home-section-row"><th :colspan="model.selectedSides.value.length + 1" scope="colgroup">Поездки <span>{{ trips.addresses.mode.value === 'walking' ? 'По выбранным улицам' : 'Время без учёта пробок' }}</span></th></tr>
+                        <tr v-for="place in trips.addresses.places.value" :key="place.id" :data-goal-id="place.id" :data-map-selected="selectedTrip?.placeId === place.id">
+                            <th scope="row"><span class="home-goal-label">{{ place.label || 'Без названия' }}</span><HomeOrientationButton :target="{ kind: 'trip', scenario: 'addresses', placeId: place.id, mode: trips.addresses.mode.value }" :label="place.label || 'Без названия'" /></th>
+                            <td v-for="side in model.selectedSides.value" :key="side" :data-side="side" :data-map-selected="selectedTrip?.placeId === place.id && selectedTrip?.scenario === 'addresses' && selectedTrip.side === side"><HomeTripCell v-if="entryFor(side, place.id)" :entry="entryFor(side, place.id)!" :actions="actions" :mode="trips.addresses.mode.value" :comparison-note="single ? undefined : pairedTripFact(trips.addresses.cell('left', place.id), trips.addresses.cell('right', place.id), trips.addresses.mode.value)" /></td>
                         </tr>
                         <tr v-if="!trips.addresses.places.value.length"><td :colspan="model.selectedSides.value.length + 1" class="home-cell-note">Для расчёта поездок добавьте общие цели. Профиль окружения уже доступен.</td></tr>
                     </tbody>
                     <tbody v-if="view !== 'trips'">
-                        <tr class="home-section-row"><th :colspan="model.selectedSides.value.length + 1" scope="colgroup">Окружение <span>{{ model.radius.value }} м · расстояния по прямой · входы и доступ не проверены</span></th></tr>
+                        <tr class="home-section-row"><th :colspan="model.selectedSides.value.length + 1" scope="colgroup">Окружение <span>{{ model.radius.value }} м</span></th></tr>
                         <template v-for="row in rows" :key="row.category + row.key">
                             <tr :id="comparisonRowId(row)" tabindex="-1" :data-metric-id="`${row.category}:${row.key}`">
-                                <th scope="row"><span>{{ row.label }}</span><HomeOrientationButton v-if="row.category === 'transport' && row.key === 'nearest_stop_distance'" :target="{ kind: 'stop' }" :label="row.label" /><small class="home-metric-caption">{{ metricExplanation(row).short }}</small></th>
+                                <th scope="row"><span>{{ row.label }}</span><HomeResultDialog v-if="differences(row).length" :title="`Условия: ${row.label}`" :label="`Различия условий: ${row.label}`"><ul><li v-for="note in differences(row)" :key="note">{{ note }}</li></ul></HomeResultDialog></th>
                                 <td v-for="side in model.selectedSides.value" :key="side" :data-side="side"><HomeMetricCell :row="row" :side="side" :profile="model.sides[side].profile" :status="model.sides[side].status" :radius="model.radius.value" @retry="model.loadSide(side)" @show-map="showRow(side, row)" /></td>
                             </tr>
-                            <tr v-if="differences(row).length" class="home-conditions-row"><td :colspan="model.selectedSides.value.length + 1"><ul aria-label="Различия условий сравнения"><li v-for="note in differences(row)" :key="note">{{ note }}</li></ul></td></tr>
+
                         </template>
                     </tbody>
                 </table>

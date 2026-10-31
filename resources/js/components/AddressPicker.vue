@@ -3,10 +3,15 @@ import { ref, watch, useId } from 'vue'
 import AddressSearch from '@/components/AddressSearch.vue'
 import CityMap from '@/components/map/CityMap.vue'
 import { useAddressChoice } from '@/composables/useAddressChoice'
+import type { Coordinates } from '@/types/transport'
 import type { AddressMapState } from '@/utils/addressMap'
 const props = defineProps<{ selectedId: string | null; externalMap?: boolean; resetKey?: number }>()
-const emit = defineEmits<{ select: [id: string]; mapState: [state: AddressMapState] }>()
-const { matches, pending, selected, highlightedId, highlightedGroupId, groups, mapState, clear, chooseGroup, chooseObject } = useAddressChoice(id => emit('select', id))
+const emit = defineEmits<{ select: [id: string]; mapState: [state: AddressMapState]; focusPoint: [point: Coordinates] }>()
+const { matches, pending, selected, highlightedId, highlightedGroupId, groups, mapState, clear, chooseGroup, chooseObject } = useAddressChoice(id => {
+    const object = pending.value?.objects.find(item => item.id === id)
+    emit('select', id)
+    if (object) emit('focusPoint', { lon: object.lon, lat: object.lat })
+})
 const searchResetKey = ref(0)
 const choicesId = `address-choice-${useId()}`
 watch(() => [props.selectedId, props.resetKey], reset)

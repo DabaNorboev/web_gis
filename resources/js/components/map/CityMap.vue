@@ -95,7 +95,13 @@ function resetView() {
     applyingView = false
     return cameraView()
 }
-defineExpose({ clearObjectSelection, resetView, focusSelection: focusSelected, focusTrip, centerPoint: () => { const p = map?.getCenter(); return p ? { lon: p.lng, lat: p.lat } : null } })
+function focusChosenPoint(point: Coordinates) {
+    selectionSequence++
+    if (!map) return
+    map.resize()
+    map.jumpTo({ center: [point.lon, point.lat], zoom: 16 })
+}
+defineExpose({ focusPoint: focusChosenPoint, clearObjectSelection, resetView, focusSelection: focusSelected, focusTrip, centerPoint: () => { const p = map?.getCenter(); return p ? { lon: p.lng, lat: p.lat } : null } })
 async function focusTrip() {
     const sequence = ++selectionSequence
     await nextTick()

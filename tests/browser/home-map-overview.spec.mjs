@@ -51,9 +51,9 @@ test('stable row → one goal → details → exact row, display scope and thres
     await expect(details).toContainText('Б →'); await details.getByRole('button', { name: 'К строке', exact: true }).press('Enter')
     await homeScreen(page, 'Сравнение')
     await expect(origin).toBeFocused(); await expect(row(page).locator('[data-side=right]')).toHaveAttribute('data-map-selected', 'true')
-    const orientation = row(page).getByRole('button', { name: /^Личный ориентир:/ })
-    await orientation.press('Enter'); const dialog = page.getByRole('dialog', { name: /Личный ориентир/ })
-    await dialog.getByRole('textbox').fill('20'); await page.keyboard.press('Escape')
+    const orientation = row(page).getByRole('button', { name: /^Изменить цель/ })
+    await orientation.press('Enter')
+    await page.getByRole('region', { name: 'Редактор поездок', exact: true }).getByRole('textbox', { name: /Ориентир времени/ }).nth(1).fill('20')
     await showMap(page)
     await expect(map(page).locator('.city-trip-marker.is-goal').filter({ hasText: 'А ✓ · Б ↑' })).toHaveCount(1)
     await expect(row(page).locator('[data-orientation-status=within]')).toHaveCount(1)
@@ -96,7 +96,7 @@ test('pending and failed B keep accepted A only; removal/mode clear their own ge
     const resultSwitcher = page.getByRole('tablist', { name: 'Рабочая область', exact: true }).getByRole('tab', { name: 'Сравнение', exact: true })
     if (await resultSwitcher.isVisible()) await resultSwitcher.press('Enter')
     await homeScreen(page, 'Настройки')
-    await editor.getByRole('combobox', { name: 'Общий режим поездок', exact: true }).selectOption('walking')
+    await editor.getByRole('radio', { name: 'Пешком', exact: true }).check()
     await showMap(page); expect(await routes(page)).toHaveLength(0); expect(h.calls).toHaveLength(2)
 })
 
@@ -108,8 +108,9 @@ test('visual overview: three long goals, compact/expanded/one goal/error at exac
     for (const [width, height] of [[1440,900],[1280,720],[1280,560],[390,844],[320,740],[390,480]]) {
         await page.setViewportSize({ width, height }); await page.goto(root()); await page.reload()
         for (const goal of selection.places) {
-            await row(page, goal.id).getByRole('button', { name: /^Личный ориентир:/ }).press('Enter')
-            await page.getByRole('dialog', { name: /Личный ориентир/ }).getByRole('textbox').fill('20'); await page.keyboard.press('Escape')
+            await homeScreen(page, 'Сравнение')
+            await row(page, goal.id).getByRole('button', { name: /^Изменить цель/ }).press('Enter')
+            await page.getByRole('region', { name: 'Редактор поездок', exact: true }).getByRole('textbox', { name: /Ориентир времени/ }).nth(selection.places.indexOf(goal)).fill('20')
         }
         await showMap(page)
         await tools(page).getByRole('button', { name: 'Все цели', exact: true }).press('Enter')

@@ -36,7 +36,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 720
         const area = await page.locator('.home-results-area').boundingBox(), map = await page.locator('.placelens-map').boundingBox()
         expect(area.x).toBeGreaterThan(0); expect(area.y).toBeGreaterThanOrEqual(map.y + map.height - 1)
         expect(area.y + area.height).toBeLessThanOrEqual(viewport.height + 1)
-        await expect(editor.getByRole('button', { name: 'Добавить общую цель', exact: true })).toHaveCount(0)
+        await expect(editor.getByRole('button', { name: 'Добавить цель', exact: true })).toHaveCount(0)
         const name = editor.getByLabel('Название общей цели', { exact: true }).first()
         await name.fill('Работа · черновик')
         const url = page.url(), historyLength = await page.evaluate(() => history.length)

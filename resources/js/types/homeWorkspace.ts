@@ -80,6 +80,7 @@ export interface HomeWorkspaceMapEvents {
     street: [selection: HomeTripMapSelection]
 }
 export interface HomeWorkspaceMapHandle {
+    focusPoint: (point: Coordinates) => void
     centerPoint: () => Coordinates | null
     resetView: () => void
     focusTrip: () => Promise<void>

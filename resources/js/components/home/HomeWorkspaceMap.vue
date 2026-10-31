@@ -74,6 +74,7 @@ const events = computed(() => {
 })
 
 defineExpose<HomeWorkspaceMapHandle>({
+    focusPoint: point => { version.value++; map.value?.focusPoint(point) },
     centerPoint: () => map.value?.centerPoint() ?? null,
     resetView: () => { map.value?.resetView() },
     focusTrip: async () => {

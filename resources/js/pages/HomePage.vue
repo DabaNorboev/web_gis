@@ -10,9 +10,8 @@ import { useSidebarWidth } from '@/composables/useSidebarWidth'
 import { profileUrl } from '@/utils/metricDisplay'
 import AddressPicker from '@/components/AddressPicker.vue'
 import HomeWorkspaceMap from '@/components/home/HomeWorkspaceMap.vue'
-import HomeOrientationDialog from '@/components/home/HomeOrientationDialog.vue'
 import { useHomeOrientations } from '@/composables/useHomeOrientations'
-import type { HomeOrientationContext } from '@/types/homeOrientations'
+import type { HomeOrientationContext, HomeOrientationTarget } from '@/types/homeOrientations'
 import HomeTripsPanel from '@/components/home/HomeTripsPanel.vue'
 import HomeTripCell from '@/components/home/HomeTripCell.vue'
 import HomeMapDetails from '@/components/home/HomeMapDetails.vue'
@@ -112,6 +111,56 @@ function useMapCenter() {
 }
 const workspace = ref<HTMLElement | null>(null)
 const sidebar = reactive(useSidebarWidth(workspace, 'home'))
+// Page-local layout preferences never change analytical state or camera.
+const panelCollapsed = ref(false)
+let panelFocus: HTMLElement | null = null
+const layoutHeight = ref(720)
+const preferredMapHeight = ref<number | null>(null)
+const mapHeightMax = computed(() => Math.max(180, layoutHeight.value - 192))
+const mapHeight = computed(() => Math.round(Math.max(180, Math.min(mapHeightMax.value, preferredMapHeight.value ?? 480))))
+const mapDragging = ref(false)
+let heightDrag: { id: number; y: number; height: number } | null = null
+let layoutObserver: ResizeObserver | undefined
+onMounted(() => {
+    layoutObserver = new ResizeObserver(() => { layoutHeight.value = workspace.value?.clientHeight ?? 720 })
+    if (workspace.value) layoutObserver.observe(workspace.value)
+})
+onBeforeUnmount(() => layoutObserver?.disconnect())
+async function togglePanel() {
+    if (!panelCollapsed.value) panelFocus = document.querySelector<HTMLElement>('#home-panel :focus') ?? panelFocus
+    panelCollapsed.value = !panelCollapsed.value
+    await nextTick()
+    if (!panelCollapsed.value && panelFocus?.isConnected) panelFocus.focus({ preventScroll: true })
+    else document.getElementById('home-panel-toggle')?.focus({ preventScroll: true })
+}
+function setMapHeight(value: number) {
+    expandedMap.value = false; expandedResults.value = false
+    preferredMapHeight.value = Math.max(180, Math.min(mapHeightMax.value, value))
+}
+function resetMapHeight() { preferredMapHeight.value = null; expandedMap.value = false; expandedResults.value = false }
+function heightStart(event: PointerEvent) {
+    if (event.button !== 0 || !event.isPrimary) return
+    event.preventDefault()
+    const target = event.currentTarget as HTMLElement
+    target.focus(); target.setPointerCapture(event.pointerId)
+    heightDrag = { id: event.pointerId, y: event.clientY, height: mapHeight.value }
+    mapDragging.value = true
+}
+function heightMove(event: PointerEvent) {
+    if (heightDrag?.id === event.pointerId) setMapHeight(heightDrag.height + event.clientY - heightDrag.y)
+}
+function heightEnd(event: PointerEvent) {
+    if (heightDrag?.id === event.pointerId) { heightDrag = null; mapDragging.value = false }
+}
+function heightKey(event: KeyboardEvent) {
+    const step = event.shiftKey ? 48 : 16
+    if (event.key === 'ArrowUp') setMapHeight(mapHeight.value - step)
+    else if (event.key === 'ArrowDown') setMapHeight(mapHeight.value + step)
+    else if (event.key === 'Home') setMapHeight(180)
+    else if (event.key === 'End') setMapHeight(mapHeightMax.value)
+    else return
+    event.preventDefault()
+}
 const home = useHomeWorkspace(selection => location.saveHome(selection))
 const tripsInput: HomeTripsInput = {
     sides: home.sides, radius: home.radius, activeSide: home.activeSide, context: home.context,
@@ -185,11 +234,18 @@ async function returnToTripRow() {
     target.scrollIntoView({ block: 'nearest' })
     rememberScreen()
 }
-const orientationDialog = ref<InstanceType<typeof HomeOrientationDialog> | null>(null)
 provide<HomeOrientationContext>('home-orientations', { owner: orientations, enabled: isWorkspace,
-    edit: (target, event) => orientationDialog.value?.open(target, event.currentTarget as HTMLElement),
+    edit: target => { if (target.kind === 'trip') void editTripGoal(target) },
 })
 const tripsPanel = ref<InstanceType<typeof HomeTripsPanel> | null>(null)
+async function editTripGoal(target: Extract<HomeOrientationTarget, { kind: 'trip' }>) {
+    panelCollapsed.value = false
+    workspaceScenario.value = target.scenario
+    const intent = navigationIntent + 1
+    await changeMobileView('settings')
+    if (intent !== navigationIntent || !isWorkspace.value) return
+    await tripsPanel.value?.editGoal(target.scenario, target.placeId)
+}
 const location = useHomeLocation(home, trips, scenario => {
     mobileView.value = home.selectedSides.value.length || home.transport.point.value || scenario ? 'results' : 'settings'
     if (scenario) { workspaceScenario.value = scenario; section.value = scenario === 'addresses' ? 'overview' : 'trips'; tripsPanel.value?.changeScenario(scenario) }
@@ -197,7 +253,7 @@ const location = useHomeLocation(home, trips, scenario => {
 const { invalidPointLink, invalidPersonalLink } = location
 let interactionEpoch = 0
 function interacted() { interactionEpoch++ }
-function focusSignature() { return JSON.stringify([home.context.value, trips.map.value?.trip, trips.map.value?.mode, trips.map.value?.overlay.sequence, overviewEnabled.value ? trips.overview.value.map(homeMapEntity) : null, overview.value?.markers?.map(marker => marker.id) ?? null, mapScope.value]) }
+function focusSignature() { return JSON.stringify([workspaceScenario.value, home.context.value, trips.map.value?.trip, trips.map.value?.mode, trips.map.value?.overlay.sequence, overviewEnabled.value ? trips.overview.value.map(homeMapEntity) : null, overview.value?.markers?.map(marker => marker.id) ?? null, mapScope.value]) }
 watch(focusSignature, () => { pendingTripFocus.value = null }, { flush: 'sync' })
 async function finishTripFocus() {
     const intent = pendingTripFocus.value
@@ -319,6 +375,9 @@ function previewAddresses(state: AddressMapState) {
     addressChoice.value = state
     if (!isWorkspace.value && state.groups.length && point.value) home.resetPoint(false)
 }
+function focusChosenPoint(point: Coordinates) {
+    if (isWorkspace.value) { pendingTripFocus.value = null; mapView.value?.focusPoint(point) }
+}
 function confirmAddress(id: string) {
     if (!isWorkspace.value) window.location.assign(profileUrl(id, radius.value))
     else { workspaceScenario.value = 'addresses'; home.chooseAddress(id); section.value = 'overview'; void changeMobileView('results') }
@@ -343,13 +402,13 @@ function resetSelection() { home.resetPoint() }
 
 <template>
     <PlaceLayout>
-        <main @pointerdown.capture="interacted" @keydown.capture="interacted" id="main-content" tabindex="-1" ref="workspace" class="placelens-workspace" :class="{ 'is-resizable': sidebar.enabled && !isWorkspace, 'sidebar-is-resizing': sidebar.dragging, 'home-v2': isWorkspace, 'home-show-map': mobileView === 'map', 'home-show-settings': mobileView === 'settings', 'has-point': !!point || selectedSides.length > 0 || section === 'trips', 'home-results-expanded': expandedResults, 'home-map-expanded': expandedMap }" :style="sidebar.style">
+        <main @pointerdown.capture="interacted" @keydown.capture="interacted" id="main-content" tabindex="-1" ref="workspace" class="placelens-workspace" :class="{ 'is-resizable': sidebar.enabled && !isWorkspace, 'sidebar-is-resizing': sidebar.dragging, 'home-v2': isWorkspace, 'home-panel-collapsed': panelCollapsed, 'home-height-dragging': mapDragging, 'home-show-map': mobileView === 'map', 'home-show-settings': mobileView === 'settings', 'has-point': !!point || selectedSides.length > 0 || section === 'trips', 'home-results-expanded': expandedResults, 'home-map-expanded': expandedMap }" :style="{ ...sidebar.style, '--home-map-height': `${mapHeight}px` }">
             <nav v-if="isWorkspace" class="home-mobile-views" aria-label="Экраны рабочей области">
                 <div role="tablist" aria-label="Рабочая область" @keydown="mobileTabKey">
                     <button v-for="screen in mobileScreens" :key="screen.id" :id="`home-mobile-${screen.id}`" type="button" role="tab" :tabindex="mobileView === screen.id ? 0 : -1" :aria-selected="mobileView === screen.id" :aria-controls="screen.panel" @click="changeMobileView(screen.id, true)">{{ screen.label }}</button>
                 </div>
             </nav>
-            <aside :role="isWorkspace && isMobile ? 'tabpanel' : undefined" :inert="isWorkspace && isMobile && mobileView !== 'settings'" id="home-panel" tabindex="-1" class="place-panel" :aria-labelledby="isWorkspace && isMobile ? 'home-mobile-settings' : isWorkspace ? 'home-selection-title' : point ? 'transport-title' : 'search-title'">
+            <aside :role="isWorkspace && isMobile ? 'tabpanel' : undefined" :inert="isWorkspace && (isMobile ? mobileView !== 'settings' : panelCollapsed)" id="home-panel" @focusin="panelFocus = $event.target as HTMLElement" tabindex="-1" class="place-panel" :aria-labelledby="isWorkspace && isMobile ? 'home-mobile-settings' : isWorkspace ? 'home-selection-title' : point ? 'transport-title' : 'search-title'">
                 <div class="place-panel-content" :class="{ 'has-analysis': point || addressChoice.groups.length }">
                     <section v-if="isWorkspace" class="home-selection-heading">
                         <p class="home-eyebrow">КРАСНОЯРСК · ЛОКАЛЬНЫЕ ДАННЫЕ</p>
@@ -370,6 +429,7 @@ function resetSelection() { home.resetPoint() }
                     <section v-if="isWorkspace" v-show="workspaceScenario === 'addresses'" class="home-address-selection" aria-label="Выбранные адреса">
                         <div v-for="side in (['left', 'right'] as const)" :key="side" class="home-address-slot" :aria-label="`Адрес ${side === 'left' ? 'А' : 'Б'}`">
                             <h2><span class="home-side-badge" :class="{ 'is-b': side === 'right' }">{{ side === 'left' ? 'А' : 'Б' }}</span><span>{{ sides[side].knownAddress?.label ?? sides[side].id ?? 'Адрес не выбран' }}</span></h2>
+                            <p v-if="sides[side].id" class="home-address-confirmed">Адрес выбран</p>
                             <button v-if="sides[side].id" type="button" :aria-pressed="context.kind === 'profile' && activeSide === side" @click="changeSection('overview'); home.showSide(side); changeMobileView('results')">Показать {{ side === 'left' ? 'А' : 'Б' }}</button>
                             <button type="button" @click="editAddress(side)">{{ sides[side].id ? 'Заменить адрес' : 'Добавить адрес' }} {{ side === 'left' ? 'А' : 'Б' }}</button>
                             <button v-if="sides[side].id" type="button" @click="home.removeSide(side)">Убрать {{ side === 'left' ? 'А' : 'Б' }}</button>
@@ -381,7 +441,7 @@ function resetSelection() { home.resetPoint() }
                     <section class="place-search" aria-labelledby="search-title">
                         <component :is="isWorkspace ? 'h2' : 'h1'" v-if="addressChoice.groups.length" id="search-title" class="text-lg font-semibold">Выберите объект адреса</component>
                         <h2 v-else id="search-title">{{ isWorkspace ? `Найти адрес ${activeSide === 'left' ? 'А' : 'Б'}` : point ? 'Найти адрес вместо точки' : 'С какого адреса начнём?' }}</h2>
-                        <AddressPicker ref="picker" :selected-id="sides[activeSide].id" :reset-key="searchResetKey" external-map @select="confirmAddress" @map-state="previewAddresses" />
+                        <AddressPicker ref="picker" :selected-id="sides[activeSide].id" :reset-key="searchResetKey" external-map @focus-point="focusChosenPoint" @select="confirmAddress" @map-state="previewAddresses" />
                     </section>
                     </details>
                     <div v-if="isWorkspace" v-show="workspaceScenario === 'stops'" class="home-point-choice">
@@ -411,6 +471,8 @@ function resetSelection() { home.resetPoint() }
             <SidebarResizeHandle v-if="sidebar.enabled && !isWorkspace" :width="sidebar.width" :min="sidebar.bounds.min" :max="sidebar.bounds.max" controls="home-panel" @start="sidebar.pointerDown" @move="sidebar.pointerMove" @end="sidebar.pointerEnd" @key="sidebar.keydown" @reset="sidebar.reset" />
             <section :role="isWorkspace && isMobile ? 'tabpanel' : undefined" :aria-labelledby="isWorkspace && isMobile ? 'home-mobile-map' : undefined" id="home-map-screen" :inert="isWorkspace && isMobile && mobileView !== 'map'" class="placelens-map" aria-label="Карта Красноярска">
                 <div v-if="isWorkspace" class="home-map-heading">
+                    <button id="home-panel-toggle" class="home-desktop-layout" type="button" :aria-expanded="!panelCollapsed" aria-controls="home-panel" @click="togglePanel">{{ panelCollapsed ? 'Показать панель' : 'Свернуть панель' }}</button>
+                    <button class="home-desktop-layout" type="button" @click="resetMapHeight">Сбросить высоту</button>
                     <h2 id="home-map-title" tabindex="-1" :class="{ 'sr-only': overview }">{{ addressChoice.groups.length ? 'Объекты найденных адресов' : 'Карта Красноярска' }}</h2>
                     <div v-if="overview" class="home-map-tools" aria-label="Показ целей">
                         <button type="button" :aria-pressed="mapScope === 'all'" @click="mapScope = 'all'">Все цели</button>
@@ -426,11 +488,12 @@ function resetSelection() { home.resetPoint() }
                 <HomeWorkspaceMap ref="mapView" :context="isWorkspace ? context : { kind: 'point' }" :active-side="activeSide" :radius="radius" :point="point" :profile="profile" :analysis="analysis" :address="mapAddress" :choice="addressChoice" :selected-stop-id="profile ? profileStop : selectedStopId" :selected-object="selectedObject" :show-stops="showStops" :areas="areas" :lines="lines" :focus="mapFocus" :trip="isWorkspace ? trips.map.value : null" :overview="overview" :automatic-camera="!isWorkspace"
                     @entity="selectMapEntity" @point="mapPoint" @address="mapAddressSelected" @highlight-address="mapAddressHighlighted" @stop="mapStop" @object="mapObject" @street="selectTripMap" @ready="mapReady = true; finishTripFocus()" />
             </section>
+            <div v-if="isWorkspace" class="home-map-resizer" role="separator" tabindex="0" aria-label="Высота карты" aria-orientation="horizontal" aria-controls="home-map-screen" :aria-valuemin="180" :aria-valuemax="mapHeightMax" :aria-valuenow="mapHeight" @pointerdown="heightStart" @pointermove="heightMove" @pointerup="heightEnd" @pointercancel="heightEnd" @lostpointercapture="heightEnd" @keydown="heightKey"><span /></div>
             <section :role="isWorkspace && isMobile ? 'tabpanel' : undefined" :aria-labelledby="isWorkspace && isMobile ? 'home-mobile-results' : undefined" id="home-results-screen" tabindex="-1" :inert="isWorkspace && isMobile && mobileView !== 'results' || isWorkspace && !isMobile && expandedMap" v-show="isWorkspace" class="home-results-area" aria-label="Результаты выбранного места">
                 <div v-show="workspaceScenario !== 'addresses'" class="home-results-toolbar"><span>{{ showPoint && point ? 'Остановки рядом · по прямой' : 'Поездки' }}</span><button v-if="point || selectedSides.length || section === 'trips'" type="button" :aria-expanded="expandedResults" aria-controls="home-workspace-results" @click="expandedResults = !expandedResults">{{ expandedResults ? 'Свернуть результаты' : 'Развернуть результаты' }}</button></div>
                 <div id="home-workspace-results" class="home-results-content">
                     <p v-if="invalidPersonalLink" role="alert">Общие цели из ссылки не восстановлены: формат, версия или размер не поддерживаются.</p>
-                    <HomeTripsPanel ref="tripsPanel" :model="trips" :input="tripsInput" :editor-target="isWorkspace ? '#home-trip-editor' : undefined" @scenario="workspaceScenario = $event" @run="runTrips" @show-map="showTripMap">
+                    <HomeTripsPanel ref="tripsPanel" :model="trips" :input="tripsInput" :editor-target="isWorkspace ? '#home-trip-editor' : undefined" @focus-point="focusChosenPoint" @scenario="workspaceScenario = $event" @run="runTrips" @show-map="showTripMap">
                         <template #results="{ entries, actions, scenario }">
                             <HomeMapDetails v-if="isWorkspace && overview" :goal-number="trips.addresses.places.value.findIndex(place => place.id === selectedMapTrip?.placeId) + 1" :alternatives="entries.filter(entry => entry.trip.placeId === selectedMapTrip?.placeId)" @select="home.activate({ kind: 'trip', trip: $event })" :entry="entries.find(entry => sameHomeTrip(entry.trip, selectedMapTrip)) ?? null" :actions="actions" :mode="trips.addresses.mode.value" :request="mapDetailsRequest" @close="closeMapDetails" @return-row="returnToTripRow" />
                             <HomeAddressResults :selected-trip="selectedMapTrip" v-if="scenario === 'addresses'" v-show="isWorkspace && !showPoint" :view="section" :expanded="expandedResults" :model="home" :trips="trips" :entries="entries" :actions="actions" :selected-stop-id="profileStop" :selected-object="selectedObject" @expand="expandedResults = !expandedResults" @update:view="changeSection" @select-stop="selectProfileStop" @focus-layer="focusLayer" />
@@ -439,7 +502,6 @@ function resetSelection() { home.resetPoint() }
                     </HomeTripsPanel>
                 </div>
             </section>
-            <HomeOrientationDialog ref="orientationDialog" :owner="orientations" />
             <p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ orientations.announcement.value }}</p>
         </main>
     </PlaceLayout>

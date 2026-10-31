@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { homeDialogKey } from '@/utils/homeDialog'
-import { computed, inject, nextTick, ref } from 'vue'
-import HomeOrientationStatus from './HomeOrientationStatus.vue'
-import type { HomeOrientationContext } from '@/types/homeOrientations'
+import { computed, nextTick, ref } from 'vue'
 import type { ComparisonSide } from '@/composables/useAddressComparison'
 import type { AddressProfile } from '@/types/profile'
 import { comparisonMetric, type ComparisonRow } from '@/utils/comparisonPresentation'
@@ -40,36 +38,28 @@ async function restoreFocus() {
 }
 function showMap() { returnFocus = false; dialog.value?.close(); emit('showMap') }
 const statusText = computed(() => homeMetricStateText(props.status, null))
-const context = inject<HomeOrientationContext | null>('home-orientations', null)
-const orientation = computed(() => context?.enabled.value && props.row.category === 'transport' && props.row.key === 'nearest_stop_distance' ? context.owner.find({ kind: 'stop' }) : null)
-const orientationCell = computed(() => orientation.value?.cells.find(cell => cell.side === props.side))
 </script>
 
 <template>
-    <div class="home-metric-cell" :class="{ 'home-orientation-changed': orientationCell && context?.owner.highlighted.value.includes(orientationCell.key) }">
+    <div class="home-metric-cell">
         <template v-if="ready && metric">
             <strong class="home-cell-value" :class="{ 'home-cell-value--missing': metric.value === null }">{{ formatMetric(metric) }}</strong>
             <div class="home-cell-note">
                 <span v-if="presentation?.nearestName">{{ presentation.nearestName }}</span>
-                <span v-if="presentation?.beyond">Дальше круга {{ radius }} м.</span>
-                <span v-if="metric.value === null" role="note">{{ metric.quality.reason }}</span>
-                <span v-if="metric.quality.freshness === 'STALE'" role="note">Данные устарели: {{ metric.quality.reason }}</span>
-                <span v-if="presentation?.coverage && presentation.coverage.status !== 'COVERED'" role="note">{{ presentation.coverage.reason }}</span>
-                <span v-if="presentation?.access" role="note">Доступ по OSM: {{ presentation.access === 'private' ? 'частный' : presentation.access === 'no' ? 'запрещён' : presentation.access }}. Вход не подтверждён.</span>
             </div>
         </template>
-        <div v-else-if="blockError" class="home-cell-note" role="alert">
-            <span>{{ blockError }}</span>
-            <button class="home-cell-actions" type="button" @click="emit('retry')">Повторить расчёт</button>
-        </div>
+        <p v-else-if="blockError" class="home-cell-note">Нет данных</p>
         <p v-else class="home-cell-note">{{ statusText }}</p>
-        <HomeOrientationStatus v-if="orientation && orientationCell" :group="orientation" :cell="orientationCell" />
         <div class="home-cell-actions"><button type="button" :aria-label="`Подробности: ${row.label}, ${sideName}`" @click="openDetails">ⓘ</button></div>
         <dialog @keydown="homeDialogKey" ref="dialog" class="home-result-dialog" :aria-labelledby="`home-details-${side}-${row.category}-${row.key}`" @close="restoreFocus">
             <div class="home-result-dialog-content">
                 <h2 :id="`home-details-${side}-${row.category}-${row.key}`">{{ row.label }} · вариант {{ sideName }}</h2>
                 <template v-if="metric && details">
                     <p>{{ presentation?.explanation.full }}</p>
+                    <p v-if="presentation?.beyond">Дальше круга {{ radius }} м.</p>
+                    <p v-if="metric.value === null">{{ metric.quality.reason }}</p>
+                    <p v-if="metric.quality.freshness === 'STALE'">Данные устарели: {{ metric.quality.reason }}</p>
+                    <p v-if="presentation?.coverage && presentation.coverage.status !== 'COVERED'">{{ presentation.coverage.reason }}</p>
                     <p><strong>Результат:</strong> {{ formatMetric(metric) }}. <strong>Причина/ограничение:</strong> {{ details.reason }}</p>
                     <p><strong>Метод:</strong> {{ details.method }}. <strong>Доступность:</strong> {{ details.availability }}. <strong>Актуальность:</strong> {{ details.freshness }}.</p>
                     <p><strong>Источник:</strong> {{ details.source }}. <strong>Снимок:</strong> {{ details.snapshot }}. <strong>Версия методики:</strong> {{ details.methodVersion }}.</p>

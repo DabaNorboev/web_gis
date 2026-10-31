@@ -296,3 +296,21 @@ test('overview does not disable the active profile layers or stop events and sta
         h.listeners().onSelectStop(7); assert.deepEqual(h.emitted.at(-1), ['stop', 7])
     } finally { h.dispose() }
 })
+
+test('explicit address focus cancels pending trip fit and survives later profile/overlay responses', async () => {
+    const h = harness({ context: { kind: 'trip', trip: tripRef() }, trip: trip() })
+    try {
+        await h.load()
+        const fits = h.map.fits.length
+        const pending = h.handles.value.focusTrip()
+        h.handles.value.focusPoint(b)
+        await h.flush(); await pending
+        assert.equal(h.map.fits.length, fits)
+        assert.deepEqual(h.map.jumps.at(-1), { center: [b.lon, b.lat], zoom: 16 })
+        h.props.context = { kind: 'profile', side: 'right' }
+        h.props.profile = profile('object-b'); h.props.address = address('object-b')
+        await h.flush()
+        assert.equal(h.map.fits.length, fits)
+        assert.equal(h.map.jumps.length, 1)
+    } finally { h.dispose() }
+})

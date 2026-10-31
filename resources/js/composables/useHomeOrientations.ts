@@ -104,14 +104,15 @@ export function useHomeOrientations(home: HomeWorkspace, trips: HomeTripsPort) {
         editing.value = target
         baseline = new Map((find(target)?.cells ?? []).filter(evaluated).map(cell => [cell.key, cell.result.status]))
     }
-    function apply(text: string) {
+    function set(target: HomeOrientationTarget, text: string) {
         const parsed = parseOrientation(text)
-        if (parsed.error || !editing.value) return parsed.error
-        const key = orientationKey(editing.value)
+        if (parsed.error || !find(target)) return parsed.error
+        const key = orientationKey(target)
         if (parsed.value === null) delete settings.value[key]
         else settings.value[key] = parsed.value
         return ''
     }
+    function apply(text: string) { return editing.value ? set(editing.value, text) : '' }
     function finish() {
         const changed = (current.value?.cells ?? []).filter(cell => evaluated(cell) && baseline.has(cell.key) && baseline.get(cell.key) !== cell.result.status)
         accented = new Map(changed.map(cell => [cell.key, fingerprint(cell)]))
@@ -121,5 +122,5 @@ export function useHomeOrientations(home: HomeWorkspace, trips: HomeTripsPort) {
         if (changed.length) timer = setTimeout(() => { highlighted.value = [] }, 6500)
     }
     onBeforeUnmount(() => clearTimeout(timer))
-    return { groups, current, editing, highlighted, announcement, find, begin, apply, finish }
+    return { groups, current, editing, highlighted, announcement, find, begin, set, apply, finish }
 }
