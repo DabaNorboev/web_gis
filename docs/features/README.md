@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-10-27
+updated: 2026-10-30
 verified: not verified
 ---
 
@@ -9,6 +9,7 @@ verified: not verified
 Текущее поведение; даты исторических проверок внутри документов не означают новый прогон.
 
 - [Сравнение двух адресов](address-comparison.md).
+- [Карта и навигация нового пространства](home-workspace-map.md).
 - [Профиль адресного объекта](address-profile.md).
 - [Локальный поиск адресов](address-search.md).
 - [Парки, растительные территории и площади](area-analysis.md).

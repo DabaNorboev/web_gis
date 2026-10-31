@@ -16,10 +16,10 @@ import { pairedTripFact } from '@/utils/comparisonTrips'
 import { homeMetricStateText, metricExplanation } from '@/utils/homeMetricPresentation'
 import { mappedNearestId } from '@/utils/mapAnalysis'
 import type { HomeWorkspace } from '@/composables/useHomeWorkspace'
-import type { HomeTripsPort } from '@/types/homeWorkspace'
+import type { HomeTripRef, HomeTripsPort } from '@/types/homeWorkspace'
 import type { HomeResultView, HomeTripEntry, HomeTripActions } from '@/types/homeResults'
 import type { MapLayerKey } from '@/types/mapLayers'
-const props = defineProps<{ model: HomeWorkspace; trips: HomeTripsPort; entries: HomeTripEntry[]; actions: HomeTripActions; view: HomeResultView; expanded: boolean; selectedStopId: number | null; selectedObject: { layer: MapLayerKey; id: string } | null }>()
+const props = defineProps<{ model: HomeWorkspace; trips: HomeTripsPort; entries: HomeTripEntry[]; actions: HomeTripActions; view: HomeResultView; expanded: boolean; selectedTrip?: HomeTripRef | null; selectedStopId: number | null; selectedObject: { layer: MapLayerKey; id: string } | null }>()
 const emit = defineEmits<{ 'update:view': [view: HomeResultView]; expand: []; focusLayer: [side: SideKey, layer: MapLayerKey, id?: string]; selectStop: [side: SideKey, id: number] }>()
 const { includes, selection } = useOverviewTopics()
 const showAll = ref(false)
@@ -34,7 +34,6 @@ const selectedMapItem = computed(() => {
 })
 const rows = computed(() => [...comparisonGroups.flatMap(group => group.rows), ...(showAll.value ? comparisonExtraRows : [])].filter(row => showAll.value || includes(row.category)))
 function tabKey(event: KeyboardEvent) {
-    if (event.key === 'Tab' && !event.shiftKey) { event.preventDefault(); document.getElementById('home-result-panel')?.focus(); return }
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
     event.preventDefault()
     const index = tabs.findIndex(tab => tab.id === props.view)
@@ -60,11 +59,11 @@ function entryFor(side: SideKey, id: string) { return props.entries.find(entry =
     <section class="home-address-results" aria-label="Профиль и сравнение адресов">
         <h2 tabindex="-1" id="home-address-title" class="sr-only">{{ single ? `Профиль ${names[single]}` : model.selectedSides.value.length ? 'Сравнение А/Б' : 'Результаты выбранных мест' }}</h2>
         <div class="home-result-tools">
-            <button type="button" class="home-result-expand" :aria-expanded="expanded" aria-controls="home-workspace-results" @click="emit('expand')">{{ expanded ? 'Свернуть результаты' : 'Развернуть результаты' }}</button>
             <div class="home-result-tabs" role="tablist" @keydown="tabKey" aria-label="Раздел результатов">
                 <button v-for="tab in tabs" :key="tab.id" :id="`home-result-tab-${tab.id}`" type="button" role="tab" :tabindex="view === tab.id ? 0 : -1" :aria-selected="view === tab.id" aria-controls="home-result-panel" @click="emit('update:view', tab.id)">{{ tab.label }}</button>
             </div>
             <HomeResultDialog title="Как читать результаты" label="Как читать результаты"><p>Каждая колонка относится к выбранному адресному объекту. А — круг, Б — скруглённый квадрат. Числа описывают данные, автоматического победителя нет.</p><p>Окружение измеряется по прямой. Поездки рассчитаны по сети; модельное время не предсказывает обычное городское время. Неизвестное значение не означает ноль. Источники, даты, методы и покрытие доступны у каждой ячейки и в разделе «Данные».</p></HomeResultDialog>
+            <button type="button" class="home-result-expand" :aria-expanded="expanded" aria-controls="home-workspace-results" @click="emit('expand')">{{ expanded ? 'Свернуть результаты' : 'Развернуть результаты' }}</button>
         </div>
         <div id="home-result-panel" role="tabpanel" :aria-labelledby="`home-result-tab-${view}`" tabindex="0">
             <div v-if="!model.selectedSides.value.length" class="home-empty-result"><h2>Здесь будут результаты</h2><p>Найдите и подтвердите адресный объект, чтобы открыть его профиль. Для остановок рядом выберите сценарий «Остановки».</p></div>
@@ -77,11 +76,11 @@ function entryFor(side: SideKey, id: string) { return props.entries.find(entry =
                     <thead><tr><th scope="col">{{ view === 'surroundings' ? 'Окружение' : 'Места и показатели' }}</th><th v-for="side in model.selectedSides.value" :key="side" scope="col"><span class="home-column-heading"><span class="home-side-badge" :class="{ 'is-b': side === 'right' }">{{ names[side] }}</span><span>{{ model.sides[side].knownAddress?.label ?? model.sides[side].id }}</span></span></th></tr></thead>
                     <tbody v-if="view !== 'surroundings'" class="home-trip-rows">
                         <tr class="home-section-row"><th :colspan="model.selectedSides.value.length + 1" scope="colgroup">Поездки <span>{{ trips.addresses.mode.value === 'walking' ? 'Модель уличной части · подходы неизвестны' : 'Автомодель · без пробок, подходов и парковки' }}</span></th></tr>
-                        <tr v-for="place in trips.addresses.places.value" :key="place.id" :data-goal-id="place.id">
-                            <th scope="row"><span class="home-goal-label">{{ place.label || 'Без названия' }}</span><HomeOrientationButton :target="{ kind: 'trip', scenario: 'addresses', placeId: place.id, mode: trips.addresses.mode.value }" :label="place.label || 'Без названия'" /><HomeResultDialog v-if="!single" :title="`Сопоставимость: ${place.label || 'Без названия'}`" :label="`Сопоставимость поездок: ${place.label || 'Без названия'}`"><p>{{ pairedTripFact(trips.addresses.cell('left', place.id), trips.addresses.cell('right', place.id), trips.addresses.mode.value) }}</p><p>Сравнивается длина подтверждённых поездок одного источника и снимка; преимущества по неизвестному пути нет.</p></HomeResultDialog></th>
-                            <td v-for="side in model.selectedSides.value" :key="side" :data-side="side"><HomeTripCell v-if="entryFor(side, place.id)" :entry="entryFor(side, place.id)!" :actions="actions" :mode="trips.addresses.mode.value" /></td>
+                        <tr v-for="(place, goalIndex) in trips.addresses.places.value" :key="place.id" :data-goal-id="place.id" :data-map-selected="selectedTrip?.placeId === place.id">
+                            <th scope="row"><span class="home-goal-label"><small>Цель {{ goalIndex + 1 }} · </small>{{ place.label || 'Без названия' }}</span><HomeOrientationButton :target="{ kind: 'trip', scenario: 'addresses', placeId: place.id, mode: trips.addresses.mode.value }" :label="place.label || 'Без названия'" /><HomeResultDialog v-if="!single" :title="`Сопоставимость: ${place.label || 'Без названия'}`" :label="`Сопоставимость поездок: ${place.label || 'Без названия'}`"><p>{{ pairedTripFact(trips.addresses.cell('left', place.id), trips.addresses.cell('right', place.id), trips.addresses.mode.value) }}</p><p>Сравнивается длина подтверждённых поездок одного источника и снимка; преимущества по неизвестному пути нет.</p></HomeResultDialog></th>
+                            <td v-for="side in model.selectedSides.value" :key="side" :data-side="side" :data-map-selected="selectedTrip?.placeId === place.id && selectedTrip?.scenario === 'addresses' && selectedTrip.side === side"><HomeTripCell v-if="entryFor(side, place.id)" :entry="entryFor(side, place.id)!" :actions="actions" :mode="trips.addresses.mode.value" /></td>
                         </tr>
-                        <tr v-if="!trips.addresses.places.value.length"><td :colspan="model.selectedSides.value.length + 1" class="home-cell-note">Добавьте общие цели в редакторе слева. Профиль окружения уже доступен.</td></tr>
+                        <tr v-if="!trips.addresses.places.value.length"><td :colspan="model.selectedSides.value.length + 1" class="home-cell-note">Для расчёта поездок добавьте общие цели. Профиль окружения уже доступен.</td></tr>
                     </tbody>
                     <tbody v-if="view !== 'trips'">
                         <tr class="home-section-row"><th :colspan="model.selectedSides.value.length + 1" scope="colgroup">Окружение <span>{{ model.radius.value }} м · расстояния по прямой · входы и доступ не проверены</span></th></tr>

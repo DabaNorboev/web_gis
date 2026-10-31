@@ -1,4 +1,4 @@
-import { test, expect } from './support.mjs'
+import { test, expect, homeScreen } from './support.mjs'
 import { places, profile, comparisonUrl } from './fixtures.mjs'
 
 const storageKey = 'placelens:interface:v1'
@@ -85,6 +85,7 @@ test('pending point analysis and map instance survive both interfaces, then radi
     await choose(page, 'Текущий')
     await expect(page.locator('.transport-results')).toContainText('Дата наблюдения: неизвестна')
     expect(points.labels).toHaveLength(1)
+    await homeScreen(page, 'Настройки')
     await page.getByRole('button', { name: '300 м', exact: true }).click()
     await expect.poll(() => points.transport.length).toBe(2)
     await page.goBack()
@@ -100,6 +101,7 @@ test('new home fills the viewport and map controls remain reachable without remo
     const isPhone = test.info().project.use.viewport.width < 768
     await expect(page.getByRole('heading', { name: 'Места и цели' })).toBeVisible()
     if (isPhone) {
+        await homeScreen(page, 'Настройки')
         await page.getByRole('group', { name: 'Сценарий', exact: true }).getByRole('button', { name: 'Остановки', exact: true }).press('Enter')
         await page.getByRole('button', { name: 'Выбрать точку на карте', exact: true }).click()
     }
@@ -124,16 +126,16 @@ test('new home fills the viewport and map controls remain reachable without remo
     await expect(page.locator('.transport-results')).toContainText('Остановка 1')
     if (isPhone) {
         await expect(page.getByRole('heading', { name: /Остановки в радиусе/ })).toBeFocused()
-        const views = page.getByRole('group', { name: 'Рабочая область', exact: true })
-        await views.getByRole('button', { name: 'Карта', exact: true }).click()
+        const views = page.getByRole('tablist', { name: 'Рабочая область', exact: true })
+        await views.getByRole('tab', { name: 'Карта', exact: true }).click()
         await expect(page.locator('.placelens-map')).toBeVisible()
-        await views.getByRole('button', { name: 'Результаты и ввод', exact: true }).click()
+        await views.getByRole('tab', { name: 'Сравнение', exact: true }).click()
         await expect(page.locator('.transport-results')).toBeVisible()
         if (test.info().project.name === 'phone-390') {
             await page.setViewportSize({ width: 390, height: 480 })
-            await views.getByRole('button', { name: 'Карта', exact: true }).click()
+            await views.getByRole('tab', { name: 'Карта', exact: true }).click()
             await expect.poll(() => page.locator('.city-map-surface').evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThan(80)
-            await views.getByRole('button', { name: 'Результаты и ввод', exact: true }).click()
+            await views.getByRole('tab', { name: 'Сравнение', exact: true }).click()
             const sources = page.getByText('ⓘ Источник и качество данных', { exact: true })
             await sources.scrollIntoViewIfNeeded()
             await expect(sources).toBeVisible()

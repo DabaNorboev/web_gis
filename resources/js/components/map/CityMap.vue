@@ -18,12 +18,41 @@ import type { AddressProfile, AreaLayers, AreaVisibility, LinearLayers, LinearVi
 import type { Coordinates, TransportAnalysis } from '@/types/transport'
 import { createTripOverlay, tripOverlayBounds, type TripMapOverlay } from '@/utils/tripOverlay'
 
-const props = withDefaults(defineProps<{ point: Coordinates | null; addressGroup: AddressResult | null; selectedAddressId: string | null; analysis: Pick<TransportAnalysis, 'analysis_area' | 'analysis_bounds' | 'stops_in_radius'> | null; radius: number; selectedStopId: number | null; selectable?: boolean; showStops?: boolean; showAnalysisArea?: boolean; areaLayers?: AreaLayers | null; areaVisibility?: AreaVisibility; linearLayers?: LinearLayers | null; linearVisibility?: LinearVisibility; addressGroups?: AddressResult[]; highlightedAddressId?: string | null; highlightedGroupId?: string | null; placeLabel?: 'А' | 'Б'; scrollTarget?: HTMLElement | null; overlayControls?: boolean; hideTheme?: boolean; sharedView?: { zoom: number; bearing: number; pitch: number } | null; selectionZoomLimit?: number; profile?: AddressProfile | null; tripOverlay?: TripMapOverlay | null; tripPicking?: boolean; focusRequest?: { layer: MapLayerKey; id?: string; sequence: number } | null }>(), { selectable: true, showStops: true, showAnalysisArea: true })
-const emit = defineEmits<{ select: [point: Coordinates]; roadCandidate: [key: string, point: Coordinates]; selectStop: [id: number]; clearStop: []; selectObject: [selection: { layer: MapLayerKey; id: string } | null]; selectAddressObject: [id: string]; highlightAddressObject: [id: string | null]; viewChange: [view: { zoom: number; bearing: number; pitch: number }]; viewReady: [view: { zoom: number; bearing: number; pitch: number }] }>()
+const props = withDefaults(defineProps<{ point: Coordinates | null; addressGroup: AddressResult | null; selectedAddressId: string | null; analysis: Pick<TransportAnalysis, 'analysis_area' | 'analysis_bounds' | 'stops_in_radius'> | null; radius: number; selectedStopId: number | null; selectable?: boolean; showStops?: boolean; showAnalysisArea?: boolean; areaLayers?: AreaLayers | null; areaVisibility?: AreaVisibility; linearLayers?: LinearLayers | null; linearVisibility?: LinearVisibility; addressGroups?: AddressResult[]; highlightedAddressId?: string | null; highlightedGroupId?: string | null; placeLabel?: 'А' | 'Б'; scrollTarget?: HTMLElement | null; overlayControls?: boolean; hideTheme?: boolean; sharedView?: { zoom: number; bearing: number; pitch: number } | null; selectionZoomLimit?: number; profile?: AddressProfile | null; tripOverlay?: TripMapOverlay | null; tripPicking?: boolean; automaticCamera?: boolean; focusRequest?: { layer: MapLayerKey; id?: string; sequence: number } | null }>(), { selectable: true, showStops: true, showAnalysisArea: true })
+const emit = defineEmits<{ select: [point: Coordinates]; roadCandidate: [key: string, point: Coordinates]; tripEntity: [id: string]; selectStop: [id: number]; clearStop: []; selectObject: [selection: { layer: MapLayerKey; id: string } | null]; selectAddressObject: [id: string]; highlightAddressObject: [id: string | null]; viewChange: [view: { zoom: number; bearing: number; pitch: number }]; viewReady: [view: { zoom: number; bearing: number; pitch: number }] }>()
 const { theme } = useMapTheme()
 const placeColor = computed(() => placeColors[props.placeLabel ?? 'default'])
 const groups = computed(() => props.addressGroups ?? (props.addressGroup ? [props.addressGroup] : []))
 const labels = ref<ScreenLabel[]>([])
+const tripLabels = ref<{ id: string; x: number; y: number; anchorX: number; anchorY: number; width: number }[]>([])
+function selectTripEntity(id: string) {
+    if (props.tripPicking || !props.tripOverlay?.interactive) return
+    if (props.tripOverlay.markers?.some(marker => marker.id === id) || props.tripOverlay.data.features.some(feature => feature.properties?.entity === id)) emit('tripEntity', id)
+}
+function updateTripLabels() {
+    if (!map || !container.value || !props.tripOverlay?.markers?.length) { tripLabels.value = []; return }
+    const width = container.value.clientWidth, height = container.value.clientHeight
+    const surface = container.value.getBoundingClientRect()
+    const blocked = [...(container.value.closest('.city-map')?.querySelectorAll<HTMLElement>('.maplibregl-ctrl, .city-map-legend, .city-map-toolbar > *, .city-map-overview') ?? [])].map(element => element.getBoundingClientRect()).filter(rect => rect.width && rect.height).map(rect => ({ left: rect.left - surface.left, right: rect.right - surface.left, top: rect.top - surface.top, bottom: rect.bottom - surface.top }))
+    for (const feature of props.tripOverlay?.data.features ?? []) {
+        if (feature.geometry.type !== 'Point' || !['candidate', 'proposed'].includes(feature.properties?.kind)) continue
+        const p = map.project([feature.geometry.coordinates[0]!, feature.geometry.coordinates[1]!])
+        blocked.push({ left: p.x - 14, right: p.x + 14, top: p.y - 14, bottom: p.y + 14 })
+    }
+    const placed: { id: string; x: number; y: number; anchorX: number; anchorY: number; width: number }[] = []
+    for (const marker of props.tripOverlay?.markers ?? []) {
+        const anchor = map.project([marker.point.lon, marker.point.lat])
+        if (anchor.x < 0 || anchor.x > width || anchor.y < 0 || anchor.y > height) continue
+        const w = marker.shape === 'goal' ? Math.min(150, width - 80) : 44
+        const clamp = (x: number, y: number) => ({ x: Math.max(w / 2 + 8, Math.min(width - 54 - w / 2, x)), y: 44 + Math.min(Math.max(0, Math.floor((height - 96) / 52)), Math.max(0, Math.round((y - 44) / 52))) * 52 })
+        const candidates = [clamp(anchor.x, anchor.y - 24)]
+        for (let y = 44; y <= height - 52; y += 52) for (let x = w / 2 + 8; x <= width - 54 - w / 2; x += w + 8) candidates.push({ x, y })
+        candidates.sort((a, b) => Math.hypot(a.x - anchor.x, a.y - anchor.y) - Math.hypot(b.x - anchor.x, b.y - anchor.y))
+        const position = candidates.find(p => blocked.every(rect => p.x + w / 2 + 4 < rect.left || p.x - w / 2 - 4 > rect.right || p.y + 24 < rect.top || p.y - 24 > rect.bottom) && placed.every(other => Math.abs(other.x - p.x) >= (other.width + w) / 2 + 6 || Math.abs(other.y - p.y) >= 50))
+        if (position) placed.push({ id: marker.id, ...position, anchorX: anchor.x, anchorY: anchor.y, width: w })
+    }
+    tripLabels.value = placed
+}
 const selectedFeature = ref<{ layer: MapLayerKey; id: string; name: string } | null>(null)
 function clearObjectSelection() { selectedFeature.value = null }
 watch(selectedFeature, selection => emit('selectObject', selection))
@@ -81,6 +110,7 @@ async function focusTrip() {
 watch(() => props.tripOverlay, (value, previous) => {
     selectionSequence++
     tripOverlay?.update()
+    updateTripLabels()
     if (value && value.sequence !== previous?.sequence) void focusTrip()
 }, { deep: true })
 const activeCategory = ref<MapLayerKey | null>(props.focusRequest?.layer ?? null)
@@ -94,6 +124,7 @@ const selectedGeometry = computed(() => {
     return data?.features.find(feature => feature.properties.id === selected.id) ?? null
 })
 function updateLabels() {
+    updateTripLabels()
     if (!map || !container.value || groups.value.length !== 1) { labels.value = []; return }
     const surface = container.value.getBoundingClientRect()
     const blocked = [...(container.value.closest('.city-map')?.querySelectorAll<HTMLElement>('.city-map-toolbar, .city-map-legend, .city-map-overview, .map-layers-body, .map-layer-details, .maplibregl-ctrl') ?? [])]
@@ -189,6 +220,7 @@ function updateEmphasis() {
 }
 watch(activeCategory, updateEmphasis)
 function focusAddress() {
+    if (props.automaticCamera === false) return
     if (props.selectable === false && props.analysis) { focusAnalysis(); return }
     const bounds = addressBounds(groups.value)
     if (bounds && map) {
@@ -198,6 +230,7 @@ function focusAddress() {
 }
 watch(groups, focusAddress, { flush: 'post' })
 function focusPoint() {
+    if (props.automaticCamera === false) return
     if (props.selectable !== false && props.point && map && !props.analysis && !groups.value.length) {
         const center: [number, number] = [props.point.lon, props.point.lat]
         if (!map.getBounds().contains(center)) map.jumpTo({ center, zoom: 14 })
@@ -227,6 +260,7 @@ async function focusSelected() {
     map.fitBounds([[Math.min(...coordinates.map(p => p[0]!)), Math.min(...coordinates.map(p => p[1]!))], [Math.max(...coordinates.map(p => p[0]!)), Math.max(...coordinates.map(p => p[1]!))]], { padding: { top: props.overlayControls && !props.hideTheme ? 108 : 55, bottom: 55, left: 40, right: 65 }, maxZoom: Math.min(16, props.selectionZoomLimit ?? 16), duration: props.sharedView === undefined ? 350 : 0 })
 }
 function focusAnalysis() {
+    if (props.automaticCamera === false) return
     if (props.analysis && map) {
         const [west, south, east, north] = props.analysis.analysis_bounds
         map.fitBounds([[west, south], [east, north]], { padding: mapPadding(), maxZoom: 16, duration: props.sharedView === undefined ? 500 : 0 })
@@ -320,6 +354,8 @@ function initialize() {
             picking: () => !!props.tripPicking,
             select: point => emit('select', point),
             candidate: (key, point) => emit('roadCandidate', key, point),
+            interactive: () => !!props.tripOverlay?.interactive,
+            entity: selectTripEntity,
         })
         map.on('click', (event) => {
             if (tripOverlay?.click(event)) return
@@ -460,10 +496,19 @@ onBeforeUnmount(() => {
             <button v-if="analysis && !placeLabel" type="button" class="result-action city-map-overview" @click="resetView">К радиусу {{ radius }} м</button>
             <p v-if="scrollTarget" class="city-map-wheel-hint">Колесо — прокрутка профиля · Ctrl/⌘ + колесо — масштаб</p>
             <div ref="container" class="h-full w-full" aria-label="Интерактивная карта Красноярска" />
+            <div v-if="props.tripOverlay?.markers?.length" class="city-trip-labels">
+                <svg aria-hidden="true"><line v-for="label in tripLabels" :key="label.id" :x1="label.anchorX" :y1="label.anchorY" :x2="label.x" :y2="label.y" /><circle v-for="label in tripLabels" :key="`p${label.id}`" :cx="label.anchorX" :cy="label.anchorY" r="3" /></svg>
+                <template v-for="label in tripLabels" :key="label.id">
+                    <button v-for="marker in props.tripOverlay!.markers!.filter(marker => marker.id === label.id)" :key="marker.shape" type="button" class="city-trip-marker" :class="[`is-${marker.shape}`, { 'is-selected': marker.selected }]" :style="{ left: `${label.x}px`, top: `${label.y}px`, width: `${label.width}px` }" :aria-label="`${marker.title}. ${marker.detail}`" :title="`${marker.title}. ${marker.detail}`" :aria-pressed="marker.selected" :disabled="tripPicking || !props.tripOverlay!.interactive" @click.stop="selectTripEntity(marker.id)">
+                        <strong>{{ marker.title }}</strong><span v-if="marker.signal">{{ marker.signal }}</span>
+                    </button>
+                </template>
+            </div>
             <AddressMapLabels :labels="labels" :selected-id="selectedAddressId" :highlighted-id="highlightedAddressId" :place-label="placeLabel" :multiple="(groups[0]?.objects.length ?? 0) > 1" @select="$emit('selectAddressObject', $event)" @highlight="$emit('highlightAddressObject', $event)" />
             <details class="city-map-legend" :open="legendOpen" @toggle="legendOpen = ($event.target as HTMLDetailsElement).open">
                 <summary>Обозначения<span v-if="visibleLayers.length"> · {{ visibleLayers.length }}</span></summary>
                 <div class="city-map-legend-body">
+                    <p v-if="props.tripOverlay?.markers?.length">А ● — фиолетовый круг · Б ▪ — синий квадрат · цели с номером строки.</p><p v-if="props.tripOverlay?.markers?.length">✓ в ориентире · ↑ сверх · — без ориентира · … расчёт · ! ошибка · ? неизвестно. Уличные точки — отдельные малые знаки.</p>
                     <p v-if="groups.length"><span class="map-key-house" />{{ placeLabel ? `Адрес ${placeLabel}` : selectedAddressId ? 'Выбранный объект' : 'Варианты адреса' }}<span v-if="!selectedAddressId"> · номера как в списке</span></p>
                     <p v-if="point && !groups.length"><span class="map-key-house" />Точка анализа</p>
                     <p v-if="point"><span class="map-key-radius" />Радиус {{ radius }} м по прямой</p>
@@ -484,3 +529,7 @@ onBeforeUnmount(() => {
         </div>
     </div>
 </template>
+
+<style scoped>
+.city-trip-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:2}.city-trip-labels svg{position:absolute;width:100%;height:100%;stroke:#6f7784;stroke-width:1;fill:#fff}.city-trip-marker{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;background:#fff;color:#293846;border:1px solid #b6b0c1;border-radius:8px;padding:4px 7px;width:150px;min-height:44px;text-align:left;font-size:11px;line-height:1.35;box-shadow:0 2px 5px #25344122}.city-trip-marker strong{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.city-trip-marker span{display:block;white-space:nowrap;font-size:10px}.city-trip-marker.is-left,.city-trip-marker.is-right{width:44px;height:44px;min-height:44px;text-align:center;color:#fff;border:2px solid #fff;background:#7058a5;border-radius:50%}.city-trip-marker.is-right{background:#386da6;border-radius:7px}.city-trip-marker.is-selected{outline:3px solid #a695c0;outline-offset:2px}.city-trip-marker:disabled{pointer-events:none;opacity:.7}.city-trip-marker:focus-visible{outline:3px solid #293846;outline-offset:3px}
+</style>

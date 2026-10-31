@@ -1,4 +1,4 @@
-import { test, expect } from './support.mjs'
+import { test, expect, homeScreen } from './support.mjs'
 import { places, profile } from './fixtures.mjs'
 import { carResponse, walkingResponse } from './fixtures/home-trips.mjs'
 const root = (two = true) => '/?' + new URLSearchParams({ left: places.a.id, ...(two ? { right: places.b.id } : {}), radius_m: '500' })
@@ -32,10 +32,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 720
             const box = await first.boundingBox(); expect(box.y + box.height).toBeLessThanOrEqual(720)
         }
         await page.locator('.home-result-tools').scrollIntoViewIfNeeded()
-        if (viewport.width < 768) await page.locator('.home-result-tools').evaluate(node => {
-            const root = node.closest('.placelens-workspace'), dock = root.querySelector('.home-mobile-views')
-            root.scrollTop += node.getBoundingClientRect().top - root.getBoundingClientRect().top - dock.getBoundingClientRect().height
-        })
+
         await page.evaluate(() => document.fonts.ready)
         await page.screenshot({ path: test.info().outputPath(`matrix-${viewport.width}x${viewport.height}.png`), fullPage: false })
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
@@ -55,16 +52,19 @@ test('one profile before trips, accessible single navigation, sources and exact 
     const overview = tabs(page).getByRole('tab', { name: 'Обзор', exact: true }); await overview.focus()
     await overview.press('End'); const data = tabs(page).getByRole('tab', { name: 'Данные', exact: true })
     await expect(data).toBeFocused(); await expect(data).toHaveAttribute('aria-selected', 'true')
-    await expect(page.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'home-result-tab-data')
+    await expect(page.locator('#home-result-panel')).toHaveAttribute('aria-labelledby', 'home-result-tab-data')
     await expect(page.getByRole('table')).toHaveCount(0)
     const addressSource = page.getByText('Адрес и точка · А', { exact: true })
     if (page.viewportSize().width < 768) expect((await addressSource.boundingBox()).height).toBeGreaterThanOrEqual(44)
     await addressSource.press('Enter')
-    await expect(page.getByRole('tabpanel')).toContainText('дата наблюдения: неизвестна')
+    await expect(page.locator('#home-result-panel')).toContainText('дата наблюдения: неизвестна')
     await data.press('Home'); await expect(overview).toBeFocused()
     await overview.press('ArrowLeft'); await expect(data).toBeFocused()
     await data.press('ArrowLeft'); const env = tabs(page).getByRole('tab', { name: 'Окружение', exact: true }); await expect(env).toBeFocused()
-    await env.press('Tab'); await expect(page.getByRole('tabpanel')).toBeFocused()
+    await env.press('Tab'); await expect(page.getByRole('button', { name: 'Как читать результаты', exact: true })).toBeFocused()
+    await page.keyboard.press('Tab')
+    if (page.viewportSize().width >= 768) { await expect(page.getByRole('button', { name: 'Развернуть результаты', exact: true })).toBeFocused(); await page.keyboard.press('Tab') }
+    await expect(page.locator('#home-result-panel')).toBeFocused()
     const info = page.getByRole('button', { name: 'Подробности: Ближайшая остановка, А', exact: true })
     await info.press('Enter'); const dialog = page.getByRole('dialog')
     await expect(dialog).toContainText('Это не длина пути')
@@ -75,8 +75,8 @@ test('one profile before trips, accessible single navigation, sources and exact 
     await info.press('Enter'); await page.getByRole('dialog').getByRole('button', { name: 'На карте А', exact: true }).press('Enter')
     await expect(page.locator('#home-map-title')).toBeFocused()
     await expect.poll(() => page.evaluate(async () => (await window.__smokeMapIn('.placelens-map')?.getSource('transport-selection')?.getData())?.features.filter(feature => feature.properties.kind === 'selected-stop').map(feature => feature.properties.id))).toEqual([10100])
-    const returnButton = page.getByRole('group', { name: 'Рабочая область', exact: true }).getByRole('button', { name: 'Результаты и ввод', exact: true })
-    if (await returnButton.isVisible()) { await returnButton.press('Enter'); await expect(page.locator('#home-address-title')).toBeFocused() }
+    const returnButton = page.getByRole('tablist', { name: 'Рабочая область', exact: true }).getByRole('tab', { name: 'Сравнение', exact: true })
+    if (await returnButton.isVisible()) { await returnButton.press('Enter'); await expect(returnButton).toBeFocused() }
     expect(calls).toHaveLength(0)
 })
 
@@ -157,7 +157,7 @@ test('pending B, unknown path and stable-cell retry keep A and other goals; prof
     await expect(table(page).locator('[data-metric-id="transport:nearest_stop_distance"] td[data-side=left]')).toContainText('150 м')
     await expect(page.getByRole('button', { name: 'Повторить Б', exact: true })).toBeVisible()
     await tabs(page).getByRole('tab', { name: 'Данные', exact: true }).press('Enter')
-    await expect(page.getByRole('tabpanel')).toContainText(places.a.label)
+    await expect(page.locator('#home-result-panel')).toContainText(places.a.label)
     expect(calls).toHaveLength(3)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })

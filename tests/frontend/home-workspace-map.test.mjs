@@ -82,7 +82,7 @@ function harness(initial = {}) {
         point: null, profile: null, analysis: null, address: null,
         choice: { groups: [], selectedId: null, highlightedId: null, highlightedGroupId: null }, selectedStopId: null, selectedObject: null,
         showStops: false, areas: { parks: false, vegetation: false, water: false }, lines: { roads: false, railways: false }, focus: null, trip: null, ...initial })
-    const events = Object.fromEntries(['point', 'address', 'highlightAddress', 'stop', 'object', 'street'].map(name => [`on${name[0].toUpperCase()}${name.slice(1)}`, (...args) => emitted.push([name, ...clone(args)])]))
+    const events = Object.fromEntries(['point', 'address', 'highlightAddress', 'stop', 'object', 'street', 'entity'].map(name => [`on${name[0].toUpperCase()}${name.slice(1)}`, (...args) => emitted.push([name, ...clone(args)])]))
     const node = type => ({ type, children: [] })
     const renderer = vue.createRenderer({
         createElement: node, createText: node, createComment: node,
@@ -259,5 +259,40 @@ test('empty initial map gains overlays and profile layers without remount; expli
         h.props.selectedObject = { layer: 'parks', id: 'park-1' }; await h.flush()
         h.props.selectedObject = null; await h.flush(); assert.equal(h.cityBindings.selectedFeature.value, null)
         assert.equal(h.map.events.click.length, 1)
+    } finally { h.dispose() }
+})
+
+test('overview selection validates rendered identity and context while keeping candidate owner sequence', async () => {
+    const selected = trip(), marker = { id: 'goal:epoch42', entity: 'epoch42', point: b, title: 'Цель', signal: 'А — · Б —', detail: 'Ориентир не задан', shape: 'goal', selected: true }
+    const h = harness({ context: { kind: 'trip', trip: selected.trip }, trip: selected,
+        overview: { sequence: 0, interactive: true, markers: [marker], data: selected.overlay.data } })
+    try {
+        await h.load()
+        const old = h.listeners()
+        old.onTripEntity(marker.id); assert.deepEqual(h.emitted.at(-1), ['entity', marker.id])
+        const before = h.emitted.length
+        h.props.context = { kind: 'pick-street', trip: selected.trip, end: 'target' }; h.props.overview = null
+        await h.flush(); old.onTripEntity(marker.id); h.listeners().onTripEntity(marker.id)
+        assert.equal(h.emitted.length, before)
+        assert.equal(h.cityProps().tripPicking, true)
+        h.map.fire('click', click)
+        assert.equal(h.emitted.at(-1)[0], 'street')
+        assert.equal(h.emitted.at(-1)[1].context.end, 'target')
+        assert.equal(h.map.fits.length, 0)
+    } finally { h.dispose() }
+})
+
+test('overview does not disable the active profile layers or stop events and stays camera neutral on profile response', async () => {
+    const p = profile(), h = harness({ context: { kind: 'profile', side: 'left' } })
+    try {
+        await h.load()
+        h.props.profile = p; h.props.address = address()
+        h.props.overview = { sequence: 0, data: collection([]), markers: [], interactive: true }
+        await h.flush()
+        assert.deepEqual(h.cityProps().areaLayers, p.map.area_layers)
+        assert.deepEqual(h.cityProps().addressGroups, [])
+        assert.equal(h.cityProps().showAnalysisArea, false)
+        assert.equal(h.map.fits.length, 0, 'profile response cannot move the overview')
+        h.listeners().onSelectStop(7); assert.deepEqual(h.emitted.at(-1), ['stop', 7])
     } finally { h.dispose() }
 })

@@ -51,8 +51,8 @@ export function tripMapData(points: TripMapPoint[], analysis: TripAnalysis | nul
 export function installTripLayers(map: LibreMap, collection: FeatureCollection) {
     if (!map.getSource('trips')) map.addSource('trips', { type: 'geojson', tolerance: 0, data: collection })
     const layers: LayerSpecification[] = [
-        { id: 'trip-path-casing', type: 'line', source: 'trips', filter: ['==', 'kind', 'route'], paint: { 'line-color': '#fff', 'line-width': 7, 'line-opacity': .85 } },
-        { id: 'trip-paths', type: 'line', source: 'trips', filter: ['==', 'kind', 'route'], paint: { 'line-color': ['get', 'color'], 'line-width': 4, 'line-opacity': .9 } },
+        { id: 'trip-path-casing', type: 'line', source: 'trips', filter: ['==', 'kind', 'route'], paint: { 'line-color': '#fff', 'line-width': 7, 'line-opacity': ['coalesce', ['get', 'opacity'], .85] } },
+        { id: 'trip-paths', type: 'line', source: 'trips', filter: ['==', 'kind', 'route'], paint: { 'line-color': ['get', 'color'], 'line-width': 4, 'line-opacity': ['coalesce', ['get', 'opacity'], .9] } },
         { id: 'trip-connectors', type: 'line', source: 'trips', filter: ['==', 'kind', 'connector'], paint: { 'line-color': '#536b60', 'line-width': 1.5, 'line-dasharray': [2, 3] } },
         { id: 'trip-proposed', type: 'circle', source: 'trips', filter: ['==', 'kind', 'proposed'], paint: { 'circle-color': '#eee', 'circle-radius': 6, 'circle-stroke-color': '#666', 'circle-stroke-width': 2 } },
         { id: 'trip-originals', type: 'circle', source: 'trips', filter: ['==', 'kind', 'original'], paint: { 'circle-color': ['get', 'color'], 'circle-radius': 10, 'circle-stroke-width': 2, 'circle-stroke-color': '#fff' } },

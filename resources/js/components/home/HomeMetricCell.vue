@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { homeDialogKey } from '@/utils/homeDialog'
 import { computed, inject, nextTick, ref } from 'vue'
 import HomeOrientationStatus from './HomeOrientationStatus.vue'
 import type { HomeOrientationContext } from '@/types/homeOrientations'
@@ -31,7 +32,12 @@ const hasGeometry = computed(() => {
     return mappedNearestId(props.profile, props.row.category) != null
 })
 function openDetails(event: MouseEvent) { returnFocus = true; trigger.value = event.currentTarget as HTMLButtonElement; dialog.value?.showModal() }
-async function restoreFocus() { if (!returnFocus) return; await nextTick(); trigger.value?.focus() }
+async function restoreFocus() {
+    if (!returnFocus) return
+    await nextTick()
+    const target = trigger.value?.getClientRects().length && !trigger.value.closest('[inert]') ? trigger.value : document.getElementById('main-content')
+    target?.focus({ preventScroll: true })
+}
 function showMap() { returnFocus = false; dialog.value?.close(); emit('showMap') }
 const statusText = computed(() => homeMetricStateText(props.status, null))
 const context = inject<HomeOrientationContext | null>('home-orientations', null)
@@ -59,7 +65,7 @@ const orientationCell = computed(() => orientation.value?.cells.find(cell => cel
         <p v-else class="home-cell-note">{{ statusText }}</p>
         <HomeOrientationStatus v-if="orientation && orientationCell" :group="orientation" :cell="orientationCell" />
         <div class="home-cell-actions"><button type="button" :aria-label="`Подробности: ${row.label}, ${sideName}`" @click="openDetails">ⓘ</button></div>
-        <dialog ref="dialog" class="home-result-dialog" :aria-labelledby="`home-details-${side}-${row.category}-${row.key}`" @close="restoreFocus">
+        <dialog @keydown="homeDialogKey" ref="dialog" class="home-result-dialog" :aria-labelledby="`home-details-${side}-${row.category}-${row.key}`" @close="restoreFocus">
             <div class="home-result-dialog-content">
                 <h2 :id="`home-details-${side}-${row.category}-${row.key}`">{{ row.label }} · вариант {{ sideName }}</h2>
                 <template v-if="metric && details">

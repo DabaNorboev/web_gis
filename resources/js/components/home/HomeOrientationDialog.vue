@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { homeDialogKey } from '@/utils/homeDialog'
 import { nextTick, ref, watch } from 'vue'
 import HomeOrientationStatus from './HomeOrientationStatus.vue'
 import type { HomeOrientationTarget } from '@/types/homeOrientations'
@@ -24,13 +25,16 @@ async function closed() {
     const initiator = trigger; trigger = null
     props.owner.finish()
     await nextTick()
-    if (!active && initiator?.isConnected) initiator.focus({ preventScroll: true })
+    if (!active) {
+        const target = initiator?.isConnected && initiator.getClientRects().length && !initiator.closest('[inert]') ? initiator : document.getElementById('main-content')
+        target?.focus({ preventScroll: true })
+    }
 }
 watch(props.owner.current, value => { if (!value && dialog.value?.open) close() })
 defineExpose({ open })
 </script>
 <template>
-    <dialog ref="dialog" class="home-result-dialog home-orientation-dialog" aria-labelledby="home-orientation-title" @close="closed" @cancel.prevent="close" @click="event => { if (event.target === dialog) close() }">
+    <dialog @keydown="homeDialogKey" ref="dialog" class="home-result-dialog home-orientation-dialog" aria-labelledby="home-orientation-title" @close="closed" @cancel.prevent="close" @click="event => { if (event.target === dialog) close() }">
         <template v-if="owner.current.value">
             <header><h2 id="home-orientation-title">Личный ориентир · {{ owner.current.value.title }}</h2><button type="button" @click="close">Закрыть</button></header>
             <div class="home-orientation-body">

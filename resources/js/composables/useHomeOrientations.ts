@@ -87,7 +87,7 @@ export function useHomeOrientations(home: HomeWorkspace, trips: HomeTripsPort) {
         return { key, target, title, unit, threshold, thresholdPercent: scale.thresholdPercent, explanation,
             cells: samples.map((sample, index) => ({ ...sample, key: JSON.stringify([key, sample.side]), result: results[index]!, percent: scale.values[index]! })) }
     }
-    // The single prepared source for table, live dialog and future G4.3 map signals.
+    // The single prepared source for table, live dialog and map signals.
     const groups = computed(() => [
         ...addressGoals().map(goal => group({ kind: 'trip', scenario: 'addresses', placeId: goal.id, mode: trips.addresses.mode.value })),
         ...standaloneGoals().map(goal => group({ kind: 'trip', scenario: 'standalone', placeId: goal.id, mode: trips.standalone.mode.value })),

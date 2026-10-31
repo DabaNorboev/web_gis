@@ -188,3 +188,51 @@
     .home-v2 :is(.home-trip-cell,.home-metric-cell) > .home-orientation-status small { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
 @media(prefers-reduced-motion:reduce) { .home-orientation-changed { transition: none; } }
+
+/* G4.3: a single resizable MapLibre surface and display-only goal scope. */
+.home-v2 .home-map-tools{display:contents}
+.home-v2 .home-map-tools button{min-height:36px;padding:3px 7px;border:1px solid #dce2dc;border-radius:5px;background:#fff;color:#52616d;font-size:11px}
+.home-v2 .home-map-tools button[aria-pressed=true]{background:#efeaf6;color:#7058a5}
+.home-v2 .home-map-tools button:disabled{opacity:.5}
+.home-v2 .home-map-tools span{margin-left:auto;color:#626f78}
+.workspace-interface .home-v2.placelens-workspace{grid-template-rows:minmax(240px,30%) minmax(180px,1fr)}
+.workspace-interface .home-v2.home-results-expanded{grid-template-rows:240px minmax(180px,1fr)}
+.workspace-interface .home-v2.home-map-expanded{grid-template-rows:minmax(380px,1fr) 0}
+.home-v2.home-map-expanded .home-results-area{visibility:hidden;overflow:hidden}
+.home-v2 .home-result-table [data-map-selected=true]{background:#f0ebf8}
+.home-v2 .home-result-table td[data-map-selected=true]{box-shadow:inset 3px 0 #7058a5}
+.home-v2 .home-map-details .trip-result{display:block}
+.home-v2 .home-map-details .home-cell-top{display:flex}
+.home-v2 .home-map-details .home-cell-bottom{display:flex}
+@media(max-width:767px){
+    .home-v2 .home-map-tools button{min-height:44px}
+    .home-v2 .home-map-tools span{width:100%;margin-left:0}
+    .home-v2.home-map-expanded .home-results-area{visibility:visible}
+}
+
+.home-v2 .home-map-heading:has(.home-map-tools){flex-wrap:wrap;gap:5px;padding:4px 8px}
+@media(max-width:400px){
+    .workspace-interface .home-v2 .placelens-map .maplibregl-ctrl-bottom-left{bottom:24px}
+}
+
+/* Percentages follow the modal containing block when the page is magnified. */
+.home-v2 .home-result-dialog{width:min(620px,calc(100% - 24px));max-height:calc(100% - 24px)}
+.home-v2 .home-orientation-dialog{width:min(560px,calc(100% - 24px));max-height:calc(100% - 24px)}
+@media(max-width:767px){.home-v2 .home-orientation-dialog{width:calc(100% - 12px);max-height:calc(100% - 12px)}}
+.workspace-interface .home-v2 .home-run-controls{bottom:0;padding-bottom:max(9px,env(safe-area-inset-bottom))}
+@media(max-width:767px){
+    .home-v2 #home-panel{scroll-padding-bottom:120px}
+    .workspace-interface .home-v2 .home-trips-editor :is(button,input,select,summary){min-height:44px}
+}
+
+/* At 200% reflow a short map can be read vertically, including its controls. */
+@media(max-width:767px) and (max-height:420px){
+    .workspace-interface .home-v2 .placelens-map{overflow-y:auto}
+    .workspace-interface .home-v2 .placelens-map>.city-map{flex-shrink:0;min-height:220px}
+}
+
+/* Keep all overview labels available when mobile chrome leaves a short surface. */
+@media(max-width:767px){
+    .workspace-interface .home-v2 .placelens-map:has(.home-map-tools){overflow-y:auto}
+    .workspace-interface .home-v2 .placelens-map:has(.home-map-tools)>.city-map{flex-shrink:0;min-height:320px}
+}

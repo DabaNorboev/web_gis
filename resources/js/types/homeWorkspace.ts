@@ -44,6 +44,7 @@ export interface HomeTripsPort {
     addresses: ReturnType<typeof useComparisonTrips>
     standalone: ReturnType<typeof useTripsState>
     map: ComputedRef<HomeTripMapInput | null>
+    overview: ComputedRef<HomeTripMapInput[]>
     selectMap: (selection: HomeTripMapSelection) => void
 }
 
@@ -65,9 +66,12 @@ export interface HomeWorkspaceMapProps {
     lines: LinearVisibility
     focus: { layer: MapLayerKey; id?: string; sequence: number } | null
     trip: HomeTripMapInput | null
+    overview?: TripMapOverlay | null
+    automaticCamera?: boolean
 }
 export interface HomeWorkspaceMapEvents {
     ready: []
+    entity: [id: string]
     point: [context: HomeMapContext, point: Coordinates]
     address: [side: SideKey, id: string]
     highlightAddress: [side: SideKey, id: string | null]

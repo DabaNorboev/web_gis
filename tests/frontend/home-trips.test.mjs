@@ -493,3 +493,57 @@ test('stop orientation preserves zero, guards unknown/stale/coverage/method and 
         assert.equal(h.orientations.find(target).threshold, 150)
     } finally { await h.dispose() }
 })
+
+test('overview retains each side/goal token and accepted geometry, independent invalidation and orientation-only edits', async () => {
+    const signal = loadModule(path('utils/homeMapSignal.ts'))
+    const overview = loadModule(path('utils/homeMap.ts'), { '@/utils/homeMapSignal': signal })
+    const h = setup()
+    try {
+        h.setSide('left', 'synthetic:a'); h.setSide('right', 'synthetic:b', b)
+        const ids = [h.addGoal(), h.addGoal({ lon: 92.92, lat: 56.04 }), h.addGoal({ lon: 92.93, lat: 56.05 })]
+        const pending = h.model.addresses.calculate(); h.requests.forEach(request => h.resolve(request)); await pending
+        const values = h.model.overview.value
+        assert.equal(values.length, 6)
+        const keys = values.map(overview.homeMapEntity); assert.equal(new Set(keys).size, 6)
+        const chosen = trip('right', ids[1]); show(h, chosen)
+        const build = scope => overview.homeMapOverview(h.model.overview.value, h.model.addresses.places.value, h.orientations.groups.value, chosen, scope, h.model.map.value)
+        const all = build('all'), one = build('one')
+        assert.equal(all.data.features.filter(f => f.properties.kind === 'route').length, 6)
+        assert.equal(one.data.features.filter(f => f.properties.kind === 'route').length, 2)
+        assert.ok(one.data.features.filter(f => f.properties.kind === 'route').every(f => JSON.parse(f.properties.entity)[0].placeId === ids[1]))
+        assert.equal(all.markers.filter(m => m.shape === 'goal').length, 3)
+        assert.ok(all.markers.filter(m => m.shape === 'goal').every(m => m.signal === 'А — · Б —'))
+        const selectedSequence = h.model.map.value.overlay.sequence, data = clone(all.data)
+        setOrientation(h, { kind: 'trip', scenario: 'addresses', placeId: ids[1], mode: 'driving' }, '6')
+        await tick()
+        assert.deepEqual(h.model.overview.value.map(overview.homeMapEntity), keys)
+        assert.equal(h.model.map.value.overlay.sequence, selectedSequence)
+        assert.deepEqual(build('all').data, data)
+        assert.equal(build('all').markers.find(m => m.shape === 'goal' && m.selected).signal, 'А ✓ · Б ✓')
+        assert.equal(h.requests.length, 2)
+        h.model.addresses.setRoad('right', ids[1], 'target', { lon: 92.921, lat: 56.041 })
+        assert.equal(build('all').data.features.filter(f => f.properties.kind === 'route').length, 5)
+        assert.equal(h.model.overview.value.filter(value => keys.includes(overview.homeMapEntity(value))).length, 5)
+        h.model.addresses.remove(ids[1])
+        assert.equal(build('one').data.features.filter(f => f.geometry.type === 'LineString').length, 0, 'deleted selection cannot retain another goal line')
+        h.model.addresses.setMode('walking')
+        assert.equal(build('all').data.features.filter(f => f.properties.kind === 'route').length, 0)
+    } finally { await h.dispose() }
+})
+
+test('unknown car result with a selected road never lends a connector or matched endpoint to the overview', async () => {
+    const signal = loadModule(path('utils/homeMapSignal.ts'))
+    const overview = loadModule(path('utils/homeMap.ts'), { '@/utils/homeMapSignal': signal })
+    const h = setup()
+    try {
+        h.setSide('left', 'synthetic:a'); const id = h.addGoal()
+        const pending = h.model.addresses.calculate()
+        h.resolve(h.requests[0], ['UNKNOWN'], value => {
+            value.results[0].road_choices = { start: { status: 'SELECTED', point: { lon: a.lon + .001, lat: a.lat }, candidates: [] }, target: { status: 'NONE' } }
+            return value
+        }); await pending
+        const result = overview.homeMapOverview(h.model.overview.value, h.model.addresses.places.value, h.orientations.groups.value, null, 'all', null)
+        assert.equal(result.data.features.filter(f => f.geometry.type === 'LineString' || f.properties.kind === 'matched').length, 0)
+        assert.ok(result.markers.find(m => m.shape === 'goal').signal.includes('А ?'))
+    } finally { await h.dispose() }
+})

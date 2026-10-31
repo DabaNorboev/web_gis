@@ -25,18 +25,18 @@ const trip = computed(() => {
 // display sequence constant, while events below retain the owner's real token.
 // Start with an empty overlay. sharedView=null requests viewReady without a
 // shared camera; publishing data then also cancels CityMap's deferred load fit.
-const overlay = computed<TripMapOverlay>(() => ({ data: ready.value ? trip.value?.overlay.data ?? empty : empty, sequence: 0 }))
+const overlay = computed<TripMapOverlay>(() => ({ ...(props.overview ?? {}), data: ready.value ? props.overview?.data ?? trip.value?.overlay.data ?? empty : empty, markers: ready.value ? props.overview?.markers : [], sequence: 0 }))
 const profile = computed(() => props.context.kind === 'profile' && !props.choice.groups.length ? props.profile : null)
 const background = computed(() => props.context.kind === 'profile' || props.context.kind === 'point')
-const address = computed(() => background.value ? props.address : null)
-const groups = computed(() => background.value ? profile.value ? address.value ? [address.value] : [] : props.choice.groups : [])
+const address = computed(() => background.value && !props.overview ? props.address : null)
+const groups = computed(() => !props.overview && background.value ? profile.value ? address.value ? [address.value] : [] : props.choice.groups : [])
 const point = computed(() => profile.value?.point ?? (props.context.kind === 'point' ? props.point : null))
 const analysis = computed(() => profile.value?.map ?? (props.context.kind === 'point' ? props.analysis : null))
 const side = computed(() => props.context.kind === 'profile' ? props.context.side : props.activeSide)
 
 const version = ref(0)
 let disposed = false
-watch(() => [props.context, props.activeSide, props.trip?.trip, props.trip?.mode, props.trip?.overlay.sequence], () => { version.value++ }, { deep: true, flush: 'sync' })
+watch(() => [props.context, props.activeSide, props.trip?.trip, props.trip?.mode, props.trip?.overlay.sequence, props.overview?.markers?.map(marker => marker.id)], () => { version.value++ }, { deep: true, flush: 'sync' })
 onBeforeUnmount(() => { disposed = true; version.value++ })
 watch(() => props.selectedObject, selection => { if (!selection) map.value?.clearObjectSelection() })
 
@@ -49,6 +49,9 @@ const events = computed(() => {
     const live = () => !disposed && current === version.value
     const shownAddress = (id: string) => groups.value.some(group => group.objects.some(object => object.id === id))
     return {
+        tripEntity(id: string) {
+            if (live() && !picking.value && !props.choice.groups.length && (props.overview?.markers?.some(marker => marker.id === id) || props.overview?.data.features.some(feature => feature.properties?.entity === id))) emit('entity', id)
+        },
         select(coordinates: Coordinates) {
             if (!live()) return
             const point = { ...coordinates }
@@ -76,14 +79,14 @@ defineExpose<HomeWorkspaceMapHandle>({
     focusTrip: async () => {
         const current = version.value
         await nextTick()
-        if (ready.value && trip.value && !disposed && current === version.value) await map.value?.focusTrip()
+        if (ready.value && (trip.value || props.overview) && !disposed && current === version.value) await map.value?.focusTrip()
     },
 })
 </script>
 
 <template>
     <CityMap ref="map"
-        :point="point" :analysis="analysis" :profile="profile" :radius="radius"
+        :point="point" :analysis="analysis" :show-analysis-area="!overview" :profile="profile" :radius="radius"
         :address-group="address" :address-groups="groups"
         :selected-address-id="profile?.address.id ?? choice.selectedId"
         :highlighted-address-id="choice.highlightedId" :highlighted-group-id="choice.highlightedGroupId"
@@ -92,6 +95,6 @@ defineExpose<HomeWorkspaceMapHandle>({
         :linear-layers="profile?.map.linear_layers ?? null" :linear-visibility="lines"
         :show-stops="background && (profile ? showStops : true)"
         :selected-stop-id="background ? selectedStopId : null" :focus-request="background ? focus : null"
-        :trip-overlay="overlay" :trip-picking="picking" :shared-view="null"
+        :automatic-camera="automaticCamera ?? false" :overlay-controls="!!overview" :trip-overlay="overlay" :trip-picking="picking" :shared-view="null"
         v-on="events" />
 </template>

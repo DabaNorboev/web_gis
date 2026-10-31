@@ -162,3 +162,19 @@ test('real CityMap cancels deferred route fitting on hide, reset and unmount', a
         h.dispose(); await h.flush(); assert.equal(h.map.fits.length, 0)
     } finally { if (!h.map.removed) h.dispose() }
 })
+
+test('overview route dispatch keeps its cell token; stale tiles and manual selection never switch a goal', () => {
+    const map = new BoundaryMap(), events = []
+    let data = display(), picking = false
+    data.features[2].properties.entity = 'right:stable-goal:walking:epoch42'
+    const control = overlay.createTripOverlay(map, { data: () => data, picking: () => picking, interactive: () => true,
+        select: point => events.push(['pick', point]), candidate() { throw Error('route cannot become candidate') }, entity: id => events.push(['entity', id]) })
+    control.install(); map.hit = structuredClone(data.features[2])
+    assert.equal(control.click(click), true)
+    assert.deepEqual(events, [['entity', 'right:stable-goal:walking:epoch42']])
+    data = structuredClone(data); data.features[2].properties.entity = 'left:new-goal:driving:epoch43'
+    assert.equal(control.click(click), false); assert.equal(events.length, 1)
+    picking = true; assert.equal(control.click(click), true)
+    assert.equal(events.length, 2); assert.equal(events[1][0], 'pick')
+    assert.equal(map.fits.length, 0); control.dispose()
+})

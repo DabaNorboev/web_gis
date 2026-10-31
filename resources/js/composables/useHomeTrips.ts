@@ -135,9 +135,7 @@ export function useHomeTrips(input: HomeTripsInput): HomeTripsPort {
         if (removed || edited) input.activate(next.trip.scenario === 'addresses' ? { kind: 'profile', side: next.trip.side } : { kind: 'point' })
     }, { flush: 'sync' })
 
-    const prepared = computed(() => {
-        const trip = contextTrip(input.context.value)
-        if (!trip) return null
+    function prepare(trip: HomeTripRef) {
         if (trip.scenario === 'addresses') {
             const place = addresses.places.value.find(place => place.id === trip.placeId)
             if (!place) return null
@@ -165,7 +163,13 @@ export function useHomeTrips(input: HomeTripsInput): HomeTripsPort {
             ...(start ? [{ key: 'S', point: start, road: standalone.draft.start.road }] : []),
             ...(target ? [{ key: '1', point: target, road: place.road }] : []),
         ], analysis, groups, standalone.mode.value) }
-    })
+    }
+    const prepared = computed(() => { const trip = contextTrip(input.context.value); return trip ? prepare(trip) : null })
+    const overview = computed(() => addresses.places.value.flatMap(place => sides.flatMap(side => {
+        if (!input.sides[side].id) return []
+        const value = prepare({ scenario: 'addresses', side, placeId: place.id })
+        return value ? [{ trip: value.trip, mode: value.mode, overlay: { data: value.data, sequence: value.revision ?? 0 } }] : []
+    })))
     let sequence = 0
     // Flush synchronously: a second event from the old overlay must already be stale.
     watch([prepared, input.context], () => { sequence++ }, { flush: 'sync' })
@@ -219,5 +223,5 @@ export function useHomeTrips(input: HomeTripsInput): HomeTripsPort {
             input.activate({ kind: 'trip', trip })
         }
     }
-    return { addresses, standalone, map, selectMap }
+    return { addresses, standalone, map, overview, selectMap }
 }

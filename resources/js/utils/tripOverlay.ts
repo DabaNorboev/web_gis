@@ -5,7 +5,17 @@ import { installTripLayers } from '@/utils/tripMap'
 
 /** Prepared display data; candidates carry a scenario-prepared string ID.
  * Scenario identities and response indices stay outside the map. */
-export interface TripMapOverlay { data: FeatureCollection; sequence: number }
+export interface TripMapMarker {
+    id: string
+    entity: string
+    point: Coordinates
+    title: string
+    signal: string
+    detail: string
+    shape: 'left' | 'right' | 'goal'
+    selected: boolean
+}
+export interface TripMapOverlay { data: FeatureCollection; sequence: number; markers?: TripMapMarker[]; interactive?: boolean }
 
 export function tripOverlayBounds(data: FeatureCollection): [[number, number], [number, number]] | null {
     const points: number[][] = []
@@ -29,6 +39,8 @@ export function createTripOverlay(map: LibreMap, options: {
     picking: () => boolean
     select: (point: Coordinates) => void
     candidate: (key: string, point: Coordinates) => void
+    entity?: (id: string) => void
+    interactive?: () => boolean
 }) {
     let disposed = false
     let layerIds: string[] = []
@@ -55,7 +67,14 @@ export function createTripOverlay(map: LibreMap, options: {
         const data = options.data()
         if (!data || !map.getLayer('compare-road-candidates')) return false
         const candidate = map.queryRenderedFeatures(event.point, { layers: ['compare-road-candidates'] })[0]
-        if (candidate?.geometry.type !== 'Point' || typeof candidate.properties.id !== 'string') return false
+        if (candidate?.geometry.type !== 'Point' || typeof candidate.properties.id !== 'string') {
+            if (!options.interactive?.()) return false
+            const hit = map.queryRenderedFeatures(event.point, { layers: ['trip-paths'] })[0]
+            const id = hit?.properties.entity
+            if (typeof id !== 'string' || !data.features.some(f => f.properties?.entity === id)) return false
+            options.entity?.(id)
+            return true
+        }
         // GeoJSON tiles update asynchronously. Match the prepared candidate ID
         // before dispatch, and use its original coordinates rather than tile rounding.
         const current = data.features.find(feature => feature.properties?.kind === 'candidate'

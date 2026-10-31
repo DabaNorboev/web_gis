@@ -18,7 +18,7 @@ const orientation = computed(() => context?.enabled.value ? context.owner.find(t
 const orientationCell = computed(() => orientation.value?.cells.find(cell => cell.side === (props.entry.trip.scenario === 'addresses' ? props.entry.trip.side : 'start')))
 </script>
 <template>
-    <article class="trip-result home-trip-cell" :class="{ 'home-orientation-changed': orientationCell && context?.owner.highlighted.value.includes(orientationCell.key), 'is-ready': !entry.loading && !entry.error && acceptedTrip(entry.row) }" :aria-label="entry.title" :aria-busy="entry.loading">
+    <article :data-home-trip="JSON.stringify(entry.trip)" tabindex="-1" class="trip-result home-trip-cell" :class="{ 'home-orientation-changed': orientationCell && context?.owner.highlighted.value.includes(orientationCell.key), 'is-ready': !entry.loading && !entry.error && acceptedTrip(entry.row) }" :aria-label="entry.title" :aria-busy="entry.loading">
         <span class="sr-only">{{ entry.title }}</span>
         <p v-if="entry.loading" role="status">Проверяем…</p>
         <template v-else-if="entry.error"><p role="status">{{ entry.error }}</p><button type="button" :disabled="!entry.canCalculate" @click="actions.retry(entry.trip)">Повторить эту поездку</button></template>
@@ -41,7 +41,7 @@ const orientationCell = computed(() => orientation.value?.cells.find(cell => cel
                     <p v-else>Снимок маршрутизации недоступен.</p>
                 </template></HomeResultDialog>
             </div>
-            <div class="home-cell-bottom"><span>{{ tripDistance(entry.row!.route!.distance_m) }}</span><button type="button" aria-label="Показать маршрут" @click="actions.show(entry.trip)">На карте</button></div>
+            <div class="home-cell-bottom"><span>{{ tripDistance(entry.row!.route!.distance_m) }}</span><button type="button" data-home-map-action aria-label="Показать маршрут" @click="actions.show(entry.trip)">На карте</button></div>
         </template>
         <template v-else-if="entry.row">
             <p class="home-cell-note">{{ entry.row.status === 'UNKNOWN' ? 'Путь неизвестен' : entry.row.status === 'NEEDS_REFINEMENT' ? 'Нужно уточнение улицы' : entry.row.status === 'OUTSIDE_PILOT' ? 'За пределами пилота' : entry.row.status === 'NO_PATH' ? 'Путь не подтверждён' : 'Расчёт недоступен' }}. {{ entry.row.reason }}</p>
