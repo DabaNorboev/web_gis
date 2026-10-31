@@ -3,12 +3,7 @@ import { places, profile, comparisonUrl } from './fixtures.mjs'
 
 const storageKey = 'placelens:interface:v1'
 const switcher = page => page.getByRole('group', { name: 'Интерфейс', exact: true })
-async function choose(page, name) {
-    const button = switcher(page).getByRole('button', { name, exact: true })
-    await button.press('Enter')
-    await expect(button).toHaveAttribute('aria-pressed', 'true')
-    await expect(button).toBeFocused()
-}
+async function assertWorkspace(page) { await expect(switcher(page)).toHaveCount(0) }
 async function pointApi(page) {
     const transport = [], labels = []
     let handler = route => route.fulfill({ json: result(route) })
@@ -29,7 +24,7 @@ async function pointApi(page) {
     } }
 }
 
-test('interface preserves pending search and explicit object choice, persists across routes and reload', async ({ page, api }) => {
+test('workspace preserves pending search, explicit object choice and reload', async ({ page, api }) => {
     let release, requested
     const gate = new Promise(resolve => { release = resolve }), started = new Promise(resolve => { requested = resolve })
     await page.route('**/api/v1/addresses/search?*', async route => {
@@ -38,33 +33,33 @@ test('interface preserves pending search and explicit object choice, persists ac
         return route.fulfill({ json: searchResponse('Неоднозначная') })
     })
     await page.goto('/')
-    await expect(switcher(page).getByRole('button', { name: 'Текущий', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(switcher(page)).toHaveCount(0)
     const input = page.getByRole('combobox', { name: 'Адрес в Красноярске', exact: true })
     await input.fill('Неоднозначная')
     await started
     const url = page.url(), history = await page.evaluate(() => window.history.length)
-    await choose(page, 'Новый')
+    await assertWorkspace(page)
     await expect(input).toHaveValue('Неоднозначная')
     release()
     await expect(page.getByRole('listbox', { name: 'Найденные адреса' }).getByRole('option')).toHaveCount(1)
     await input.press('ArrowDown'); await input.press('Enter')
     const objects = page.getByRole('list', { name: 'Объекты выбранного адреса' })
     await expect(objects.getByRole('button')).toHaveCount(10)
-    await choose(page, 'Текущий')
+    await assertWorkspace(page)
     await expect(objects.getByRole('button')).toHaveCount(10)
     expect(page.url()).toBe(url)
     expect(await page.evaluate(() => window.history.length)).toBe(history)
     expect(api.calls.filter(url => url.endsWith('/profile?radius_m=500'))).toHaveLength(0)
-    await choose(page, 'Новый')
+    await assertWorkspace(page)
     await objects.getByRole('button').first().press('Enter')
     await expect(page).toHaveURL(/\/\?left=osm%3Away%3A501/)
-    await expect(switcher(page).getByRole('button', { name: 'Новый', exact: true })).toHaveAttribute('aria-pressed', 'true')
+    await expect(switcher(page)).toHaveCount(0)
     await page.reload()
-    await expect(switcher(page).getByRole('button', { name: 'Новый', exact: true })).toHaveAttribute('aria-pressed', 'true')
-    expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBe('workspace')
+    await expect(switcher(page)).toHaveCount(0)
+    expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBe(null)
 })
 
-test('pending point analysis and map instance survive both interfaces, then radius and history still work', async ({ page, api }) => {
+test('pending point analysis keeps map instance, radius and history', async ({ page, api }) => {
     const points = await pointApi(page), gate = points.hold()
     const pointUrl = '/?lon=92.87&lat=56.01&radius_m=500#point-info'
     await page.goto(pointUrl)
@@ -73,7 +68,7 @@ test('pending point analysis and map instance survive both interfaces, then radi
     await expect.poll(() => page.evaluate(() => !!window.__smokeMapIn('.placelens-map'))).toBe(true)
     await page.evaluate(() => { window.__g2Map = window.__smokeMapIn('.placelens-map'); window.__g2Canvas = document.querySelector('.placelens-map canvas') })
     const url = page.url(), history = await page.evaluate(() => window.history.length)
-    await choose(page, 'Новый'); await choose(page, 'Текущий'); await choose(page, 'Новый')
+    await assertWorkspace(page); await assertWorkspace(page); await assertWorkspace(page)
     expect(points.transport).toHaveLength(1)
     expect(points.labels).toHaveLength(1)
     gate.release()
@@ -82,15 +77,15 @@ test('pending point analysis and map instance survive both interfaces, then radi
     expect(await page.evaluate(() => window.history.length)).toBe(history)
     expect(await page.evaluate(() => window.__g2Map === window.__smokeMapIn('.placelens-map') && window.__g2Canvas === document.querySelector('.placelens-map canvas'))).toBe(true)
     await page.getByText('ⓘ Источник и качество данных', { exact: true }).click()
-    await choose(page, 'Текущий')
+    await assertWorkspace(page)
     await expect(page.locator('.transport-results')).toContainText('Дата наблюдения: неизвестна')
     expect(points.labels).toHaveLength(1)
-    await homeScreen(page, 'Настройки')
+    await homeScreen(page, 'Сравнение')
     await page.getByRole('button', { name: '300 м', exact: true }).click()
     await expect.poll(() => points.transport.length).toBe(2)
     await page.goBack()
     await expect(page.getByRole('button', { name: '500 м', exact: true })).toHaveAttribute('aria-pressed', 'true')
-    await choose(page, 'Новый')
+    await assertWorkspace(page)
     await page.screenshot({ path: test.info().outputPath('new-point-results.png'), fullPage: true })
 })
 
@@ -113,7 +108,7 @@ test('new home fills the viewport and map controls remain reachable without remo
     expect(await page.evaluate(() => {
         // Shared static CSS must be present in the smoke shell, including the
         // MapLibre controls and the switcher's scoped styles.
-        return getComputedStyle(document.querySelector('.interface-switch')).display === 'flex'
+        return !document.querySelector('.interface-switch')
             && getComputedStyle(document.querySelector('.maplibregl-ctrl-bottom-left')).position === 'absolute'
     })).toBe(true)
     expect(await page.evaluate(() => {
@@ -147,24 +142,42 @@ test('new home fills the viewport and map controls remain reachable without remo
     }
 })
 
-test('blocked preference storage still switches and shared navigation links go to the other page', async ({ page, api }) => {
+test('blocked preference storage preserves direct compare and trips pages', async ({ page, api }) => {
     await page.addInitScript(key => {
         const get = Storage.prototype.getItem, set = Storage.prototype.setItem
         Storage.prototype.getItem = function (name) { if (name === key) throw Error('Blocked preference'); return get.call(this, name) }
         Storage.prototype.setItem = function (name, value) { if (name === key) throw Error('Blocked preference'); return set.call(this, name, value) }
     }, storageKey)
     await page.goto(comparisonUrl())
-    await choose(page, 'Новый'); await choose(page, 'Текущий')
-    await page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('link', { name: 'Поездки · пилот', exact: true }).click()
+    await assertWorkspace(page); await assertWorkspace(page)
+    await page.goto('/trips')
     await expect(page).toHaveURL('/trips')
     const name = page.getByRole('textbox', { name: 'Название для себя', exact: true })
     await name.fill('Синтетическая цель')
     await page.getByRole('combobox', { name: 'Режим маршрута', exact: true }).selectOption('walking')
     const url = page.url()
-    await choose(page, 'Новый'); await choose(page, 'Текущий')
+    await assertWorkspace(page); await assertWorkspace(page)
     await expect(name).toHaveValue('Синтетическая цель')
     await expect(page.getByRole('combobox', { name: 'Режим маршрута', exact: true })).toHaveValue('walking')
     expect(page.url()).toBe(url)
-    await page.getByRole('navigation', { name: 'Основная навигация' }).getByRole('link', { name: 'Сравнить адреса', exact: true }).click()
-    await expect(page).toHaveURL('/compare')
+    await page.goto(comparisonUrl())
+    await expect(page).toHaveURL(/\/compare\?/)
 })
+
+for (const stored of [null, 'classic', 'workspace', 'blocked']) {
+    test(`workspace is available with ${stored} storage`, async ({ page, api }) => {
+        await page.addInitScript(value => {
+            if (value === 'blocked') Object.defineProperty(window, 'localStorage', { get() { throw Error('Blocked') } })
+            else if (value) localStorage.setItem('placelens:interface:v1', value)
+        }, stored)
+        await page.goto('/')
+        await expect(page.locator('.home-v2')).toBeVisible()
+        await expect(switcher(page)).toHaveCount(0)
+        await expect(page.getByRole('link', { name: 'Сравнить адреса', exact: true })).toHaveCount(0)
+        await expect(page.getByRole('link', { name: 'Поездки · пилот', exact: true })).toHaveCount(0)
+        await page.reload()
+        await expect(page.locator('.home-v2')).toBeVisible()
+        await page.goto('/address/' + encodeURIComponent(places.a.id))
+        await expect(page.locator('.address-workspace')).toBeVisible()
+    })
+}

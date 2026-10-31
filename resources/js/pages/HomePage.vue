@@ -137,7 +137,6 @@ function setMapHeight(value: number) {
     expandedMap.value = false; expandedResults.value = false
     preferredMapHeight.value = Math.max(180, Math.min(mapHeightMax.value, value))
 }
-function resetMapHeight() { preferredMapHeight.value = null; expandedMap.value = false; expandedResults.value = false }
 function heightStart(event: PointerEvent) {
     if (event.button !== 0 || !event.isPrimary) return
     event.preventDefault()
@@ -275,6 +274,7 @@ async function showTripMap(focus: boolean) {
     if (focus && navigation === navigationIntent && intent === focusSignature()) { pendingTripFocus.value = intent; void finishTripFocus() }
 }
 async function fitCurrentMap() {
+    mapScope.value = 'all'
     const intent = focusSignature()
     const navigation = navigationIntent + 1
     await changeMobileView('map')
@@ -472,13 +472,10 @@ function resetSelection() { home.resetPoint() }
             <section :role="isWorkspace && isMobile ? 'tabpanel' : undefined" :aria-labelledby="isWorkspace && isMobile ? 'home-mobile-map' : undefined" id="home-map-screen" :inert="isWorkspace && isMobile && mobileView !== 'map'" class="placelens-map" aria-label="Карта Красноярска">
                 <div v-if="isWorkspace" class="home-map-heading">
                     <button id="home-panel-toggle" class="home-desktop-layout" type="button" :aria-expanded="!panelCollapsed" aria-controls="home-panel" @click="togglePanel">{{ panelCollapsed ? 'Показать панель' : 'Свернуть панель' }}</button>
-                    <button class="home-desktop-layout" type="button" @click="resetMapHeight">Сбросить высоту</button>
                     <h2 id="home-map-title" tabindex="-1" :class="{ 'sr-only': overview }">{{ addressChoice.groups.length ? 'Объекты найденных адресов' : 'Карта Красноярска' }}</h2>
                     <div v-if="overview" class="home-map-tools" aria-label="Показ целей">
-                        <button type="button" :aria-pressed="mapScope === 'all'" @click="mapScope = 'all'">Все цели</button>
+                        <button type="button" :aria-pressed="mapScope === 'all'" @click="fitCurrentMap">Все цели</button>
                         <button type="button" :aria-pressed="mapScope === 'one'" :disabled="!selectedMapTrip" @click="mapScope = 'one'">Одна цель</button>
-                        <button type="button" @click="fitCurrentMap">Вместить на карте</button>
-                        <button v-if="selectedMapTrip" type="button" @click="mapDetailTrigger = $event.currentTarget as HTMLElement; mapDetailsRequest++">Подробности</button>
                         <button v-if="selectedMapTrip" type="button" @click="returnToTripRow">К строке</button>
                     </div>
                     <button type="button" :aria-expanded="expandedMap" @click="expandedMap = !expandedMap">{{ expandedMap ? 'Свернуть карту' : 'Развернуть карту' }}</button>

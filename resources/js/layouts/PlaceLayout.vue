@@ -1,12 +1,8 @@
 <script setup lang="ts">
 import { MapPin } from '@lucide/vue'
-import InterfaceSwitch from '@/components/InterfaceSwitch.vue'
 import { useInterfacePreference } from '@/composables/useInterfacePreference'
 defineProps<{ document?: boolean }>()
 const { isWorkspace } = useInterfacePreference()
-const isHome = typeof window !== 'undefined' && window.location.pathname === '/'
-const isComparison = typeof window !== 'undefined' && window.location.pathname === '/compare'
-const isTrips = typeof window !== 'undefined' && window.location.pathname === '/trips'
 function contentLink(event: MouseEvent) {
     if ((event.currentTarget as HTMLAnchorElement).getAttribute('href') !== '#main-content') return
     event.preventDefault()
@@ -28,12 +24,7 @@ function contentLink(event: MouseEvent) {
                 </svg>
                 <span>Place<span class="text-[#2d6450]">Lens</span></span>
             </a>
-            <nav aria-label="Основная навигация" class="header-nav flex flex-wrap gap-2"><a v-if="isWorkspace" href="/" :aria-current="isHome ? 'page' : undefined" class="header-nav-link">Поиск места</a><a :href="isComparison ? '#main-content' : '/compare'" :aria-current="isComparison ? 'page' : undefined" class="header-nav-link" @click="contentLink">Сравнить адреса</a><a :href="isTrips ? '#main-content' : '/trips'" :aria-current="isTrips ? 'page' : undefined" class="header-nav-link" @click="contentLink">Поездки · пилот</a></nav>
             <div class="city-label"><MapPin class="size-4" aria-hidden="true" /><span>Красноярск</span></div>
-            <div class="interface-choice">
-                <InterfaceSwitch />
-                <p v-if="isWorkspace" class="interface-preview" role="status">{{ isHome ? 'Новый интерфейс · предварительная версия' : 'Новый интерфейс · этот раздел пока в прежней компоновке' }}</p>
-            </div>
         </header>
         <slot />
     </div>

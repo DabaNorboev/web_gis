@@ -17,3 +17,4 @@ verified: not verified
 - [UX следующей итерации самостоятельного макета — решения и критерии](interface-prototype-ux.md).
 - [G4: этапы интеграции обновлённого интерфейса в приложение](interface-integration.md).
 - [Исправления UX после оценки владельца — U1–U4](interface-usability-corrections.md).
+- [Уточнения главной, адресного preview и совпадающих маршрутов — V1–V3](interface-map-refinements.md).

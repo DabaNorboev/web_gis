@@ -43,10 +43,17 @@ test('stable row → one goal → details → exact row, display scope and thres
     await expect(tools(page).getByRole('button', { name: 'Одна цель', exact: true })).toHaveAttribute('aria-pressed', 'true')
     await expect.poll(async () => (await routes(page)).length).toBe(2)
     expect((await routes(page)).every(f => JSON.parse(f.properties.entity)[0].placeId === 'same-two')).toBe(true)
+    const count = h.calls.length, originalUrl = page.url()
+    await page.evaluate(() => { const m = window.__smokeMapIn('.placelens-map'); window.__v1fits = []; const fit = m.fitBounds.bind(m); m.fitBounds = (...args) => { window.__v1fits.push(args[0]); return fit(...args) } })
+    await expect(tools(page).getByRole('button', { name: 'Все цели', exact: true })).toHaveCount(1)
+    await expect(tools(page).getByRole('button', { name: /Вместить|Подробности/ })).toHaveCount(0)
     await tools(page).getByRole('button', { name: 'Все цели', exact: true }).press('Enter')
     await expect.poll(async () => (await routes(page)).length).toBe(6)
+    await expect.poll(() => page.evaluate(() => window.__v1fits.length)).toBe(1)
+    expect(await page.evaluate(() => window.__v1fits[0][1][1])).toBeGreaterThanOrEqual(56.04)
+    expect(h.calls).toHaveLength(count); expect(page.url()).toBe(originalUrl)
     const before = await state(page), history = await page.evaluate(() => history.length), url = page.url()
-    await tools(page).getByRole('button', { name: 'Подробности', exact: true }).press('Enter')
+    await map(page).locator('.city-trip-marker.is-goal').nth(1).press('Enter')
     const details = page.getByRole('dialog', { name: 'Результат на карте', exact: true })
     await expect(details).toContainText('Б →'); await details.getByRole('button', { name: 'К строке', exact: true }).press('Enter')
     await homeScreen(page, 'Сравнение')
@@ -75,7 +82,7 @@ test('pending and failed B keep accepted A only; removal/mode clear their own ge
     await expect.poll(() => h.calls.length).toBe(2)
     await expect.poll(async () => (await routes(page)).length).toBe(3)
     const unfitted = await state(page)
-    await tools(page).getByRole('button', { name: 'Вместить на карте', exact: true }).press('Enter')
+    await tools(page).getByRole('button', { name: 'Все цели', exact: true }).press('Enter')
     // The explicit command can wait for map readiness; baseline it only once applied.
     await expect.poll(async () => { const fitted = await state(page); return JSON.stringify([fitted.center, fitted.zoom]) !== JSON.stringify([unfitted.center, unfitted.zoom]) }).toBe(true)
     await expect.poll(() => page.evaluate(() => { const m = window.__smokeMapIn('.placelens-map'); return m.loaded() && !m.isMoving() })).toBe(true)
@@ -116,7 +123,7 @@ test('visual overview: three long goals, compact/expanded/one goal/error at exac
         await tools(page).getByRole('button', { name: 'Все цели', exact: true }).press('Enter')
         expect(await page.evaluate(() => [innerWidth, innerHeight])).toEqual([width,height])
         await expect.poll(async () => (await routes(page)).length).toBe(6)
-        await tools(page).getByRole('button', { name: 'Вместить на карте', exact: true }).press('Enter')
+        await tools(page).getByRole('button', { name: 'Все цели', exact: true }).press('Enter')
         await expect(map(page).locator('.city-trip-marker.is-goal')).toHaveCount(3)
         await expect(map(page).locator('.city-trip-marker')).toHaveCount(5)
         const overlaps = await map(page).evaluate(node => {
@@ -129,8 +136,9 @@ test('visual overview: three long goals, compact/expanded/one goal/error at exac
             const scale = node.querySelector('.maplibregl-ctrl-scale').getBoundingClientRect(), attribution = node.querySelector('.maplibregl-ctrl-attrib').getBoundingClientRect()
             return !(scale.left < attribution.right && scale.right > attribution.left && scale.top < attribution.bottom && scale.bottom > attribution.top)
         })).toBe(true)
-        await page.evaluate(() => document.fonts.ready)
+        await page.evaluate(async () => { await document.fonts.ready; for (const selector of ['#home-panel', '#home-results-screen']) { const node = document.querySelector(selector); if (node) node.scrollTop = 0 } })
         await page.screenshot({ path: testInfo.outputPath(`overview-${width}x${height}-compact.png`) })
+        if (width === 1440 || width === 390 && height === 844) await page.screenshot({ path: `experiments/placelens-visual/screenshots/v1-filled-${width}x${height}.png` })
         if (page.viewportSize().width >= 768) await map(page).getByRole('button', { name: 'Развернуть карту', exact: true }).press('Enter')
         if (width >= 768) await expect(map(page).getByRole('button', { name: 'Свернуть карту', exact: true })).toBeVisible()
         else { await expect(map(page)).toBeVisible(); await expect(page.locator('#home-results-screen')).toBeHidden() }
@@ -144,7 +152,7 @@ test('visual overview: three long goals, compact/expanded/one goal/error at exac
         await expect(map(page).getByRole('button', { name: 'Приблизить', exact: true })).toBeVisible()
         h.failB(true); await page.reload(); await showMap(page)
         await expect.poll(async () => (await routes(page)).length).toBe(3)
-        await tools(page).getByRole('button', { name: 'Вместить на карте', exact: true }).press('Enter')
+        await tools(page).getByRole('button', { name: 'Все цели', exact: true }).press('Enter')
         await expect(map(page).locator('.city-trip-marker.is-goal')).toHaveCount(3)
         await page.screenshot({ path: testInfo.outputPath(`overview-${width}x${height}-error.png`) })
         if (height <= 480) {
@@ -158,7 +166,7 @@ test('visual overview: three long goals, compact/expanded/one goal/error at exac
                 const control = map(page).locator(selector)
                 await control.scrollIntoViewIfNeeded(); await expect(control).toBeInViewport({ ratio: 1 })
             }
-            expect(await page.locator('#home-map-screen').evaluate(node => node.scrollTop)).toBeGreaterThan(0)
+            expect(await page.locator('#home-map-screen').evaluate(node => node.scrollHeight <= node.clientHeight || node.scrollTop > 0)).toBe(true)
             await page.screenshot({ path: testInfo.outputPath(`overview-${width}x${height}-scrolled.png`) })
             const theme = map(page).getByRole('button', { name: 'Светлая', exact: true })
             await theme.focus(); await expect(theme).toBeInViewport({ ratio: 1 })
@@ -207,7 +215,7 @@ test('early overview focus without goals is cancelled by address history before 
             window.__overviewFits = []; m.fitBounds = (...args) => { window.__overviewFits.push(args); return fit(...args) }
             return { center: m.getCenter().toArray(), zoom: m.getZoom() }
         })
-        await tools(page).getByRole('button', { name: 'Вместить на карте', exact: true }).press('Enter')
+        await tools(page).getByRole('button', { name: 'Все цели', exact: true }).press('Enter')
         await page.evaluate(({ left, right }) => {
             history.pushState({}, '', '/?' + new URLSearchParams({ left, right, radius_m: '500' }))
             dispatchEvent(new PopStateEvent('popstate'))
@@ -219,5 +227,33 @@ test('early overview focus without goals is cancelled by address history before 
         const after = await state(page)
         expect(after.center).toEqual(before.center); expect(after.zoom).toBe(before.zoom)
         expect(await page.evaluate(() => window.__overviewFits)).toEqual([]); expect(h.calls).toHaveLength(0)
+    } finally { release() }
+})
+
+for (const remove of [false, true]) test(`all goals before ready: ${remove ? 'removal cancels stale bounds' : 'fits current overlay once'}`, async ({ page, api }) => {
+    const h = await setup(page)
+    let release; const wait = new Promise(resolve => { release = resolve })
+    await page.route('**/smoke-background.json', async route => { await wait; await route.fulfill({ json: { type: 'FeatureCollection', features: [] } }) })
+    try {
+        await page.goto(root()); await homeScreen(page, 'Карта')
+        await expect.poll(() => page.evaluate(() => !!window.__smokeMapIn('.placelens-map'))).toBe(true)
+        await page.evaluate(() => { const m = window.__smokeMapIn('.placelens-map'), fit = m.fitBounds.bind(m); window.__readyFits = []; m.fitBounds = (...args) => { window.__readyFits.push(args[0]); return fit(...args) } })
+        await tools(page).getByRole('button', { name: 'Все цели', exact: true }).press('Enter')
+        expect(await page.evaluate(() => window.__readyFits)).toEqual([])
+        if (remove) {
+            await homeScreen(page, 'Настройки')
+            await page.getByRole('region', { name: 'Редактор поездок', exact: true }).getByRole('button', { name: /^Удалить общую цель/ }).last().press('Enter')
+            await homeScreen(page, 'Карта')
+        }
+        release()
+        if (remove) {
+            await expect.poll(() => page.evaluate(() => window.__smokeMapIn('.placelens-map').loaded())).toBe(true)
+            await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+            expect(await page.evaluate(() => window.__readyFits)).toEqual([])
+            await tools(page).getByRole('button', { name: 'Все цели', exact: true }).press('Enter')
+        }
+        await expect.poll(() => page.evaluate(() => window.__readyFits.length)).toBe(1)
+        expect(await page.evaluate(() => window.__readyFits[0][1][1])).toBe(remove ? 56.03 : 56.04)
+        expect(h.calls).toHaveLength(2)
     } finally { release() }
 })
