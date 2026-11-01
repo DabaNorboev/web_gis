@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch, useId, onBeforeUnmount } from 'vue'
+import type { AddressMapState } from '@/utils/addressMap'
 import AddressSearch from '@/components/AddressSearch.vue'
 import { useAddressChoice } from '@/composables/useAddressChoice'
 import { usePointAddress } from '@/composables/usePointAddress'
 import type { Coordinates } from '@/types/transport'
-const props = defineProps<{ point: Coordinates | null; label: string; compact?: boolean }>()
-const emit = defineEmits<{ select: [point: Coordinates]; edit: []; addressLabel: [label: string, point: Coordinates] }>()
-const { matches, pending, selected: object, chooseGroup, chooseObject, clear } = useAddressChoice(id => {
+const props = defineProps<{ point: Coordinates | null; label: string; compact?: boolean; previewActive?: boolean }>()
+const emit = defineEmits<{ select: [point: Coordinates]; edit: []; addressLabel: [label: string, point: Coordinates]; mapState: [state: AddressMapState, actions: { select: (id: string) => void; highlight: (id: string | null) => void }] }>()
+const { matches, pending, selected: object, highlightedId, highlightedGroupId, groups, mapState, chooseGroup, chooseObject, clear } = useAddressChoice(id => {
     const value = pending.value?.objects.find(item => item.id === id)
     if (value) {
         const point = { lon: value.lon, lat: value.lat }
@@ -14,6 +15,23 @@ const { matches, pending, selected: object, chooseGroup, chooseObject, clear } =
         emit('addressLabel', pending.value!.label, point)
     }
 })
+const choicesId = `trip-choice-${useId()}`
+let alive = true
+onBeforeUnmount(() => { alive = false })
+function highlight(id: string | null) { highlightedId.value = id && groups.value.some(group => group.objects.some(item => item.id === id)) ? id : null }
+watch([mapState, () => props.previewActive], ([state]) => {
+    if (!props.previewActive) return
+    const current = () => alive && props.previewActive && mapState.value === state
+    emit('mapState', state, {
+        select: id => { if (current()) chooseObject(id) },
+        highlight: id => { if (current()) highlight(id) },
+    })
+}, { flush: 'post' })
+function move(index: number, direction: number) {
+    const objects = pending.value?.objects ?? []
+    const item = objects[(index + direction + objects.length) % objects.length]
+    if (item) document.getElementById(`${choicesId}-${item.id}`)?.focus()
+}
 const { result, status, selected, selectedId, choose, retry } = usePointAddress(() => props.point)
 const confirmed = computed(() => object.value && props.point?.lon === object.value.lon && props.point?.lat === object.value.lat ? object.value : null)
 const signature = computed(() => `${props.point?.lon}|${props.point?.lat}`)
@@ -21,11 +39,11 @@ const signature = computed(() => `${props.point?.lon}|${props.point?.lat}`)
 <template>
     <section class="trip-point-picker" :class="{ 'trip-point-picker--compact': compact }" :aria-label="`Поиск и подпись: ${label}`">
         <p v-if="compact" class="trip-address-heading">Адрес цели</p>
-        <AddressSearch :reset-key="0" @select="chooseGroup" @results="matches = $event" @edit="clear(); emit('edit')" />
+        <AddressSearch :reset-key="0" @select="chooseGroup" @results="matches = $event" @highlight="highlightedGroupId = $event" @edit="clear(); emit('edit')" />
         <component :is="compact && confirmed ? 'details' : 'div'" v-if="pending && pending.objects.length > 1" class="trip-address-objects">
             <summary v-if="compact && confirmed">Изменить адресный объект</summary>
             <p role="status">{{ pending.label }}: выберите адресный объект. Это не выбор дороги.</p>
-            <button v-for="(item, index) in pending.objects" :key="item.id" type="button" :aria-pressed="object?.id === item.id" @click="chooseObject(item.id)">Объект {{ index + 1 }} · {{ item.object_type === 'building' ? 'Здание' : item.object_type === 'address_point' ? 'Адресная точка' : 'Территория' }}</button>
+            <button v-for="(item, index) in pending.objects" :key="item.id" :id="`${choicesId}-${item.id}`" :data-address-id="item.id" :class="{ 'is-highlighted': highlightedId === item.id }" @pointerenter="$event.pointerType !== 'touch' && highlight(item.id)" @pointerleave="highlight(null)" @focus="highlight(item.id)" @blur="highlight(null)" @keydown.down.prevent="move(index, 1)" @keydown.up.prevent="move(index, -1)" @keydown.esc.prevent="highlight(null)" type="button" :aria-pressed="object?.id === item.id" @click="chooseObject(item.id)">Объект {{ index + 1 }} · {{ item.object_type === 'building' ? 'Здание' : item.object_type === 'address_point' ? 'Адресная точка' : 'Территория' }}</button>
         </component>
         <p v-if="compact && confirmed" class="trip-confirmed" role="status"><strong>{{ pending?.label }}</strong><br />Адрес выбран · {{ confirmed.object_type === 'building' ? 'здание' : 'адресный объект' }} {{ pending && pending.objects.length > 1 ? pending.objects.findIndex(item => item.id === confirmed?.id) + 1 : '' }}</p>
         <p v-else-if="compact && pending" role="status">Адрес не выбран. Выберите конкретный объект.</p>
@@ -44,6 +62,7 @@ const signature = computed(() => `${props.point?.lon}|${props.point?.lat}`)
     </section>
 </template>
 <style scoped>
+.trip-address-objects button.is-highlighted{outline:2px solid #7058a5;background:#f4f1f8}
 .trip-address-heading{font-weight:500}
 .trip-confirmed{padding:8px 10px;background:#f4f1f8;border-radius:7px;color:#594779}
 .trip-point-picker--compact :deep(.search-availability){display:none}

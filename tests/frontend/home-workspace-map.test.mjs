@@ -314,3 +314,26 @@ test('explicit address focus cancels pending trip fit and survives later profile
         assert.equal(h.map.jumps.length, 1)
     } finally { h.dispose() }
 })
+
+test('goal address preview overrides overview, guards stale callbacks and never dispatches trip or point clicks', async () => {
+    const selected = [], highlighted = []
+    const h = harness({ context: { kind: 'trip', trip: tripRef() }, trip: trip(), overview: { sequence: 0, interactive: true, markers: [], data: collection([]) } })
+    try {
+        await h.load()
+        h.props.goalPreview = { scenario: 'addresses', placeId: 'goal-a', choice: { groups: [address('preview-a')], selectedId: null, highlightedId: null, highlightedGroupId: null }, select: id => selected.push(id), highlight: id => highlighted.push(id) }
+        await h.flush()
+        assert.equal(h.cityProps().addressGroups[0].objects[0].id, 'preview-a')
+        assert.equal(h.cityProps().profile, null)
+        assert.equal(h.cityProps().selectable, false)
+        assert.equal(h.cityProps().tripOverlay.data.features.length, 0)
+        const stale = h.listeners()
+        stale.onSelectAddressObject('preview-a'); stale.onHighlightAddressObject('preview-a')
+        stale.onSelect(b); stale.onTripEntity('goal-a')
+        assert.deepEqual(selected, ['preview-a']); assert.deepEqual(highlighted, ['preview-a'])
+        assert.deepEqual(h.emitted.filter(e => ['point', 'street', 'entity', 'address'].includes(e[0])), [])
+        h.props.goalPreview = null; await h.flush()
+        stale.onSelectAddressObject('preview-a'); stale.onHighlightAddressObject('preview-a')
+        assert.deepEqual(selected, ['preview-a']); assert.deepEqual(highlighted, ['preview-a'])
+        assert.deepEqual(h.cityProps().addressGroups, [])
+    } finally { h.dispose() }
+})

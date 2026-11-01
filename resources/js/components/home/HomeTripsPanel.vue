@@ -6,12 +6,12 @@ import ComparisonTripData from '@/components/ComparisonTripData.vue'
 import { pairedTripFact } from '@/utils/comparisonTrips'
 import type { HomeTripEntry, HomeTripActions } from '@/types/homeResults'
 import { homeStandaloneTrip } from '@/composables/useHomeTrips'
-import type { HomeTripRef, HomeTripsInput, HomeTripsPort } from '@/types/homeWorkspace'
+import type { HomeTripRef, HomeTripsInput, HomeTripsPort, HomeGoalAddressPreview } from '@/types/homeWorkspace'
 import type { Coordinates } from '@/types/transport'
 import type { TripMode } from '@/types/trips'
 
-const props = defineProps<{ model: HomeTripsPort; input: HomeTripsInput; editorTarget?: string }>()
-const emit = defineEmits<{ showMap: [focus: boolean]; scenario: [value: 'addresses' | 'standalone']; run: []; focusPoint: [point: Coordinates] }>()
+const props = defineProps<{ model: HomeTripsPort; input: HomeTripsInput; editorTarget?: string; previewEnabled?: boolean }>()
+const emit = defineEmits<{ showMap: [focus: boolean]; scenario: [value: 'addresses' | 'standalone']; run: []; focusPoint: [point: Coordinates]; preview: [value: HomeGoalAddressPreview | null] }>()
 const { addresses, standalone } = props.model
 const { mode, places } = addresses
 const { draft } = standalone
@@ -58,7 +58,7 @@ async function editGoal(value: 'addresses' | 'standalone', placeId: string) {
     await nextTick()
     await editor.value?.openGoal(value, placeId)
 }
-defineExpose({ changeScenario, editGoal })
+defineExpose({ changeScenario, editGoal, clearPreview: () => editor.value?.clearPreview() })
 function changeMode(event: Event) {
     const value = (event.target as HTMLSelectElement).value
     if (value === 'driving' || value === 'walking') addresses.setMode(value as TripMode)
@@ -112,7 +112,7 @@ const actions: HomeTripActions = { show, pickStreet, road, retry, selectedRoad, 
 <template>
     <section class="home-trips" aria-label="Поездки единого пространства">
         <Teleport :to="editorTarget || 'body'" :disabled="!editorTarget" defer>
-            <HomeTripsEditor ref="editor" :model="model" :input="input" :scenario="scenario" :available="available" :busy="busy" :picking="picking" @focus-point="emit('focusPoint', $event)" @change-mode="changeMode" @pick-goal="pickGoal" @choose-original="chooseOriginal" @show-map="emit('showMap', $event)" @run="emit('run')" />
+            <HomeTripsEditor ref="editor" :preview-enabled="previewEnabled" @preview="emit('preview', $event)" :model="model" :input="input" :scenario="scenario" :available="available" :busy="busy" :picking="picking" @focus-point="emit('focusPoint', $event)" @change-mode="changeMode" @pick-goal="pickGoal" @choose-original="chooseOriginal" @show-map="emit('showMap', $event)" @run="emit('run')" />
         </Teleport>
         <slot name="results" :entries="entries" :actions="actions" :scenario="scenario">
             <template v-if="scenario === 'addresses'"><p v-for="place in places" :key="place.id">{{ pairedTripFact(addresses.cell('left', place.id), addresses.cell('right', place.id), mode) }}</p></template>

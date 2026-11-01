@@ -59,7 +59,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
                 await expect(card.getByRole('option')).toHaveCount(1)
                 await field.press('ArrowDown'); await field.press('Enter')
                 await expect(card).toContainText('Адрес не выбран')
-                expect(await camera(page)).toEqual(saved)
+                await expect.poll(() => page.evaluate(async () => (await window.__smokeMapIn('.placelens-map').getSource('transport-selection').getData()).features.filter(f => f.properties.kind === 'address-object').length)).toBe(10)
                 await card.getByRole('button', { name: /^Объект 3 ·/ }).click()
                 await expectCamera(page, ambiguousPlaces[2])
             }

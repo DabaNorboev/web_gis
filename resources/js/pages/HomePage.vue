@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import '../../css/home-workspace.css'
-import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, shallowRef, watch } from 'vue'
 import type { AddressMapState } from '@/utils/addressMap'
 import type { Coordinates } from '@/types/transport'
 import { MapPin, MoveUpRight } from '@lucide/vue'
@@ -20,7 +20,7 @@ import type { HomeResultView } from '@/types/homeResults'
 import ComparisonShare from '@/components/ComparisonShare.vue'
 import { useHomeTrips } from '@/composables/useHomeTrips'
 import { useHomeLocation } from '@/composables/useHomeLocation'
-import type { HomeTripsInput, HomeWorkspaceMapHandle, HomeMapContext, HomeTripMapSelection } from '@/types/homeWorkspace'
+import type { HomeTripsInput, HomeWorkspaceMapHandle, HomeMapContext, HomeTripMapSelection, HomeGoalAddressPreview } from '@/types/homeWorkspace'
 import TransportResults from '@/components/TransportResults.vue'
 import { useHomeWorkspace } from '@/composables/useHomeWorkspace'
 import HomeAddressResults from '@/components/home/HomeAddressResults.vue'
@@ -182,9 +182,12 @@ const tripsInput: HomeTripsInput = {
 const trips = useHomeTrips(tripsInput)
 const orientations = useHomeOrientations(home, trips)
 const selectedMapTrip = computed(() => home.context.value.kind === 'trip' ? home.context.value.trip : null)
+const goalPreview = shallowRef<HomeGoalAddressPreview | null>(null)
+watch(workspaceScenario, () => { goalPreview.value = null }, { flush: 'sync' })
+watch(() => home.context.value, value => { if (['pick-start', 'pick-goal', 'pick-street', 'point'].includes(value.kind)) goalPreview.value = null }, { flush: 'sync' })
 const overviewEnabled = computed(() => isWorkspace.value && workspaceScenario.value === 'addresses'
     && (home.selectedSides.value.length > 1 || trips.addresses.places.value.length > 0) && !home.choice.value.groups.length
-    && section.value !== 'surroundings' && home.context.value.kind !== 'point'
+    && !goalPreview.value?.choice.groups.length && section.value !== 'surroundings' && home.context.value.kind !== 'point'
     && !['pick-start', 'pick-goal', 'pick-street'].includes(home.context.value.kind)
     && !(home.context.value.kind === 'trip' && home.context.value.trip.scenario === 'standalone'))
 const overview = computed(() => overviewEnabled.value ? homeMapOverview(trips.overview.value, trips.addresses.places.value, orientations.groups.value,
@@ -426,7 +429,7 @@ function resetSelection() { home.resetPoint() }
                     </section>
 
                     <ComparisonShare v-if="isWorkspace" :address-url="location.ordinaryUrl.value" :personal-url="location.personalUrl.value" session-orientations />
-                    <section v-if="isWorkspace" v-show="workspaceScenario === 'addresses'" class="home-address-selection" aria-label="Выбранные адреса">
+                    <section v-if="isWorkspace" v-show="workspaceScenario === 'addresses'" class="home-address-selection" @focusin="tripsPanel?.clearPreview()" aria-label="Выбранные адреса">
                         <div v-for="side in (['left', 'right'] as const)" :key="side" class="home-address-slot" :aria-label="`Адрес ${side === 'left' ? 'А' : 'Б'}`">
                             <h2><span class="home-side-badge" :class="{ 'is-b': side === 'right' }">{{ side === 'left' ? 'А' : 'Б' }}</span><span>{{ sides[side].knownAddress?.label ?? sides[side].id ?? 'Адрес не выбран' }}</span></h2>
                             <p v-if="sides[side].id" class="home-address-confirmed">Адрес выбран</p>
@@ -436,7 +439,7 @@ function resetSelection() { home.resetPoint() }
                         </div>
                         <fieldset v-if="selectedSides.length && !showPoint" class="home-radius"><legend>Радиус окружения</legend><button v-for="value in [300, 500]" :key="value" type="button" :aria-pressed="radius === value" @click="setRadius(value)">{{ value }} м</button></fieldset>
                     </section>
-                    <details v-show="!isWorkspace || workspaceScenario === 'addresses' && home.searching.value" class="home-search-panel" :class="{ 'home-search-panel--point': point }" :open="isWorkspace || !point">
+                    <details v-show="!isWorkspace || workspaceScenario === 'addresses' && home.searching.value" class="home-search-panel" @focusin="tripsPanel?.clearPreview()" :class="{ 'home-search-panel--point': point }" :open="isWorkspace || !point">
                         <summary v-show="point">Найти адрес вместо точки</summary>
                     <section class="place-search" aria-labelledby="search-title">
                         <component :is="isWorkspace ? 'h2' : 'h1'" v-if="addressChoice.groups.length" id="search-title" class="text-lg font-semibold">Выберите объект адреса</component>
@@ -472,17 +475,17 @@ function resetSelection() { home.resetPoint() }
             <section :role="isWorkspace && isMobile ? 'tabpanel' : undefined" :aria-labelledby="isWorkspace && isMobile ? 'home-mobile-map' : undefined" id="home-map-screen" :inert="isWorkspace && isMobile && mobileView !== 'map'" class="placelens-map" aria-label="Карта Красноярска">
                 <div v-if="isWorkspace" class="home-map-heading">
                     <button id="home-panel-toggle" class="home-desktop-layout" type="button" :aria-expanded="!panelCollapsed" aria-controls="home-panel" @click="togglePanel">{{ panelCollapsed ? 'Показать панель' : 'Свернуть панель' }}</button>
-                    <h2 id="home-map-title" tabindex="-1" :class="{ 'sr-only': overview }">{{ addressChoice.groups.length ? 'Объекты найденных адресов' : 'Карта Красноярска' }}</h2>
+                    <h2 id="home-map-title" tabindex="-1" :class="{ 'sr-only': overview }">{{ goalPreview?.choice.groups.length ? 'Объекты адреса цели' : addressChoice.groups.length ? 'Объекты найденных адресов' : 'Карта Красноярска' }}</h2>
                     <div v-if="overview" class="home-map-tools" aria-label="Показ целей">
                         <button type="button" :aria-pressed="mapScope === 'all'" @click="fitCurrentMap">Все цели</button>
                         <button type="button" :aria-pressed="mapScope === 'one'" :disabled="!selectedMapTrip" @click="mapScope = 'one'">Одна цель</button>
                         <button v-if="selectedMapTrip" type="button" @click="returnToTripRow">К строке</button>
                     </div>
                     <button type="button" :aria-expanded="expandedMap" @click="expandedMap = !expandedMap">{{ expandedMap ? 'Свернуть карту' : 'Развернуть карту' }}</button>
-                    <button v-if="!overview" type="button" @click="useMapCenter">Выбрать центр карты</button>
+                    <button v-if="!overview && !goalPreview?.choice.groups.length" type="button" @click="useMapCenter">Выбрать центр карты</button>
                     <MapLayersPanel v-if="profile" v-model:stops="showStops" v-model:areas="areas" v-model:lines="lines" :contexts="[{ key: activeSide, label: activeSide === 'left' ? 'А' : 'Б', profile, loading: false }]" floating single-map @focus-layer="focusLayer(activeSide, $event)" />
                 </div>
-                <HomeWorkspaceMap ref="mapView" :context="isWorkspace ? context : { kind: 'point' }" :active-side="activeSide" :radius="radius" :point="point" :profile="profile" :analysis="analysis" :address="mapAddress" :choice="addressChoice" :selected-stop-id="profile ? profileStop : selectedStopId" :selected-object="selectedObject" :show-stops="showStops" :areas="areas" :lines="lines" :focus="mapFocus" :trip="isWorkspace ? trips.map.value : null" :overview="overview" :automatic-camera="!isWorkspace"
+                <HomeWorkspaceMap ref="mapView" :context="isWorkspace ? context : { kind: 'point' }" :active-side="activeSide" :radius="radius" :point="point" :profile="profile" :analysis="analysis" :address="mapAddress" :choice="addressChoice" :goal-preview="goalPreview" :selected-stop-id="profile ? profileStop : selectedStopId" :selected-object="selectedObject" :show-stops="showStops" :areas="areas" :lines="lines" :focus="mapFocus" :trip="isWorkspace ? trips.map.value : null" :overview="overview" :automatic-camera="!isWorkspace"
                     @entity="selectMapEntity" @point="mapPoint" @address="mapAddressSelected" @highlight-address="mapAddressHighlighted" @stop="mapStop" @object="mapObject" @street="selectTripMap" @ready="mapReady = true; finishTripFocus()" />
             </section>
             <div v-if="isWorkspace" class="home-map-resizer" role="separator" tabindex="0" aria-label="Высота карты" aria-orientation="horizontal" aria-controls="home-map-screen" :aria-valuemin="180" :aria-valuemax="mapHeightMax" :aria-valuenow="mapHeight" @pointerdown="heightStart" @pointermove="heightMove" @pointerup="heightEnd" @pointercancel="heightEnd" @lostpointercapture="heightEnd" @keydown="heightKey"><span /></div>
@@ -490,7 +493,7 @@ function resetSelection() { home.resetPoint() }
                 <div v-show="workspaceScenario !== 'addresses'" class="home-results-toolbar"><span>{{ showPoint && point ? 'Остановки рядом · по прямой' : 'Поездки' }}</span><button v-if="point || selectedSides.length || section === 'trips'" type="button" :aria-expanded="expandedResults" aria-controls="home-workspace-results" @click="expandedResults = !expandedResults">{{ expandedResults ? 'Свернуть результаты' : 'Развернуть результаты' }}</button></div>
                 <div id="home-workspace-results" class="home-results-content">
                     <p v-if="invalidPersonalLink" role="alert">Общие цели из ссылки не восстановлены: формат, версия или размер не поддерживаются.</p>
-                    <HomeTripsPanel ref="tripsPanel" :model="trips" :input="tripsInput" :editor-target="isWorkspace ? '#home-trip-editor' : undefined" @focus-point="focusChosenPoint" @scenario="workspaceScenario = $event" @run="runTrips" @show-map="showTripMap">
+                    <HomeTripsPanel ref="tripsPanel" :preview-enabled="isWorkspace && workspaceScenario !== 'stops'" @preview="goalPreview = $event" :model="trips" :input="tripsInput" :editor-target="isWorkspace ? '#home-trip-editor' : undefined" @focus-point="focusChosenPoint" @scenario="workspaceScenario = $event" @run="runTrips" @show-map="showTripMap">
                         <template #results="{ entries, actions, scenario }">
                             <HomeMapDetails v-if="isWorkspace && overview" :goal-number="trips.addresses.places.value.findIndex(place => place.id === selectedMapTrip?.placeId) + 1" :alternatives="entries.filter(entry => entry.trip.placeId === selectedMapTrip?.placeId)" @select="home.activate({ kind: 'trip', trip: $event })" :entry="entries.find(entry => sameHomeTrip(entry.trip, selectedMapTrip)) ?? null" :actions="actions" :mode="trips.addresses.mode.value" :request="mapDetailsRequest" @close="closeMapDetails" @return-row="returnToTripRow" />
                             <HomeAddressResults :selected-trip="selectedMapTrip" v-if="scenario === 'addresses'" v-show="isWorkspace && !showPoint" :view="section" :expanded="expandedResults" :model="home" :trips="trips" :entries="entries" :actions="actions" :selected-stop-id="profileStop" :selected-object="selectedObject" @expand="expandedResults = !expandedResults" @update:view="changeSection" @select-stop="selectProfileStop" @focus-layer="focusLayer" />

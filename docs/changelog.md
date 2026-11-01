@@ -1,10 +1,12 @@
 ---
 status: current
-updated: 2026-10-31
+updated: 2026-11-01
 verified: not verified
 ---
 
 # Изменения PlaceLens
+
+- 2026-11-01: V2 — адресная выдача активной цели показывает контуры/номера на общей карте, поддерживает подсветку и явный выбор списка/canvas с защитой чужого и позднего состояния. [Контракт предпросмотра](features/home-workspace-map.md#предпросмотр-адреса-цели--v2).
 
 - 2026-10-31: V1 (`feature/walking-street-choices`) — главная всегда workspace, сокращены шапка и панель карты; «Все цели» объединяет показ и fit, детали и ручная высота сохранены. [Карта](features/home-workspace-map.md), [frontend](frontend-structure.md).
 

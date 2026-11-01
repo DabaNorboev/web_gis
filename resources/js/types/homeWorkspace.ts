@@ -50,6 +50,14 @@ export interface HomeTripsPort {
 
 /** G3.3 HomeWorkspaceMap.vue: one CityMap; no fetching or URL effects.
  * Context accompanies events so the owner can reject stale selections. */
+/** Temporary goal search UI; callbacks are guarded by the originating search session. */
+export interface HomeGoalAddressPreview {
+    scenario: 'addresses' | 'standalone'
+    placeId: string
+    choice: AddressMapState
+    select: (id: string) => void
+    highlight: (id: string | null) => void
+}
 export interface HomeWorkspaceMapProps {
     context: HomeMapContext
     activeSide: SideKey
@@ -59,6 +67,7 @@ export interface HomeWorkspaceMapProps {
     analysis: Pick<TransportAnalysis, 'analysis_area' | 'analysis_bounds' | 'stops_in_radius'> | null
     address: AddressResult | null
     choice: AddressMapState
+    goalPreview?: HomeGoalAddressPreview | null
     selectedStopId: number | null
     selectedObject: { layer: MapLayerKey; id: string } | null
     showStops: boolean
