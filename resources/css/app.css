@@ -138,9 +138,6 @@
     .placelens-workspace { @apply grid min-h-0 flex-1 grid-cols-[360px_minmax(0,1fr)]; }
     .place-panel { @apply relative z-1 flex min-h-0 flex-col justify-between gap-8 overflow-y-auto border-r border-[#e4e9e1] bg-[#fcfdf9]; }
     .place-panel-content { @apply px-7 pt-10; }
-    .intro-eyebrow { @apply mb-6 flex items-center gap-2.5 text-[10px] font-semibold tracking-[0.16em] text-[#66816e]; }
-    .place-intro h1 { @apply mb-4 text-[42px] leading-[1.08] font-medium tracking-[-1.5px]; }
-    .place-intro p { @apply max-w-[270px] text-[15px] leading-6 text-[#6a7a6d]; }
     .place-search { @apply mt-9; }
     .place-search h2 { @apply mb-1 text-sm font-medium text-[#263f35]; }
     .search-area { @apply w-full; }
@@ -150,11 +147,6 @@
     .search-submit { @apply flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#2d6450] text-white transition hover:bg-[#224d3d] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2d6450]; }
     .search-note { @apply mt-2 text-xs leading-5 text-[#637769]; }
     .search-note:empty { @apply hidden; }
-    .explore-hint { @apply mt-5 flex items-center gap-3; }
-    .explore-hint-icon { @apply flex size-8 shrink-0 items-center justify-center rounded-full bg-[#edf2e8] text-[#51836b]; }
-    .explore-hint p { @apply text-xs leading-5 text-[#6a7a6d]; }
-    .place-panel-footer { @apply mx-7 mb-6 flex items-start gap-3 border-t border-[#e4e9df] pt-5; }
-    .place-panel-footer p { @apply text-xs leading-5 text-[#6a7a6d]; }
     .placelens-map { @apply relative min-h-0 min-w-0; }
     .map-caption { @apply absolute left-5 top-5 flex items-center gap-2 rounded-full border border-white/70 bg-[#fcfdf9]/90 px-4 py-2 text-[10px] tracking-[0.12em] text-[#637769] shadow-sm; }
     .map-status { @apply absolute bottom-16 left-1/2 z-2 flex max-w-[90%] -translate-x-1/2 flex-wrap items-center justify-center gap-2 rounded-xl bg-white/95 px-4 py-3 text-center text-xs text-[#637769] shadow-sm; }
@@ -216,7 +208,6 @@
 @media (min-width: 1440px) {
     .placelens-workspace { grid-template-columns: 400px minmax(0, 1fr); }
     .place-panel-content { padding: 48px 32px 0; }
-    .place-panel-footer { margin-left: 32px; margin-right: 32px; }
 }
 
 @media (max-width: 767px) {
@@ -228,14 +219,10 @@
     .placelens-workspace { display: flex; flex-direction: column; }
     .place-panel { flex-shrink: 0; gap: 0; overflow: visible; border-right: 0; border-bottom: 1px solid #e4e9e1; }
     .place-panel-content { padding: 22px 16px 18px; }
-    .intro-eyebrow { display: none; }
-    .place-intro h1 { margin-bottom: 8px; font-size: 29px; letter-spacing: -1px; }
-    .place-intro p { max-width: 340px; font-size: 13px; line-height: 1.6; }
     .place-search { margin-top: 20px; }
     .place-search h2 { font-size: 13px; }
     .search-availability { margin-bottom: 8px; font-size: 11px; }
     .search-box { height: 50px; }
-    .explore-hint, .place-panel-footer { display: none; }
     .placelens-map { flex: 1; min-height: clamp(340px, 55dvh, 640px); }
     .map-caption { left: 12px; top: 12px; font-size: 9px; }
     .placelens-map .maplibregl-ctrl-attrib { max-width: calc(100vw - 32px); font-size: 9px; }
@@ -322,7 +309,6 @@
 .header-nav { margin-left: auto; }
 .header-nav-link { display: inline-flex; min-height: 42px; align-items: center; padding: 8px 14px; border: 1px solid #cbdace; border-radius: 10px; color: #2d6450; font-size: 13px; font-weight: 600; }
 .header-nav-link:hover { background: #eaf2df; }
-.home-compare-note { margin-top: 18px; font-size: 13px; line-height: 1.7; color: #637769; }
 .workspace-jumps { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 20px; font-size: 12px; color: #2d6450; }
 .workspace-jumps a { padding-block: 8px; text-decoration: underline; text-underline-offset: 4px; }
 .variant-heading { display: flex; gap: 10px; align-items: center; font-size: 14px; font-weight: 600; }
@@ -349,8 +335,6 @@
     .compare-pair .metric-card { padding: 12px; }
     .compare-address-change { margin-top: 10px; }
 }
-.home-search-panel--point > summary { cursor: pointer; padding-block: 10px; color: #2d6450; font-size: 13px; font-weight: 500; }
-.home-search-panel--point .place-search { margin-top: 12px; }
 .header-nav-link[aria-current='page'] { background: #eaf2df; }
 
 /* A single layer control combines visibility and its cartographic symbol. */

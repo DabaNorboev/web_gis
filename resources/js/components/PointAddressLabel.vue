@@ -26,7 +26,7 @@ function date(value: string | null) {
         </h2>
         <div role="status" aria-live="polite" class="mt-1 text-xs leading-5 text-[#637769]">
             <p v-if="status === 'loading'">Определяем адрес по локальным данным…</p>
-            <p v-else-if="status === 'error'">Не удалось определить подпись. Точка анализа сохранена; поиск остановок работает отдельно.</p>
+            <p v-else-if="status === 'error'">Не удалось определить подпись. Выбранная точка сохранена.</p>
             <template v-else-if="result">
                 <p v-if="result.data.match === 'NONE'">{{ result.meta.quality.availability === 'UNAVAILABLE' ? 'Адресные данные недоступны.' : 'Подходящих адресных данных нет.' }} Точка анализа сохранена.</p>
                 <p v-else-if="result.data.requires_choice && !selected">{{ result.data.match === 'CONTAINING' ? 'В точке несколько подходящих адресных объектов.' : 'Рядом несколько одинаково близких адресных объектов.' }} Выберите подпись.</p>
@@ -42,6 +42,7 @@ function date(value: string | null) {
                 <span class="min-w-0 break-words">{{ result.data.match === 'NEARBY' ? 'Рядом с ' : '' }}{{ candidate.label }}<span class="block text-xs text-[#637769]">{{ kind(candidate) }} · {{ candidate.id }}<template v-if="result.data.match === 'NEARBY'"> · {{ distance(candidate.distance_m) }} по прямой</template></span></span>
             </label>
         </fieldset>
+        <slot :candidate="selected" :status="status" :match="result?.data.match" />
         <p class="mt-2 text-xs leading-5 text-[#637769]">Анализ остаётся в выбранных координатах. Вход и разрешённый доступ не определены.</p>
         <details v-if="result" class="mt-2 text-xs leading-5 text-[#637769]">
             <summary class="cursor-pointer">Источник и точность подписи</summary>

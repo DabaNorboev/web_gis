@@ -4,7 +4,7 @@ import { Search, X, ArrowRight } from '@lucide/vue'
 import { useAddressSearch } from '@/composables/useAddressSearch'
 import type { AddressResult } from '@/types/address'
 
-const props = defineProps<{ resetKey: number }>()
+const props = defineProps<{ resetKey: number; hideSource?: boolean }>()
 const emit = defineEmits<{ select: [address: AddressResult]; results: [addresses: AddressResult[]]; highlight: [groupId: string | null]; edit: [] }>()
 const { query, results, meta, status, open, activeIndex, search, choose, clear, close } = useAddressSearch()
 const input = ref<HTMLInputElement | null>(null)
@@ -38,7 +38,7 @@ function blur(event: FocusEvent) {
 
 <template>
     <div class="search-area" @focusout="blur">
-        <p class="search-availability">Адреса из локального набора OpenStreetMap</p>
+        <p v-if="!hideSource" class="search-availability">Адреса из локального набора OpenStreetMap</p>
         <form class="search-box" role="search" @submit.prevent="submit">
             <Search class="size-5 shrink-0 text-[#708079]" aria-hidden="true" />
             <label :for="searchId" class="sr-only">Адрес в Красноярске</label>

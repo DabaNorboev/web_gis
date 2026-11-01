@@ -228,7 +228,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await homeScreen(page, 'Настройки')
         const editor = page.getByRole('region', { name: 'Редактор поездок', exact: true })
         for (const card of await editor.locator('.goal-editor:visible').all()) {
-            await card.getByRole('textbox', { name: /Ориентир времени/ }).fill('10')
+            await card.getByRole('textbox', { name: /Ориентировочное время/ }).fill('10')
             await card.getByRole('button', { name: 'Сохранить', exact: true }).click()
         }
         await expect(editor.locator('.goal-summary')).toHaveCount(3)

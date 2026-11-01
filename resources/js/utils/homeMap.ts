@@ -19,14 +19,16 @@ export function homeMapOverview(values: HomeTripMapInput[], places: ComparisonPl
     const markers: TripMapMarker[] = []
     const active = selected && places.some(p => p.id === selected.placeId) ? selected : null
     const shown = values.filter(value => scope !== 'one' || active && value.trip.placeId === active.placeId)
-    for (const value of shown) {
+    for (const value of [...shown].sort((a, b) => Number(sameHomeTrip(active, a.trip)) - Number(sameHomeTrip(active, b.trip)))) {
         const entity = homeMapEntity(value), isSelected = sameHomeTrip(active, value.trip)
         const accepted = value.overlay.data.features.some(feature => feature.properties?.kind === 'route')
         for (const feature of value.overlay.data.features) {
             if (['original', 'candidate'].includes(feature.properties?.kind) || !accepted && ['connector', 'matched'].includes(feature.properties?.kind)) continue
             data.features.push({ ...feature, properties: { ...feature.properties, entity,
                 color: value.trip.scenario === 'addresses' && value.trip.side === 'right' ? '#386da6' : '#7058a5',
-                opacity: active && !isSelected ? .22 : .9 } })
+                routeSide: value.trip.scenario === 'addresses' ? value.trip.side : 'left',
+                routeKey: JSON.stringify([value.trip.scenario, value.trip.placeId, value.trip.scenario === 'addresses' ? value.trip.side : null]),
+                selected: isSelected, opacity: active && !isSelected ? .6 : 1 } })
         }
     }
     // Candidates retain the selected owner's original sequence/IDs. They are

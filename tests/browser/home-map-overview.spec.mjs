@@ -60,7 +60,7 @@ test('stable row → one goal → details → exact row, display scope and thres
     await expect(origin).toBeFocused(); await expect(row(page).locator('[data-side=right]')).toHaveAttribute('data-map-selected', 'true')
     const orientation = row(page).getByRole('button', { name: /^Изменить цель/ })
     await orientation.press('Enter')
-    await page.getByRole('region', { name: 'Редактор поездок', exact: true }).getByRole('textbox', { name: /Ориентир времени/ }).nth(1).fill('20')
+    await page.getByRole('region', { name: 'Редактор поездок', exact: true }).getByRole('textbox', { name: /Ориентировочное время/ }).nth(1).fill('20')
     await showMap(page)
     await expect(map(page).locator('.city-trip-marker.is-goal').filter({ hasText: 'А ✓ · Б ↑' })).toHaveCount(1)
     await expect(row(page).locator('[data-orientation-status=within]')).toHaveCount(1)
@@ -117,7 +117,7 @@ test('visual overview: three long goals, compact/expanded/one goal/error at exac
         for (const goal of selection.places) {
             await homeScreen(page, 'Сравнение')
             await row(page, goal.id).getByRole('button', { name: /^Изменить цель/ }).press('Enter')
-            await page.getByRole('region', { name: 'Редактор поездок', exact: true }).getByRole('textbox', { name: /Ориентир времени/ }).nth(selection.places.indexOf(goal)).fill('20')
+            await page.getByRole('region', { name: 'Редактор поездок', exact: true }).getByRole('textbox', { name: /Ориентировочное время/ }).nth(selection.places.indexOf(goal)).fill('20')
         }
         await showMap(page)
         await tools(page).getByRole('button', { name: 'Все цели', exact: true }).press('Enter')

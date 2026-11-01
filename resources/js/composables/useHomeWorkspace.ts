@@ -9,7 +9,7 @@ import type { HomeMapContext } from '@/types/homeWorkspace'
 
 export function useHomeWorkspace(onChange: (selection: HomeSelection) => void) {
     const addresses = useAddressComparison({ left: null, right: null, radius: 500 }, () => {})
-    const transport = useTransportAnalysis(() => {})
+    const transport = useTransportAnalysis(() => {}, false)
     // addresses.radius is authoritative. Transport receives the same radius through restore.
     const { radius, sides, loadSide } = addresses
     const activeSide = ref<SideKey>('left')

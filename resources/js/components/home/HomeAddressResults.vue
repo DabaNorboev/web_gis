@@ -69,7 +69,7 @@ function entryFor(side: SideKey, id: string) { return props.entries.find(entry =
             <button type="button" class="home-result-expand" :aria-expanded="expanded" aria-controls="home-workspace-results" @click="emit('expand')">{{ expanded ? 'Свернуть результаты' : 'Развернуть результаты' }}</button>
         </div>
         <div id="home-result-panel" role="tabpanel" :aria-labelledby="`home-result-tab-${view}`" tabindex="0">
-            <div v-if="!model.selectedSides.value.length" class="home-empty-result"><h2>Здесь будут результаты</h2><p>Найдите и подтвердите адресный объект, чтобы открыть его профиль. Для остановок рядом выберите сценарий «Остановки».</p></div>
+            <div v-if="!model.selectedSides.value.length" class="home-empty-result"><h2>Здесь будут результаты</h2><p>Найдите и подтвердите адресный объект, чтобы открыть его профиль.</p></div>
             <div v-for="side in model.selectedSides.value" :key="side" :aria-label="`Состояние ${names[side]}`" :aria-busy="model.sides[side].status === 'loading'">
                 <p v-if="model.sides[side].status !== 'ready'" :role="model.sides[side].status === 'loading' ? 'status' : 'alert'">{{ names[side] }} · {{ homeMetricStateText(model.sides[side].status) }} <button v-if="!['loading', 'empty'].includes(model.sides[side].status)" type="button" @click="model.loadSide(side)">Повторить {{ names[side] }}</button></p>
             </div>

@@ -39,7 +39,7 @@ const signature = computed(() => `${props.point?.lon}|${props.point?.lat}`)
 <template>
     <section class="trip-point-picker" :class="{ 'trip-point-picker--compact': compact }" :aria-label="`Поиск и подпись: ${label}`">
         <p v-if="compact" class="trip-address-heading">Адрес цели</p>
-        <AddressSearch :reset-key="0" @select="chooseGroup" @results="matches = $event" @highlight="highlightedGroupId = $event" @edit="clear(); emit('edit')" />
+        <AddressSearch hide-source :reset-key="0" @select="chooseGroup" @results="matches = $event" @highlight="highlightedGroupId = $event" @edit="clear(); emit('edit')" />
         <component :is="compact && confirmed ? 'details' : 'div'" v-if="pending && pending.objects.length > 1" class="trip-address-objects">
             <summary v-if="compact && confirmed">Изменить адресный объект</summary>
             <p role="status">{{ pending.label }}: выберите адресный объект. Это не выбор дороги.</p>

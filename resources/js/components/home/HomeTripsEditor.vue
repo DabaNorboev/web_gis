@@ -20,8 +20,10 @@ const invalid = shallowReactive(new Set<object>())
 const dirty = shallowReactive(new Map<object, string>())
 const labels = shallowReactive(new Map<object, { label: string; point: Coordinates }>())
 const activeGoal = ref<string | null>(null)
+const startPreviewId = 'standalone-start'
+watch(() => draft.start, () => activatePreview(null), { flush: 'sync' })
 watch(() => [props.scenario, props.previewEnabled, props.picking], () => { activeGoal.value = null; emit('preview', null) }, { flush: 'sync' })
-watch(() => [...places.value.map(place => place.id), ...standalonePlaces.value.map(item => item.trip.placeId)], ids => {
+watch(() => [startPreviewId, ...places.value.map(place => place.id), ...standalonePlaces.value.map(item => item.trip.placeId)], ids => {
     if (activeGoal.value && !ids.includes(activeGoal.value)) activatePreview(null)
 }, { flush: 'sync' })
 function activatePreview(id: string | null) {
@@ -31,7 +33,8 @@ function activatePreview(id: string | null) {
 }
 function publishPreview(scenario: 'addresses' | 'standalone', placeId: string, choice: HomeGoalAddressPreview['choice'], actions: Pick<HomeGoalAddressPreview, 'select' | 'highlight'>) {
     if (!props.previewEnabled || props.picking || props.scenario !== scenario || activeGoal.value !== placeId) return
-    const live = () => props.previewEnabled && !props.picking && props.scenario === scenario && activeGoal.value === placeId
+    const start = draft.start
+    const live = () => (placeId !== startPreviewId || draft.start === start) && props.previewEnabled && !props.picking && props.scenario === scenario && activeGoal.value === placeId
     emit('preview', { scenario, placeId, choice, select: id => { if (live()) actions.select(id) }, highlight: id => { if (live()) actions.highlight(id) } })
 }
 const signature = (point: Coordinates | null) => JSON.stringify(point)
@@ -42,7 +45,7 @@ function summaryAddress(place: object, point: Coordinates | null) {
 }
 function threshold(target: HomeOrientationTarget) {
     const value = orientations?.owner.find(target)?.threshold
-    return value == null ? 'Без ориентира времени' : `До ${value} мин`
+    return value == null ? 'Время не задано' : `До ${value} мин`
 }
 function canSave(place: { label: string }, point: Coordinates | null) {
     return !!place.label.trim() && !!point && !invalid.has(place) && dirty.get(place) !== signature(point)
@@ -88,10 +91,10 @@ async function addStandaloneGoal() {
 </script>
 <template>
     <section class="home-trips-editor" aria-label="Редактор поездок">
-        <header class="home-goals-heading"><h2>{{ scenario === 'addresses' ? 'Цели поездок' : 'Отдельная поездка' }}</h2><span :aria-label="scenario === 'addresses' ? 'Количество целей' : 'Количество отдельных целей'">{{ scenario === 'addresses' ? places.length : draft.places.length }}/3</span></header>
+        <header class="home-goals-heading"><h2>{{ scenario === 'addresses' ? 'Мои места' : 'Рассчитать маршрут' }}</h2><span :aria-label="scenario === 'addresses' ? 'Количество мест' : 'Количество отдельных мест'">{{ scenario === 'addresses' ? places.length : draft.places.length }}/3</span></header>
         <fieldset class="home-mode-segments"><legend class="sr-only">Общий режим поездок</legend><label v-for="option in [{ value: 'walking', label: 'Пешком' }, { value: 'driving', label: 'Авто' }]" :key="option.value"><input type="radio" name="home-trip-mode" :value="option.value" :checked="mode === option.value" @change="emit('changeMode', $event)" /><span>{{ option.label }}</span></label></fieldset>
         <div class="home-method-note"><span>{{ mode === 'walking' ? 'По выбранным улицам' : 'Время без учёта пробок' }}</span><HomeResultDialog title="Как рассчитано время" label="О методе поездок"><p v-if="mode === 'walking'">Пеший пилот: только уличная часть между явно выбранными точками. Полный путь между объектами, расстояние и время подходов неизвестны. Время — статическая модель.</p><p v-else>По дорожной сети · модельное время без пробок. Подход, парковка и доступ к входам не рассчитаны.</p></HomeResultDialog></div>
-        <p v-if="picking" role="status">Выберите точку на общей карте. Исходные объекты и выбранные улицы хранятся отдельно.</p>
+        <p v-if="picking" role="status">Выберите точку на общей карте.</p>
 
         <section v-show="scenario === 'addresses'" aria-label="Общие цели А/Б">
             <template v-for="side in (['left', 'right'] as const)" :key="side"><p v-if="input.sides[side].id && !available.includes(side)" role="status">{{ side === 'left' ? 'А' : 'Б' }} · профиль недоступен или загружается; новый расчёт временно недоступен.</p></template>
@@ -102,25 +105,25 @@ async function addStandaloneGoal() {
                     <p class="goal-saved-time">{{ threshold({ kind: 'trip', scenario: 'addresses', placeId: place.id, mode }) }}</p>
                 </div>
                 <div v-show="!saved.has(place)" class="goal-fields" @focusin="activatePreview(place.id)">
-                <h3>Цель {{ index + 1 }}</h3>
-                <label :for="`home-goal-${place.id}`">Название общей цели<input :id="`home-goal-${place.id}`" v-model="place.label" maxlength="80" autocomplete="off" /></label>
+                <h3>Место {{ index + 1 }}</h3>
+                <label :for="`home-goal-${place.id}`">Название места<input :id="`home-goal-${place.id}`" v-model="place.label" maxlength="80" autocomplete="off" /></label>
                 <TripPointPicker compact :preview-active="previewEnabled && !picking && activeGoal === place.id && scenario === 'addresses' && !saved.has(place)" @map-state="(state, actions) => publishPreview('addresses', place.id, state, actions)" @edit="dirty.set(place, signature(place.point))" @address-label="(label, point) => addressLabel(place, label, point)" :point="place.point" :label="`Общая цель ${index + 1} · ${place.label || 'Без названия'}`" @select="addresses.setPoint(place.id, $event); emit('focusPoint', $event)" />
                 <HomeOrientationInput @valid="validate(place, $event)" :target="{ kind: 'trip', scenario: 'addresses', placeId: place.id, mode }" :label="place.label || 'Без названия'" />
                 <div class="goal-point-editor">
                 <button v-if="place.point" type="button" @click="addresses.setPoint(place.id, null)">Убрать точку</button></div>
-                <div class="goal-save-actions"><button class="goal-save" type="button" :disabled="!canSave(place, place.point)" @click="saveGoal(place, place.id)">Сохранить</button><button type="button" :aria-label="`Удалить общую цель ${place.label}`" @click="addresses.remove(place.id)">Удалить цель</button></div>
+                <div class="goal-save-actions"><button class="goal-save" type="button" :disabled="!canSave(place, place.point)" @click="saveGoal(place, place.id)">Сохранить</button><button type="button" :aria-label="`Удалить общую цель ${place.label}`" @click="addresses.remove(place.id)">Удалить место</button></div>
                 <p v-if="dirty.get(place) === signature(place.point)" role="status">Выберите адрес из списка или точку на карте перед сохранением.</p>
                 </div>
             </article>
-            <button v-if="places.length < 3" class="goal-add" type="button" @click="addGoal">Добавить цель</button>
+            <button v-if="places.length < 3" class="goal-add" type="button" @click="addGoal">Добавить место</button>
             <div class="home-run-controls"><button class="home-run-button" type="button" :disabled="busy || !available.length || !places.length" @click="activatePreview(null); emit('run'); addresses.calculate()">Рассчитать поездки от адресов</button></div>
-            <button v-if="places.length" type="button" @click="addresses.reset()">Сбросить общие цели</button>
+            <button v-if="places.length" type="button" @click="addresses.reset()">Сбросить мои места</button>
             <p v-if="formError" role="status">{{ formError }}</p>
         </section>
 
         <section v-show="scenario === 'standalone'" aria-label="Отдельный произвольный старт">
-            <h3>Исходный старт</h3>
-            <TripPointPicker :point="standalone.readPoint(draft.start)" label="Произвольный старт" @focusin="activatePreview(null)" @select="emit('chooseOriginal', -1, $event); emit('focusPoint', $event)" />
+            <h3>Точка старта</h3>
+            <TripPointPicker :point="standalone.readPoint(draft.start)" label="Точка старта" :preview-active="previewEnabled && !picking && activeGoal === startPreviewId && scenario === 'standalone'" @map-state="(state, actions) => publishPreview('standalone', startPreviewId, state, actions)" @focusin="activatePreview(startPreviewId)" @select="emit('chooseOriginal', -1, $event); emit('focusPoint', $event)" />
             <button type="button" @click="input.activate({ kind: 'pick-start', scenario: 'standalone' }); emit('showMap', false)">Выбрать старт на карте</button>
             <article v-for="{ place, index, trip } in standalonePlaces" :key="trip.placeId" class="goal-editor">
                 <div v-if="saved.has(place)" class="goal-summary">
@@ -129,21 +132,21 @@ async function addStandaloneGoal() {
                     <p class="goal-saved-time">{{ threshold({ kind: 'trip', scenario: 'standalone', placeId: trip.placeId, mode }) }}</p>
                 </div>
                 <div v-show="!saved.has(place)" class="goal-fields" @focusin="activatePreview(trip.placeId)">
-                <h3>Цель {{ index + 1 }}</h3>
-                <label :for="`home-${trip.placeId}`">Название отдельной цели<input :id="`home-${trip.placeId}`" v-model="place.label" maxlength="80" autocomplete="off" /></label>
+                <h3>Место {{ index + 1 }}</h3>
+                <label :for="`home-${trip.placeId}`">Название места<input :id="`home-${trip.placeId}`" v-model="place.label" maxlength="80" autocomplete="off" /></label>
                 <TripPointPicker compact :preview-active="previewEnabled && !picking && activeGoal === trip.placeId && scenario === 'standalone' && !saved.has(place)" @map-state="(state, actions) => publishPreview('standalone', trip.placeId, state, actions)" @edit="dirty.set(place, signature(standalone.readPoint(place)))" @address-label="(label, point) => addressLabel(place, label, point)" :point="standalone.readPoint(place)" :label="`Отдельная цель ${index + 1} · ${place.label || 'Без названия'}`" @select="emit('chooseOriginal', index, $event); emit('focusPoint', $event)" />
                 <HomeOrientationInput @valid="validate(place, $event)" :target="{ kind: 'trip', scenario: 'standalone', placeId: trip.placeId, mode }" :label="place.label || 'Без названия'" />
-                <div class="goal-save-actions"><button class="goal-save" type="button" :disabled="!canSave(place, standalone.readPoint(place))" @click="saveGoal(place, trip.placeId)">Сохранить</button><button v-if="draft.places.length > 1" type="button" :aria-label="`Удалить отдельную цель ${place.label}`" @click="standalone.removePlace(index)">Удалить цель</button></div>
+                <div class="goal-save-actions"><button class="goal-save" type="button" :disabled="!canSave(place, standalone.readPoint(place))" @click="saveGoal(place, trip.placeId)">Сохранить</button><button v-if="draft.places.length > 1" type="button" :aria-label="`Удалить отдельную цель ${place.label}`" @click="standalone.removePlace(index)">Удалить место</button></div>
                 <p v-if="dirty.get(place) === signature(standalone.readPoint(place))" role="status">Выберите адрес из списка или точку на карте перед сохранением.</p>
                 </div>
             </article>
-            <button v-if="draft.places.length < 3" type="button" @click="addStandaloneGoal">Добавить отдельную цель</button>
+            <button v-if="draft.places.length < 3" type="button" @click="addStandaloneGoal">Добавить место</button>
             <button type="button" :disabled="busy" @click="activatePreview(null); emit('run'); standalone.submit()">Рассчитать от произвольного старта</button>
             <p v-if="standalone.formError.value" role="status">{{ standalone.formError.value }}</p>
-            <p v-if="standalone.invalidLink.value" role="status">Отдельный сценарий из ссылки не восстановлен: формат, версия или размер не поддерживаются.</p>
+            <p v-if="standalone.invalidLink.value" role="status">Маршрут из ссылки не восстановлен: ссылка повреждена или имеет неподдерживаемый формат.</p>
         </section>
 
-        <details class="home-trip-privacy"><summary>О личной ссылке и сценариях</summary><p>Цели и старт двух сценариев сохраняются отдельно. Переключение не запускает расчёт. Личная ссылка содержит читаемые точки, подписи и дорожный выбор во фрагменте и сохраняется в истории браузера. Передавайте её с учётом этого.</p></details>
+        <details class="home-trip-privacy"><summary>Что увидит получатель ссылки</summary><p>Кнопка «Поделиться» копирует ссылку с выбранными адресами и добавленными местами. Если маршрут уже рассчитан, ссылка также включает его точки. Получатель увидит названия мест и выбранные точки на дорогах. Делитесь ссылкой только с теми, кому готовы показать эти данные. Ориентировочное время, которое вы указали сами, в ссылку не входит.</p></details>
     </section>
 </template>
 <style scoped>

@@ -49,7 +49,7 @@ test('overlay installs current prepared data after readiness, updates, clears an
     h.control.update(); assert.deepEqual(h.map.sources, {})
     h.data(display(.1)); h.control.install()
     assert.deepEqual(h.map.sources.trips.data, display(.1))
-    assert.equal(Object.keys(h.map.layers).length, 9)
+    assert.equal(Object.keys(h.map.layers).length, 11)
     const source = h.map.sources.trips
     for (let i = 0; i < 3; i++) { h.control.install(); h.control.update() }
     assert.equal(h.map.sources.trips, source); assert.deepEqual(h.map.events, {})
@@ -177,4 +177,17 @@ test('overview route dispatch keeps its cell token; stale tiles and manual selec
     picking = true; assert.equal(control.click(click), true)
     assert.equal(events.length, 2); assert.equal(events[1][0], 'pick')
     assert.equal(map.fits.length, 0); control.dispose()
+})
+
+
+test('coincident alternatives cycle by stable goal/side identity despite tile order and selection updates', () => {
+    const map = new BoundaryMap(), events = []
+    const data = collection(['g2:right', 'g1:right', 'g1:left'].map(key => ({ ...display().features[2], properties: { kind: 'route', entity: key, routeKey: key } })))
+    map.queryRenderedFeatures = (_point, { layers }) => layers.includes('compare-road-candidates') ? [] : [...data.features].reverse()
+    const control = overlay.createTripOverlay(map, { data: () => data, picking: () => false, interactive: () => true, select() {}, candidate() {}, entity: id => events.push(id) })
+    control.install()
+    for (let i = 0; i < 4; i++) { control.click(click); data.features.reverse(); control.update() }
+    assert.deepEqual(events, ['g1:left', 'g1:right', 'g2:right', 'g1:left'])
+    assert.equal(map.fits.length, 0)
+    control.dispose()
 })

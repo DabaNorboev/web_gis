@@ -19,9 +19,9 @@ async function ready(page, pair = true) {
 }
 async function add(page, name) {
     const index = await editor(page).locator('.goal-editor:visible').count()
-    await editor(page).getByRole('button', { name: 'Добавить цель', exact: true }).click()
+    await editor(page).getByRole('button', { name: 'Добавить место', exact: true }).click()
     const card = editor(page).locator('.goal-editor:visible').nth(index)
-    await card.getByLabel('Название общей цели', { exact: true }).fill(name)
+    await card.getByLabel('Название места', { exact: true }).fill(name)
     return card
 }
 async function search(card) {
@@ -87,6 +87,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await page.setViewportSize(viewport); await ready(page, false)
         const card = await add(page, 'Первая цель'); await search(card)
         await expect.poll(async () => (await objects(page)).length).toBe(3)
+        await page.getByRole('button', { name: 'Добавить адрес А', exact: true }).click()
         const field = page.locator('.place-search').getByRole('combobox')
         await field.focus()
         await expect.poll(async () => (await objects(page)).length).toBe(0)
@@ -123,14 +124,14 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
         await expect.poll(async () => (await objects(page)).length).toBe(0)
         await search(card)
         await expect.poll(async () => (await objects(page)).length).toBe(3)
-        await page.getByRole('button', { name: 'Отдельная поездка', exact: true }).click()
+        await page.getByRole('button', { name: 'Рассчитать маршрут', exact: true }).click()
         await expect.poll(async () => (await objects(page)).length).toBe(0)
         const independent = editor(page).locator('.goal-editor:visible').first()
         await search(independent)
         await expect.poll(async () => (await objects(page)).length).toBe(3)
-        await editor(page).getByRole('region', { name: 'Поиск и подпись: Произвольный старт', exact: true }).getByRole('combobox').focus()
+        await editor(page).getByRole('region', { name: 'Поиск и подпись: Точка старта', exact: true }).getByRole('combobox').focus()
         await expect.poll(async () => (await objects(page)).length).toBe(0)
-        await page.getByRole('button', { name: 'Адреса', exact: true }).click()
+        await page.getByRole('button', { name: 'Сравнение', exact: true }).click()
         await expect.poll(async () => (await objects(page)).length).toBe(0)
         expect(api.calls.filter(call => call.includes('/trips/'))).toHaveLength(0)
     })

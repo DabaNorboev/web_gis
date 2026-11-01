@@ -42,6 +42,8 @@ export function createTripOverlay(map: LibreMap, options: {
     entity?: (id: string) => void
     interactive?: () => boolean
 }) {
+    let lastHit = ''
+    let lastEntity = ''
     let disposed = false
     let layerIds: string[] = []
     const empty = (): FeatureCollection => ({ type: 'FeatureCollection', features: [] })
@@ -69,9 +71,17 @@ export function createTripOverlay(map: LibreMap, options: {
         const candidate = map.queryRenderedFeatures(event.point, { layers: ['compare-road-candidates'] })[0]
         if (candidate?.geometry.type !== 'Point' || typeof candidate.properties.id !== 'string') {
             if (!options.interactive?.()) return false
-            const hit = map.queryRenderedFeatures(event.point, { layers: ['trip-paths'] })[0]
-            const id = hit?.properties.entity
-            if (typeof id !== 'string' || !data.features.some(f => f.properties?.entity === id)) return false
+            // The solid casing also hits dashed gaps. Deduplicate tile fragments,
+            // retain current tokens, then cycle independently of renderer order.
+            const hits = map.queryRenderedFeatures(event.point, { layers: ['trip-path-casing', 'trip-paths', 'trip-paths-right'] })
+            const current = hits.flatMap(hit => data.features.filter(f => f.properties?.kind === 'route' && typeof hit.properties.entity === 'string' && f.properties?.entity === hit.properties.entity))
+            const alternatives = [...new Map(current.map(f => [String(f.properties!.entity), f])).values()]
+                .sort((a, b) => String(a.properties!.routeKey ?? a.properties!.entity).localeCompare(String(b.properties!.routeKey ?? b.properties!.entity)))
+            if (!alternatives.length) return false
+            const signature = JSON.stringify(alternatives.map(f => f.properties!.entity))
+            const previous = signature === lastHit ? alternatives.findIndex(f => f.properties!.entity === lastEntity) : -1
+            const id = String(alternatives[(previous + 1) % alternatives.length]!.properties!.entity)
+            lastHit = signature; lastEntity = id
             options.entity?.(id)
             return true
         }

@@ -14,9 +14,8 @@ function update(value: string) { text.value = value; error.value = context?.owne
 </script>
 <template>
     <div v-if="context?.enabled.value" class="goal-orientation">
-        <label :for="id">Ориентир времени <span class="goal-optional">· необязательно</span></label>
-        <div class="goal-orientation-field"><span>До</span><input :id="id" type="text" inputmode="decimal" autocomplete="off" :value="text" :aria-invalid="!!error" :aria-describedby="error ? `${id}-error` : `${id}-hint`" @input="update(($event.target as HTMLInputElement).value)" /><span>мин</span></div>
-        <p :id="`${id}-hint`" class="goal-orientation-hint">Пустое поле — без ориентира.</p>
+        <label :for="id">Ориентировочное время <span class="goal-optional">· необязательно</span></label>
+        <div class="goal-orientation-field"><span>До</span><input :id="id" type="text" inputmode="decimal" autocomplete="off" :value="text" :aria-invalid="!!error" :aria-describedby="error ? `${id}-error` : undefined" @input="update(($event.target as HTMLInputElement).value)" /><span>мин</span></div>
         <p :id="`${id}-error`" v-if="error" role="alert">{{ error }}</p>
     </div>
 </template>

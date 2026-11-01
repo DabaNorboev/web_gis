@@ -16,11 +16,11 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 1280, height: 560
         await page.evaluate(() => { window.__u2map = window.__smokeMapIn('.placelens-map'); window.__u2map.jumpTo({ center: [92.92, 56.02], zoom: 13 }) })
         const snapshot = () => page.evaluate(() => { const m = window.__smokeMapIn('.placelens-map'); return { same: m === window.__u2map, center: m.getCenter().toArray(), zoom: m.getZoom() } })
         const camera = await snapshot(), count = posts
-        const name = page.getByLabel('Название общей цели', { exact: true }).first()
+        const name = page.getByLabel('Название места', { exact: true }).first()
         await name.fill('Работа черновик')
         const handle = page.getByRole('separator', { name: 'Высота карты' })
         const initial = Number(await handle.getAttribute('aria-valuenow'))
-        if (viewport.height === 900) expect(initial).toBe(480)
+        expect(initial).toBe(960)
         expect(Math.round((await page.locator('.placelens-map').boundingBox()).height)).toBe(initial)
         await page.screenshot({ path: `experiments/placelens-visual/screenshots/v1-toolbar-before-${viewport.height}.png` })
         await handle.focus(); await handle.press('ArrowUp')

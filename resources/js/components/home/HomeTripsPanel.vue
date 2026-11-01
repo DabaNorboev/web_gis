@@ -58,10 +58,18 @@ async function editGoal(value: 'addresses' | 'standalone', placeId: string) {
     await nextTick()
     await editor.value?.openGoal(value, placeId)
 }
-defineExpose({ changeScenario, editGoal, clearPreview: () => editor.value?.clearPreview() })
+defineExpose({ changeScenario, editGoal, chooseStart: (point: Coordinates) => chooseOriginal(-1, point), clearPreview: () => editor.value?.clearPreview() })
 function changeMode(event: Event) {
     const value = (event.target as HTMLSelectElement).value
-    if (value === 'driving' || value === 'walking') addresses.setMode(value as TripMode)
+    if (value !== 'driving' && value !== 'walking') return
+    const context = props.input.context.value
+    addresses.setMode(value as TripMode)
+    // Changing mode clears results, but keeps the independent route editor and
+    // shows the current draft with the new mode rather than a generic map point.
+    if (scenario.value === 'standalone') {
+        const trip = context.kind === 'trip' && context.trip.scenario === 'standalone' ? context.trip : homeStandaloneTrip(props.model, 0)
+        if (trip) props.input.activate({ kind: 'trip', trip })
+    }
 }
 function show(trip: HomeTripRef) { props.input.activate({ kind: 'trip', trip }); emit('showMap', true) }
 function pickGoal(trip: HomeTripRef) { props.input.activate({ kind: 'pick-goal', scenario: trip.scenario, placeId: trip.placeId }); emit('showMap', false) }

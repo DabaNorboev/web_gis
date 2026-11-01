@@ -52,21 +52,20 @@ test('one profile becomes a pair without reloading A, replacement/removal and er
     } finally { t.dispose() }
 })
 
-test('shared radius invalidates both sides and retained point once; late old responses cannot return', async () => {
+test('shared radius invalidates both profiles, retains point without transport requests and rejects late profiles', async () => {
     const t = setup(), { home, requests, pointRequests, settle } = t
     try {
         home.chooseAddress('a'); home.editSide('right'); home.chooseAddress('b')
         void home.selectPoint({ lon: 92, lat: 56 })
         home.setRadius(300)
-        assert.equal(requests.length, 4); assert.equal(pointRequests.length, 2)
-        assert.equal(pointRequests[0].signal.aborted, true)
-        assert.equal(home.radius.value, 300); assert.equal(pointRequests[1].radius, 300)
+        assert.equal(requests.length, 4); assert.equal(pointRequests.length, 0)
+        assert.equal(home.radius.value, 300)
         for (const request of requests.slice(2)) await settle(request)
         for (const request of requests.slice(0, 2)) await settle(request)
-        pointRequests[1].resolve({ radius_m: 300 }); await Promise.resolve()
-        pointRequests[0].resolve({ radius_m: 500 }); await Promise.resolve()
         assert.equal(home.sides.left.profile.radius_m, 300); assert.equal(home.sides.right.profile.radius_m, 300)
-        assert.equal(home.transport.analysis.value.radius_m, 300)
+        assert.equal(home.transport.analysis.value, null)
+        assert.deepEqual(home.transport.point.value, { lon: 92, lat: 56 })
+        assert.equal(home.transport.status.value, 'idle')
         home.setRadius(1000); assert.equal(requests.length, 4)
     } finally { t.dispose() }
 })

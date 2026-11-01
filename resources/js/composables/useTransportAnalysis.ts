@@ -3,7 +3,7 @@ import { fetchTransportAnalysis } from '@/api/transport'
 import type { Coordinates, TransportAnalysis } from '@/types/transport'
 import type { PointSelection } from '@/utils/pointSelection'
 
-export function useTransportAnalysis(onChange: (selection: PointSelection) => void = () => {}) {
+export function useTransportAnalysis(onChange: (selection: PointSelection) => void = () => {}, enabled = true) {
     const radius = ref(500)
     const selectedStopId = ref<number | null>(null)
     const point = ref<Coordinates | null>(null)
@@ -20,6 +20,11 @@ export function useTransportAnalysis(onChange: (selection: PointSelection) => vo
         selectedStopId.value = null
         point.value = coordinates
         analysis.value = null
+        if (!enabled) {
+            status.value = 'idle'
+            if (notify && changed) onChange(selection())
+            return
+        }
         status.value = 'loading'
         if (notify && changed) onChange(selection())
         const timeout = setTimeout(() => request.abort(), 15000)

@@ -34,6 +34,7 @@ test('workspace preserves pending search, explicit object choice and reload', as
     })
     await page.goto('/')
     await expect(switcher(page)).toHaveCount(0)
+    await page.getByRole('button', { name: 'Добавить адрес А', exact: true }).click()
     const input = page.getByRole('combobox', { name: 'Адрес в Красноярске', exact: true })
     await input.fill('Неоднозначная')
     await started
@@ -59,87 +60,54 @@ test('workspace preserves pending search, explicit object choice and reload', as
     expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBe(null)
 })
 
-test('pending point analysis keeps map instance, radius and history', async ({ page, api }) => {
-    const points = await pointApi(page), gate = points.hold()
-    const pointUrl = '/?lon=92.87&lat=56.01&radius_m=500#point-info'
-    await page.goto(pointUrl)
-    await gate.started
-    await expect(page.locator('.point-address')).toContainText('Подходящих адресных данных нет')
+test('pending point caption keeps map instance and history without transport', async ({ page, api }) => {
+    const points = await pointApi(page)
+    let release
+    const gate = new Promise(resolve => { release = resolve })
+    await page.route('**/api/v1/addresses/resolve-point', async route => {
+        points.labels.push(route.request().postDataJSON())
+        await gate
+        return route.fulfill({ json: { data: { match: 'NONE', requires_choice: false, candidates: [] }, meta: { source: 'OpenStreetMap', dataset_import_id: 1, observed_at: null, source_updated_at: null, calculated_at: '2026-11-01T00:00:00Z', nearby_radius_m: 100, coverage: { status: 'UNKNOWN', reason: 'Synthetic' }, quality: { method: null, availability: 'INSUFFICIENT_DATA', freshness: 'UNKNOWN', reason: 'Synthetic' } } } })
+    })
+    await page.goto('/?lon=92.87&lat=56.01&radius_m=500#point-info')
+    await expect(page.locator('.point-address')).toContainText('Определяем адрес')
     await expect.poll(() => page.evaluate(() => !!window.__smokeMapIn('.placelens-map'))).toBe(true)
     await page.evaluate(() => { window.__g2Map = window.__smokeMapIn('.placelens-map'); window.__g2Canvas = document.querySelector('.placelens-map canvas') })
     const url = page.url(), history = await page.evaluate(() => window.history.length)
-    await assertWorkspace(page); await assertWorkspace(page); await assertWorkspace(page)
-    expect(points.transport).toHaveLength(1)
+    await assertWorkspace(page)
+    expect(points.transport).toHaveLength(0)
     expect(points.labels).toHaveLength(1)
-    gate.release()
-    await expect(page.locator('.transport-results')).toContainText('Остановка 1')
+    release()
+    await expect(page.locator('.point-address')).toContainText('Подходящих адресных данных нет')
     expect(page.url()).toBe(url)
     expect(await page.evaluate(() => window.history.length)).toBe(history)
     expect(await page.evaluate(() => window.__g2Map === window.__smokeMapIn('.placelens-map') && window.__g2Canvas === document.querySelector('.placelens-map canvas'))).toBe(true)
-    await page.getByText('ⓘ Источник и качество данных', { exact: true }).click()
-    await assertWorkspace(page)
-    await expect(page.locator('.transport-results')).toContainText('Дата наблюдения: неизвестна')
+    await page.getByText('Источник и точность подписи', { exact: true }).click()
+    await expect(page.locator('.point-address')).toContainText('Дата наблюдения: неизвестна')
     expect(points.labels).toHaveLength(1)
-    await homeScreen(page, 'Сравнение')
-    await page.getByRole('button', { name: '300 м', exact: true }).click()
-    await expect.poll(() => points.transport.length).toBe(2)
+    await page.getByRole('button', { name: 'Убрать точку', exact: true }).click()
     await page.goBack()
-    await expect(page.getByRole('button', { name: '500 м', exact: true })).toHaveAttribute('aria-pressed', 'true')
-    await assertWorkspace(page)
-    await page.screenshot({ path: test.info().outputPath('new-point-results.png'), fullPage: true })
+    await expect(page.locator('.point-address')).toContainText('Подходящих адресных данных нет')
+    expect(points.transport).toHaveLength(0)
 })
 
-test('new home fills the viewport and map controls remain reachable without remounting', async ({ page, api }) => {
-    await page.addInitScript(key => localStorage.setItem(key, 'workspace'), storageKey)
+test('home map controls remain reachable without remounting', async ({ page, api }) => {
     await pointApi(page)
     await page.goto('/')
-    const isPhone = test.info().project.use.viewport.width < 768
-    await expect(page.getByRole('heading', { name: 'Места и цели' })).toBeVisible()
-    if (isPhone) {
-        await homeScreen(page, 'Настройки')
-        await page.getByRole('group', { name: 'Сценарий', exact: true }).getByRole('button', { name: 'Остановки', exact: true }).press('Enter')
-        await page.getByRole('button', { name: 'Выбрать точку на карте', exact: true }).click()
-    }
-    await expect(page.getByRole('button', { name: 'Выбрать центр карты', exact: true })).toBeVisible()
-    await expect.poll(() => page.evaluate(() => {
-        const map = window.__smokeMapIn('.placelens-map')
-        return !!map && map.loaded() && map.getCanvas().clientWidth > 0 && map.getCanvas().clientHeight > 0
-    })).toBe(true)
-    expect(await page.evaluate(() => {
-        // Shared static CSS must be present in the smoke shell, including the
-        // MapLibre controls and the switcher's scoped styles.
-        return !document.querySelector('.interface-switch')
-            && getComputedStyle(document.querySelector('.maplibregl-ctrl-bottom-left')).position === 'absolute'
-    })).toBe(true)
-    expect(await page.evaluate(() => {
-        const rect = document.querySelector('.placelens-map').getBoundingClientRect()
-        return rect.right <= innerWidth + 1 && rect.bottom <= innerHeight + 1 && document.documentElement.scrollWidth <= innerWidth
-    })).toBe(true)
-    await page.screenshot({ path: test.info().outputPath('new-search-map.png'), fullPage: true })
-    await page.getByRole('button', { name: 'Выбрать центр карты', exact: true }).press('Enter')
-    await expect(page.locator('.transport-results')).toBeVisible()
-    await expect(page.locator('.transport-results')).toContainText('Остановка 1')
-    if (isPhone) {
-        await expect(page.getByRole('heading', { name: /Остановки в радиусе/ })).toBeFocused()
-        const views = page.getByRole('tablist', { name: 'Рабочая область', exact: true })
-        await views.getByRole('tab', { name: 'Карта', exact: true }).click()
-        await expect(page.locator('.placelens-map')).toBeVisible()
-        await views.getByRole('tab', { name: 'Сравнение', exact: true }).click()
-        await expect(page.locator('.transport-results')).toBeVisible()
-        if (test.info().project.name === 'phone-390') {
-            await page.setViewportSize({ width: 390, height: 480 })
-            await views.getByRole('tab', { name: 'Карта', exact: true }).click()
-            await expect.poll(() => page.locator('.city-map-surface').evaluate(element => element.getBoundingClientRect().height)).toBeGreaterThan(80)
-            await views.getByRole('tab', { name: 'Сравнение', exact: true }).click()
-            const sources = page.getByText('ⓘ Источник и качество данных', { exact: true })
-            await sources.scrollIntoViewIfNeeded()
-            await expect(sources).toBeVisible()
-            await page.screenshot({ path: test.info().outputPath('new-point-short-phone.png'), fullPage: true })
-        }
-    } else {
-        await page.getByRole('button', { name: 'Развернуть результаты' }).click()
-        await expect(page.getByRole('button', { name: 'Свернуть результаты' })).toHaveAttribute('aria-expanded', 'true')
-    }
+    await expect(page.locator('#home-selection-title')).toHaveText('Мои места')
+    await homeScreen(page, 'Карта')
+    await expect(page.locator('.placelens-map canvas')).toBeVisible()
+    await expect.poll(() => page.evaluate(() => !!window.__smokeMapIn('.placelens-map')?.loaded())).toBe(true)
+    await page.evaluate(() => { window.__homeMap = window.__smokeMapIn('.placelens-map') })
+    await page.locator('.placelens-map canvas').press('Enter')
+    await expect(page.locator('.home-point-label')).toBeVisible()
+    await expect(page.locator('.transport-results')).toHaveCount(0)
+    await homeScreen(page, 'Настройки')
+    await expect(page.getByRole('button', { name: 'Добавить адрес А', exact: true })).toBeVisible()
+    await homeScreen(page, 'Карта')
+    expect(await page.evaluate(() => window.__homeMap === window.__smokeMapIn('.placelens-map'))).toBe(true)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.screenshot({ path: test.info().outputPath('home-map.png'), fullPage: true })
 })
 
 test('blocked preference storage preserves direct compare and trips pages', async ({ page, api }) => {

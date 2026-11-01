@@ -278,6 +278,11 @@ test('real panel handlers keep drafts across scenarios, limit goals and retry on
         panel.pickGoal(ref); h.model.selectMap({ context: clone(h.context.value), point: b })
         assert.equal(h.requests.length, 2); assert.equal(h.model.standalone.draft.places[1].lon, String(b.lon))
         panel.changeMode({ target: { value: 'walking' } }); assert.equal(h.model.standalone.mode.value, 'walking')
+        assert.equal(panel.scenario.value, 'standalone')
+        assert.equal(h.context.value.kind, 'trip')
+        assert.equal(h.context.value.trip.scenario, 'standalone')
+        assert.equal(h.model.standalone.analysis.value, null)
+        assert.equal(h.requests.length, 2)
         panel.changeMode({ target: { value: 'cycling' } }); assert.equal(h.model.addresses.mode.value, 'walking')
     } finally { await h.dispose() }
 })
@@ -509,6 +514,14 @@ test('overview retains each side/goal token and accepted geometry, independent i
         const build = scope => overview.homeMapOverview(h.model.overview.value, h.model.addresses.places.value, h.orientations.groups.value, chosen, scope, h.model.map.value)
         const all = build('all'), one = build('one')
         assert.equal(all.data.features.filter(f => f.properties.kind === 'route').length, 6)
+        for (const value of values) {
+            const source = value.overlay.data.features.find(f => f.properties.kind === 'route')
+            const rendered = all.data.features.find(f => f.properties.kind === 'route' && f.properties.entity === overview.homeMapEntity(value))
+            assert.deepEqual(rendered.geometry, source.geometry)
+            assert.equal(rendered.properties.routeSide, value.trip.side)
+        }
+        assert.equal(new Set(all.data.features.filter(f => f.properties.kind === 'route').map(f => f.properties.routeKey)).size, 6)
+
         assert.equal(one.data.features.filter(f => f.properties.kind === 'route').length, 2)
         assert.ok(one.data.features.filter(f => f.properties.kind === 'route').every(f => JSON.parse(f.properties.entity)[0].placeId === ids[1]))
         assert.equal(all.markers.filter(m => m.shape === 'goal').length, 3)

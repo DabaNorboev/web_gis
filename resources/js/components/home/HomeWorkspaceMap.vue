@@ -90,15 +90,17 @@ defineExpose<HomeWorkspaceMapHandle>({
 
 <template>
     <CityMap ref="map"
-        :selectable="!preview" :point="preview ? null : point" :analysis="preview ? null : analysis" :show-analysis-area="!overview && !preview" :profile="profile" :radius="radius"
+        :expanded-legend="true" :hide-theme="true" :hide-center="true" :show-point-card="context.kind === 'point' && !!$slots['point-card']" :selectable="!preview" :point="preview ? null : point" :analysis="preview ? null : analysis" :show-analysis-area="!!profile && !overview && !preview" :profile="profile" :radius="radius"
         :address-group="address" :address-groups="groups"
         :selected-address-id="profile?.address.id ?? choice.selectedId"
         :highlighted-address-id="choice.highlightedId" :highlighted-group-id="choice.highlightedGroupId"
         :place-label="profile ? side === 'left' ? 'А' : 'Б' : undefined"
         :area-layers="profile?.map.area_layers ?? null" :area-visibility="areas"
         :linear-layers="profile?.map.linear_layers ?? null" :linear-visibility="lines"
-        :show-stops="!preview && background && (profile ? showStops : true)"
+        :show-stops="!preview && background && (profile ? showStops : false)"
         :selected-stop-id="!preview && background ? selectedStopId : null" :focus-request="!preview && background ? focus : null"
         :automatic-camera="preview && !preview.choice.selectedId ? true : automaticCamera ?? false" :overlay-controls="!!overview" :trip-overlay="overlay" :trip-picking="picking && !preview" :shared-view="null"
-        v-on="events" />
+        v-on="events">
+        <template v-if="context.kind === 'point' && point && !preview" #point-card><slot name="point-card" /></template>
+    </CityMap>
 </template>

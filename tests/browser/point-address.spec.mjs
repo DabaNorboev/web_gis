@@ -31,7 +31,10 @@ const selectedPoint = page => page.evaluate(async () => {
     const data = await window.__smokeMapIn('.placelens-map').getSource('transport-selection').getData()
     return data.features.find(feature => feature.properties.kind === 'point')?.geometry.coordinates
 })
-const open = page => page.goto(`/?lon=${initial.lon}&lat=${initial.lat}&radius_m=500`)
+const open = async page => {
+    await page.goto(`/?lon=${initial.lon}&lat=${initial.lat}&radius_m=500`)
+    if (await page.getByRole('tab', { name: 'Карта', exact: true }).isVisible()) await page.getByRole('tab', { name: 'Карта', exact: true }).click()
+}
 
 test('home point label handles containment, ambiguity and nearby without moving analysis or changing history', async ({ page, api }) => {
     const pointApi = await install(page)
@@ -51,12 +54,10 @@ test('home point label handles containment, ambiguity and nearby without moving 
     await expect(label.getByRole('radio').last()).toBeChecked()
     await expect(label.getByRole('heading')).toHaveText('Тестовая, 2')
     expect(page.url()).toBe(url)
-    expect(pointApi.transport.at(-1)).toEqual(initial)
+    expect(pointApi.transport).toHaveLength(0)
     await expect.poll(() => selectedPoint(page)).toEqual([initial.lon, initial.lat])
-    await page.getByRole('button', { name: '300 м', exact: true }).press('Enter')
-    await expect(page.getByRole('button', { name: '300 м', exact: true })).toHaveAttribute('aria-pressed', 'true')
     expect(pointApi.requests).toHaveLength(1)
-    expect(pointApi.transport.at(-1)).toEqual(initial)
+    expect(pointApi.transport).toHaveLength(0)
     await label.getByText('Источник и точность подписи', { exact: true }).press('Enter')
     await expect(label).toContainText('Дата наблюдения: неизвестна')
     await expect(label).toContainText('Анализ остаётся в выбранных координатах')
@@ -74,14 +75,14 @@ test('home point label handles containment, ambiguity and nearby without moving 
     const changed = pointApi.requests.at(-1).point
     expect(changed).not.toEqual(initial)
     await expect.poll(() => selectedPoint(page)).toEqual([changed.lon, changed.lat])
-    expect(pointApi.transport.at(-1)).toEqual(changed)
+    expect(pointApi.transport).toHaveLength(0)
     await page.goBack()
     await expect.poll(() => pointApi.requests.at(-1).point).toEqual(initial)
     await expect.poll(() => selectedPoint(page)).toEqual([initial.lon, initial.lat])
     await page.screenshot({ path: test.info().outputPath('point-label.png'), fullPage: true })
 })
 
-test('home point label loading failure retry and no-data leave transport available', async ({ page, api }) => {
+test('home point label loading failure retry and no-data keep the selected point without transport requests', async ({ page, api }) => {
     const pointApi = await install(page)
     let release
     const gate = new Promise(resolve => { release = resolve })
@@ -89,7 +90,7 @@ test('home point label loading failure retry and no-data leave transport availab
     await open(page)
     const label = page.locator('.point-address')
     await expect(label).toContainText('Определяем адрес по локальным данным')
-    await expect(page.getByRole('button', { name: '300 м', exact: true })).toBeEnabled()
+    await expect(page.getByRole('button', { name: 'Убрать точку', exact: true })).toBeEnabled()
     release()
     await expect(label.getByRole('button', { name: 'Повторить определение адреса' })).toBeVisible()
     pointApi.respond(route => route.fulfill({ json: labelResponse('NONE', []) }))
@@ -97,7 +98,7 @@ test('home point label loading failure retry and no-data leave transport availab
     await expect(label).toContainText('Подходящих адресных данных нет')
     await expect(label.getByRole('heading')).toHaveText('Точка анализа')
     expect(pointApi.requests).toHaveLength(2)
-    expect(pointApi.transport).toHaveLength(1)
+    expect(pointApi.transport).toHaveLength(0)
     const unavailable = labelResponse('NONE', []); unavailable.meta.quality.availability = 'UNAVAILABLE'
     pointApi.respond(route => route.fulfill({ json: unavailable }))
     await page.reload()
@@ -106,9 +107,10 @@ test('home point label loading failure retry and no-data leave transport availab
     pointApi.respond(route => route.fulfill({ json: labelResponse() }))
     await label.getByRole('button', { name: 'Повторить определение адреса' }).press('Enter')
     await expect(label).toContainText('Внутри или на границе адресного контура OSM')
-    await page.getByRole('button', { name: 'Сбросить', exact: true }).press('Enter')
+    await page.getByRole('button', { name: 'Убрать точку', exact: true }).press('Enter')
     await expect(label).toHaveCount(0)
-    await expect(page.getByRole('combobox')).toBeVisible()
+    if (await page.getByRole('tab', { name: 'Настройки', exact: true }).isVisible()) await page.getByRole('tab', { name: 'Настройки', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Добавить адрес А', exact: true })).toBeVisible()
     expect(new URL(page.url()).searchParams.has('lon')).toBe(false)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
@@ -139,9 +141,9 @@ test('home ignores point label responses that escaped abort after a newer select
     await expect(page.locator('.point-address h2')).toHaveText('Рядом с Тестовая, 9')
     const latest = pointApi.requests.at(-1).point
     await expect.poll(() => selectedPoint(page)).toEqual([latest.lon, latest.lat])
-    await page.getByRole('button', { name: 'Анализировать центр карты', exact: true }).click()
+    await page.locator('.placelens-map canvas').press('Enter')
     await expect.poll(() => page.evaluate(() => window.__labelDeliveries.length)).toBe(3)
-    await page.getByRole('button', { name: 'Сбросить', exact: true }).click()
+    await page.getByRole('button', { name: 'Убрать точку', exact: true }).click()
     await page.evaluate(() => window.__labelDeliveries[2]())
     await expect(page.locator('.point-address')).toHaveCount(0)
 })

@@ -18,7 +18,7 @@ import type { AddressProfile, AreaLayers, AreaVisibility, LinearLayers, LinearVi
 import type { Coordinates, TransportAnalysis } from '@/types/transport'
 import { createTripOverlay, tripOverlayBounds, type TripMapOverlay } from '@/utils/tripOverlay'
 
-const props = withDefaults(defineProps<{ point: Coordinates | null; addressGroup: AddressResult | null; selectedAddressId: string | null; analysis: Pick<TransportAnalysis, 'analysis_area' | 'analysis_bounds' | 'stops_in_radius'> | null; radius: number; selectedStopId: number | null; selectable?: boolean; showStops?: boolean; showAnalysisArea?: boolean; areaLayers?: AreaLayers | null; areaVisibility?: AreaVisibility; linearLayers?: LinearLayers | null; linearVisibility?: LinearVisibility; addressGroups?: AddressResult[]; highlightedAddressId?: string | null; highlightedGroupId?: string | null; placeLabel?: 'А' | 'Б'; scrollTarget?: HTMLElement | null; overlayControls?: boolean; hideTheme?: boolean; sharedView?: { zoom: number; bearing: number; pitch: number } | null; selectionZoomLimit?: number; profile?: AddressProfile | null; tripOverlay?: TripMapOverlay | null; tripPicking?: boolean; automaticCamera?: boolean; focusRequest?: { layer: MapLayerKey; id?: string; sequence: number } | null }>(), { selectable: true, showStops: true, showAnalysisArea: true })
+const props = withDefaults(defineProps<{ point: Coordinates | null; addressGroup: AddressResult | null; selectedAddressId: string | null; analysis: Pick<TransportAnalysis, 'analysis_area' | 'analysis_bounds' | 'stops_in_radius'> | null; radius: number; selectedStopId: number | null; selectable?: boolean; showStops?: boolean; showAnalysisArea?: boolean; areaLayers?: AreaLayers | null; areaVisibility?: AreaVisibility; linearLayers?: LinearLayers | null; linearVisibility?: LinearVisibility; addressGroups?: AddressResult[]; highlightedAddressId?: string | null; highlightedGroupId?: string | null; placeLabel?: 'А' | 'Б'; scrollTarget?: HTMLElement | null; overlayControls?: boolean; hideTheme?: boolean; hideCenter?: boolean; showPointCard?: boolean; expandedLegend?: boolean; sharedView?: { zoom: number; bearing: number; pitch: number } | null; selectionZoomLimit?: number; profile?: AddressProfile | null; tripOverlay?: TripMapOverlay | null; tripPicking?: boolean; automaticCamera?: boolean; focusRequest?: { layer: MapLayerKey; id?: string; sequence: number } | null }>(), { selectable: true, showStops: true, showAnalysisArea: true })
 const emit = defineEmits<{ select: [point: Coordinates]; roadCandidate: [key: string, point: Coordinates]; tripEntity: [id: string]; selectStop: [id: number]; clearStop: []; selectObject: [selection: { layer: MapLayerKey; id: string } | null]; selectAddressObject: [id: string]; highlightAddressObject: [id: string | null]; viewChange: [view: { zoom: number; bearing: number; pitch: number }]; viewReady: [view: { zoom: number; bearing: number; pitch: number }] }>()
 const { theme } = useMapTheme()
 const placeColor = computed(() => placeColors[props.placeLabel ?? 'default'])
@@ -104,6 +104,7 @@ function focusChosenPoint(point: Coordinates) {
 defineExpose({ focusPoint: focusChosenPoint, clearObjectSelection, resetView, focusSelection: focusSelected, focusTrip, centerPoint: () => { const p = map?.getCenter(); return p ? { lon: p.lng, lat: p.lat } : null } })
 async function focusTrip() {
     const sequence = ++selectionSequence
+    legendOpen.value = false
     await nextTick()
     await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
     if (!map || !props.tripOverlay || sequence !== selectionSequence) return
@@ -129,7 +130,28 @@ const selectedGeometry = computed(() => {
     const data = selected.layer === 'roads' || selected.layer === 'railways' ? props.linearLayers?.[selected.layer]?.data : selected.layer === 'stops' ? null : props.areaLayers?.[selected.layer]?.data
     return data?.features.find(feature => feature.properties.id === selected.id) ?? null
 })
+const pointCardPosition = ref<{ left: number; top: number; above: boolean; height: number; anchor: number } | null>(null)
+function updatePointCard() {
+    if (!props.showPointCard || !props.point || !container.value) { pointCardPosition.value = null; return }
+    const width = container.value.clientWidth, height = container.value.clientHeight
+    const anchor = map?.project([props.point.lon, props.point.lat]) ?? { x: width / 2, y: height / 2 }
+    const cardWidth = Math.min(360, Math.max(0, width - 24))
+    const left = Math.max(12, Math.min(width - cardWidth - 12, anchor.x - cardWidth / 2))
+    const surface = container.value.getBoundingClientRect()
+    const visibleTop = Math.max(0, -surface.top)
+    let visibleBottom = Math.min(height, (window.innerHeight || height + surface.top) - surface.top)
+    const navigation = container.value.querySelector<HTMLElement>('.maplibregl-ctrl-bottom-right')?.getBoundingClientRect()
+    if (navigation?.width && navigation.left < surface.left + left + cardWidth && navigation.right > surface.left + left) {
+        visibleBottom = Math.min(visibleBottom, navigation.top - surface.top - 12)
+    }
+    const above = anchor.y > visibleTop + (visibleBottom - visibleTop) * .55
+    const top = above ? Math.min(anchor.y - 18, visibleBottom - 12) : anchor.y + 18
+    pointCardPosition.value = anchor.x < 0 || anchor.x > width || anchor.y < 0 || anchor.y > height ? null
+        : { left, top, above, height: Math.max(100, Math.min(420, above ? top - visibleTop - 12 : visibleBottom - top - 12)), anchor: anchor.x - left }
+}
+watch(() => [props.point, props.showPointCard], () => { void nextTick(updatePointCard) }, { flush: 'post' })
 function updateLabels() {
+    updatePointCard()
     updateTripLabels()
     if (!map || !container.value || groups.value.length !== 1) { labels.value = []; return }
     const surface = container.value.getBoundingClientRect()
@@ -236,7 +258,7 @@ function focusAddress() {
 }
 watch(groups, focusAddress, { flush: 'post' })
 function focusPoint() {
-    if (props.automaticCamera === false) return
+    if (props.automaticCamera === false && !props.showPointCard) return
     if (props.selectable !== false && props.point && map && !props.analysis && !groups.value.length) {
         const center: [number, number] = [props.point.lon, props.point.lat]
         if (!map.getBounds().contains(center)) map.jumpTo({ center, zoom: 14 })
@@ -288,6 +310,12 @@ function wheel(event: WheelEvent) {
         return
     }
     scrollMapSidebar(event, props.scrollTarget)
+}
+function selectWithKeyboard(event: KeyboardEvent) {
+    if (props.selectable !== false && event.target instanceof HTMLCanvasElement) {
+        event.preventDefault()
+        selectCenter()
+    }
 }
 function selectCenter() {
     const center = map?.getCenter()
@@ -349,7 +377,7 @@ function initialize() {
                 'NavigationControl.ZoomOut': 'Отдалить',
                 'NavigationControl.ResetBearing': 'Север сверху',
                 'AttributionControl.ToggleAttribution': 'Источники карты',
-                'Map.Title': 'Карта Красноярска',
+                'Map.Title': props.hideCenter ? 'Карта. Enter — выбрать точку в центре.' : 'Карта Красноярска',
                 'CooperativeGesturesHandler.WindowsHelpText': 'Для масштаба карты удерживайте Ctrl и прокручивайте',
                 'CooperativeGesturesHandler.MacHelpText': 'Для масштаба карты удерживайте ⌘ и прокручивайте',
                 'CooperativeGesturesHandler.MobileHelpText': 'Перемещайте карту двумя пальцами',
@@ -383,7 +411,12 @@ function initialize() {
             const object = map?.getLayer('address-contours') ? map.queryRenderedFeatures(event.point, { layers: ['address-contours', 'address-points'] })[0] : null
             emit('highlightAddressObject', object ? String(object.properties.id) : null)
         })
-        map.on('mouseout', () => emit('highlightAddressObject', null))
+        map.on('mouseout', event => {
+            const target = event.originalEvent.relatedTarget
+            // Moving from a contour to its number must keep the label's hover.
+            if (target instanceof Element && target.closest('.map-address-label')) return
+            emit('highlightAddressObject', null)
+        })
         map.on('move', updateLabels)
         map.on('resize', updateLabels)
         map.on('style.load', () => {
@@ -489,10 +522,10 @@ onBeforeUnmount(() => {
 
 <template>
     <div class="city-map" @wheel.capture="wheel" :class="{ 'city-map--overlay-controls': overlayControls }" :data-map-theme="theme" :style="{ '--place-color': placeColor }">
-        <div class="city-map-toolbar">
+        <div v-if="!hideTheme || !hideCenter || $slots.controls" class="city-map-toolbar">
             <MapThemeControl v-if="!hideTheme" />
             <slot name="controls" />
-            <button v-if="selectable !== false" type="button" class="result-action city-map-center" @click="selectCenter">Анализировать центр карты</button>
+            <button v-if="!hideCenter && selectable !== false" type="button" class="result-action city-map-center" @click="selectCenter">Анализировать центр карты</button>
         </div>
         <div v-if="status !== 'ready'" class="city-map-resource-status map-status" role="status" aria-live="polite">
             <template v-if="status === 'loading'"><span class="h-2 w-2 animate-pulse rounded-full bg-[#2d6450]" /> Загрузка подложки…</template>
@@ -501,7 +534,10 @@ onBeforeUnmount(() => {
         <div class="city-map-surface">
             <button v-if="analysis && !placeLabel" type="button" class="result-action city-map-overview" @click="resetView">К радиусу {{ radius }} м</button>
             <p v-if="scrollTarget" class="city-map-wheel-hint">Колесо — прокрутка профиля · Ctrl/⌘ + колесо — масштаб</p>
-            <div ref="container" class="h-full w-full" aria-label="Интерактивная карта Красноярска" />
+            <div ref="container" class="h-full w-full" aria-label="Интерактивная карта Красноярска" @keydown.enter="selectWithKeyboard" />
+            <div v-if="$slots['point-card'] && point" v-show="pointCardPosition" class="city-point-callout" :class="{ 'is-above': pointCardPosition?.above }" :style="{ left: `${pointCardPosition?.left ?? 12}px`, top: `${pointCardPosition?.top ?? 12}px`, '--point-card-height': `${pointCardPosition?.height ?? 420}px`, '--point-card-anchor': `${pointCardPosition?.anchor ?? 12}px` }" @click.stop @pointerdown.stop @wheel.stop>
+                <div class="city-point-callout-body"><slot name="point-card" /></div>
+            </div>
             <div v-if="props.tripOverlay?.markers?.length" class="city-trip-labels">
                 <svg aria-hidden="true"><line v-for="label in tripLabels" :key="label.id" :x1="label.anchorX" :y1="label.anchorY" :x2="label.x" :y2="label.y" /><circle v-for="label in tripLabels" :key="`p${label.id}`" :cx="label.anchorX" :cy="label.anchorY" r="3" /></svg>
                 <template v-for="label in tripLabels" :key="label.id">
@@ -511,19 +547,19 @@ onBeforeUnmount(() => {
                 </template>
             </div>
             <AddressMapLabels :labels="labels" :selected-id="selectedAddressId" :highlighted-id="highlightedAddressId" :place-label="placeLabel" :multiple="(groups[0]?.objects.length ?? 0) > 1" @select="$emit('selectAddressObject', $event)" @highlight="$emit('highlightAddressObject', $event)" />
-            <details class="city-map-legend" :open="legendOpen" @toggle="legendOpen = ($event.target as HTMLDetailsElement).open">
-                <summary>Обозначения<span v-if="visibleLayers.length"> · {{ visibleLayers.length }}</span></summary>
+            <component :is="expandedLegend ? 'section' : 'details'" v-if="visibleLayers.length || groups.length || point || props.tripOverlay?.markers?.length" class="city-map-legend" aria-label="Обозначения карты" :open="!expandedLegend && legendOpen" @toggle="legendOpen = ($event.target as HTMLDetailsElement).open">
+                <summary v-if="!expandedLegend">Обозначения<span v-if="visibleLayers.length"> · {{ visibleLayers.length }}</span></summary>
                 <div class="city-map-legend-body">
-                    <p v-if="props.tripOverlay?.markers?.length">А ● — фиолетовый круг · Б ▪ — синий квадрат · цели с номером строки.</p><p v-if="props.tripOverlay?.markers?.length">✓ в ориентире · ↑ сверх · — без ориентира · … расчёт · ! ошибка · ? неизвестно. Уличные точки — отдельные малые знаки.</p>
+                    <p v-if="props.tripOverlay?.markers?.length">А ● — фиолетовая сплошная · Б ▪ — синяя штриховая · цели с номером строки. Повторный клик по общему пути перебирает стороны и цели. Стиль линии не означает отдельную дорогу.</p><p v-if="props.tripOverlay?.markers?.length">✓ в ориентире · ↑ сверх · — без ориентира · … расчёт · ! ошибка · ? неизвестно. Уличные точки — отдельные малые знаки.</p>
                     <p v-if="groups.length"><span class="map-key-house" />{{ placeLabel ? `Адрес ${placeLabel}` : selectedAddressId ? 'Выбранный объект' : 'Варианты адреса' }}<span v-if="!selectedAddressId"> · номера как в списке</span></p>
                     <p v-if="point && !groups.length"><span class="map-key-house" />Точка анализа</p>
-                    <p v-if="point"><span class="map-key-radius" />Радиус {{ radius }} м по прямой</p>
+                    <p v-if="point && showAnalysisArea && analysis"><span class="map-key-radius" />Радиус {{ radius }} м по прямой</p>
                     <p v-for="layer in visibleLayers" :key="layer.key"><span class="layer-symbol" :class="`layer-symbol--${layer.symbol}`" :style="{ '--layer-color': layer.color }" />{{ layer.label }}</p>
                     <p v-if="selectedStop"><span class="map-key-stop" />Выбранная остановка</p>
                     <p v-if="selectedGeometry"><span class="map-key-selection" />Выбранный объект слоя</p>
                     <p class="city-map-legend-note">Контур не обозначает вход. Обозначения подложки — отдельная справочная карта.</p>
                 </div>
-            </details>
+            </component>
             <div v-if="!selectedStop && !selectedGeometry && activeCategory && visibleLayers.some(layer => layer.key === activeCategory)" class="city-map-active-category" role="status">{{ mapLayerDefinitions.find(layer => layer.key === activeCategory)?.label }} · в области анализа</div>
         </div>
         <div v-if="selectedStop || selectedGeometry" class="city-map-object" role="status" aria-live="polite" :data-selected-id="selectedGeometry ? selectedFeature?.id : selectedStop?.id">
