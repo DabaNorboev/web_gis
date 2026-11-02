@@ -1,15 +1,24 @@
 ---
 status: current
-updated: 2026-10-27
+updated: 2026-11-01
 verified: not verified
 ---
 
 # Диагностика автомобильного пилота: контракт v1
 
-Добавлена в Goal 5 (23.10.2026) для будущего интерфейса Goal 6. Страница `/trips`
-пока использует прежние сообщения. Входной JSON, fragment version1, статусы,
-`reason`, `checks`, `road_choices`, `snaps`, метрики и null при отказе сохранены.
-Новые поля необязательны для старых клиентов/фикстур. TypeScript: `types/trips.ts`.
+Действующий машинный контракт причин и локализации. `/trips`, `/compare` и главная используют `utils/tripFailure.ts`; сейчас он группирует сообщения по категориям. Для нового поиска реализован отдельный точный реестр «код → объяснение → действие» с тестом покрытия в [отдельном документе](search-task-reasons.md). Публичные страницы ещё не переведены на него; [целевая задача](../plans/search-task-contract.md#9-скелет-реестра-кодов) не считается целиком реализованной.
+
+Поля `diagnostics` дополняют `reason`, `checks`, `road_choices`, `snaps` и метрики, не заменяют их. Новые поля необязательны для старых клиентов/фикстур. TypeScript: `types/trips.ts`; жизненный цикл и действия — [trips](trips.md).
+
+## Авторитетный каталог и реестр нового поиска
+
+[reason-codes.json](../../resources/contracts/reason-codes.json), version 1 — источник публичных кодов backend. Пространства: routing (checks/diagnostics, включая SQL, source chain и динамические walking-причины), trip_status, road_choice_status, resolver, environment, http. Статус UNKNOWN, location unknown и road-choice CHOOSE — разные оси. Внутренние исключения, перехваченные и преобразованные в публичный отказ, не являются самостоятельными кодами ответа.
+
+[ReasonCatalog](../../app/Services/Routing/ReasonCatalog.php) проверяет код; [TripDiagnostics](../../app/Services/Routing/TripDiagnostics.php) проверяет issue/envelope и публичные checks, road-choice checks/issue и статусы на выходе обоих providers. Неизвестный незарегистрированный код не выпускается как проверенный результат. [ReasonCatalogTest](../../tests/Unit/ReasonCatalogTest.php) дополнительно сверяет литералы обоих providers, guards, source chain, трёх SQL-файлов и адресных сервисов с каталогом; отдельно проверяет динамические семейства BUILDING/WATER. Классифицированные внутренние литералы не считаются публичными причинами. Новое семейство требует расширить каталог и относящиеся сценарии; один статический поиск не доказывает все возможные ветви выполнения.
+
+Точные объяснения/действия и правила подключения вынесены в [реестр поиска](search-task-reasons.md); здесь остаются формат и локализация issue. Реестр сверяется с backend-каталогом независимо от fallback. Публичный UI пока не переведён на новый mapper.
+
+[ApiRequestError](../../resources/js/api/errors.ts) отделяет HTTP (status/code/Retry-After), network, timeout, cancelled и invalid_response. Timeout распознаётся по TimeoutError, включая signal.reason; обычный AbortError сам по себе не доказывает таймаут. Если backend не прислал code, объяснение HTTP использует статус, не текст message. Неизвестный присланный code остаётся неизвестным. Чтение сырого error body/message для локализации запрещено. Клиент поездок сохраняет no-store/no-referrer и прежние проверки walking identity/scope; новый реестр к старым UI не подключается автоматически.
 
 ## Результат одной поездки
 
