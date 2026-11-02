@@ -4,6 +4,10 @@ import * as vue from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { loadModule, loadComponent } from './support/vue-component.mjs'
 
+const loadTripClient = globals => loadModule(new URL('../../resources/js/api/trips.ts', import.meta.url), {
+    './errors': loadModule(new URL('../../resources/js/api/errors.ts', import.meta.url), {}, globals),
+}, globals)
+
 const path = name => new URL(`../../resources/js/${name}`, import.meta.url)
 const tripUtils = loadModule(path('utils/trips.ts'))
 const candidates = loadModule(path('utils/tripCandidates.ts'))
@@ -34,7 +38,7 @@ function response(request, statuses = []) {
 function setup() {
     const scope = vue.effectScope(), cleanups = [], requests = [], saves = [], standaloneSaves = [], settled = []
     const hooks = { ...vue, onBeforeUnmount: fn => cleanups.push(fn) }
-    const api = loadModule(path('api/trips.ts'), {}, { fetch: (_url, options) => new Promise((resolve, reject) => requests.push({ selection: JSON.parse(options.body), signal: options.signal, resolve, reject })) })
+    const api = loadTripClient({ fetch: (_url, options) => new Promise((resolve, reject) => requests.push({ selection: JSON.parse(options.body), signal: options.signal, resolve, reject })) })
     const analysis = loadModule(path('composables/useTripAnalysis.ts'), { vue: hooks, '@/api/trips': api })
     const comparison = loadModule(path('composables/useComparisonTrips.ts'), { vue: hooks, '@/api/trips': api, '@/utils/trips': tripUtils })
     const state = loadModule(path('composables/useTripsState.ts'), { vue: hooks, '@/composables/useTripAnalysis': analysis, '@/utils/tripCandidates': candidates })

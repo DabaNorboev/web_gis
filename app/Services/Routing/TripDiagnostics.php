@@ -7,6 +7,7 @@ final class TripDiagnostics
 {
     public static function issue(string $code, string $location = 'unknown', string $stage = 'route'): array
     {
+        ReasonCatalog::require('routing', $code);
         $category = match (true) {
             in_array($code, ['SNAP_RADIUS_EXCEEDED', 'SNAP_HINT_OUTSIDE_RADIUS', 'SNAP_LIMIT_EXCEEDED']) => 'distance',
             $code === 'SNAP_CHOICE_REQUIRED' => 'ambiguity',
@@ -22,10 +23,29 @@ final class TripDiagnostics
         return compact('code', 'category', 'stage', 'location');
     }
 
+    /** Validate every public producer path, including SQL and dynamic walking checks. */
+    public static function validateRow(array $row): void
+    {
+        ReasonCatalog::require('trip_status', $row['status']);
+        foreach ($row['checks'] ?? [] as $code) {
+            ReasonCatalog::require('routing', $code);
+        }
+        foreach ($row['road_choices'] ?? [] as $choice) {
+            ReasonCatalog::require('road_choice_status', $choice['status']);
+            if (isset($choice['issue'])) {
+                ReasonCatalog::require('routing', $choice['issue']);
+            }
+            foreach ($choice['checks'] ?? [] as $code) {
+                ReasonCatalog::require('routing', $code);
+            }
+        }
+    }
+
     public static function envelope(array $issues, int $targetIndex): array
     {
         $grouped = [];
         foreach ($issues as $issue) {
+            ReasonCatalog::require('routing', $issue['code']);
             $key = $issue['stage'].':'.$issue['code'];
             if (isset($grouped[$key]) && in_array($grouped[$key]['location'], ['start', 'target', 'both_endpoints'], true)
                 && in_array($issue['location'], ['start', 'target', 'both_endpoints'], true)

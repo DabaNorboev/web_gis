@@ -4,6 +4,10 @@ import { readFileSync } from 'node:fs'
 import { loadModule, loadComponent, loadSetup } from './support/vue-component.mjs'
 import * as vue from 'vue'
 import * as ssr from 'vue/server-renderer'
+const loadTripClient = globals => loadModule(new URL('../../resources/js/api/trips.ts', import.meta.url), {
+    './errors': loadModule(new URL('../../resources/js/api/errors.ts', import.meta.url), {}, globals),
+}, globals)
+
 const { ref, shallowRef } = vue
 
 const tripUtils = loadModule(new URL('../../resources/js/utils/trips.ts', import.meta.url))
@@ -188,7 +192,7 @@ test('rendered page warns the recipient can see coordinates and labels of every 
 
 test('trip fetch uses a fixed URL, no-store and no-referrer; selection travels only in POST body', async () => {
     let seen
-    const { fetchTrips } = loadModule(new URL('../../resources/js/api/trips.ts', import.meta.url), {}, { fetch: async (url, options) => {
+    const { fetchTrips } = loadTripClient({ fetch: async (url, options) => {
         seen = { url, options }; return { ok: true, json: async () => ({ mode: 'driving', start: selection.start, results: selection.places.map((target, index) => ({ index, start: selection.start, target, status: 'UNKNOWN', route: null, snaps: null, metrics: { distance: { value: null }, duration: { value: null } } })) }) }
     } })
     await fetchTrips(selection, new AbortController().signal)

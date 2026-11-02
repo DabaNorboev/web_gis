@@ -4,6 +4,10 @@ import * as vue from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { loadModule, loadComponent } from './support/vue-component.mjs'
 
+const loadTripClient = globals => loadModule(new URL('../../resources/js/api/trips.ts', import.meta.url), {
+    './errors': loadModule(new URL('../../resources/js/api/errors.ts', import.meta.url), {}, globals),
+}, globals)
+
 const utils = loadModule(new URL('../../resources/js/utils/trips.ts', import.meta.url))
 const candidates = loadModule(new URL('../../resources/js/utils/tripCandidates.ts', import.meta.url))
 const map = loadModule(new URL('../../resources/js/utils/tripMap.ts', import.meta.url), { '@/utils/tripCandidates': candidates })
@@ -29,7 +33,7 @@ function response() {
             road_choices: null, checks: [] }] }
 }
 function api(json, record = () => {}) {
-    return loadModule(new URL('../../resources/js/api/trips.ts', import.meta.url), {}, { fetch: async (url, options) => {
+    return loadTripClient({ fetch: async (url, options) => {
         record(url, options)
         return { ok: true, json: async () => typeof json === 'function' ? json() : json }
     } }).fetchTrips

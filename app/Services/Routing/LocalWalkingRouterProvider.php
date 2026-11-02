@@ -56,6 +56,7 @@ class LocalWalkingRouterProvider
                 $row['route'] = null;
                 $row['snaps'] = null;
             }
+            TripDiagnostics::validateRow($row);
             $issues = $row['diagnostic_issues'] ?? array_map(fn ($code) => TripDiagnostics::issue($code), $row['checks']);
             if (! $issues && $row['status'] !== 'AVAILABLE') {
                 $issues = [TripDiagnostics::issue('ROUTE_NOT_CONFIRMED')];

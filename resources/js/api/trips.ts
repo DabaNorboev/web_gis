@@ -1,3 +1,4 @@
+import { ApiRequestError, requestJson } from './errors'
 import type { TripAnalysis, TripSelection } from '@/types/trips'
 
 // Response identity is checked before a route enters state or the map. These are
@@ -36,14 +37,16 @@ function matchesSelection(response: TripAnalysis, selection: TripSelection): boo
 }
 
 export async function fetchTrips(selection: TripSelection, signal: AbortSignal): Promise<TripAnalysis> {
-    const response = await fetch('/api/v1/trips/analyze', { method: 'POST', signal, cache: 'no-store', referrerPolicy: 'no-referrer',
+    let result: unknown
+    try { result = await requestJson('/api/v1/trips/analyze', { method: 'POST', signal, cache: 'no-store', referrerPolicy: 'no-referrer',
         headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: selection.mode, start: selection.start, places: selection.places }) })
-    if (!response.ok) throw new Error(response.status === 422 ? 'Проверьте координаты и количество мест.'
-        : response.status === 429 ? 'Слишком много расчётов. Подождите немного и повторите.' : 'Расчёт сейчас недоступен. Повторите позже.')
+    } catch (error) {
+        if (!(error instanceof ApiRequestError) || error.kind !== 'invalid_response') throw error
+        throw new ApiRequestError('invalid_response', null, null, null, 'Ответ не соответствует выбранному режиму и точкам. Повторите расчёт.')
+    }
     try {
-        const result = await response.json() as TripAnalysis
-        if (matchesSelection(result, selection)) return result
-    } catch { /* A decoding failure must not expose raw response text. */ }
-    throw new Error('Ответ не соответствует выбранному режиму и точкам. Повторите расчёт.')
+        if (matchesSelection(result as TripAnalysis, selection)) return result as TripAnalysis
+    } catch { /* Malformed identity/metrics are rejected without exposing raw response text. */ }
+    throw new ApiRequestError('invalid_response', null, null, null, 'Ответ не соответствует выбранному режиму и точкам. Повторите расчёт.')
 }
