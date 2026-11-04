@@ -1,12 +1,12 @@
 ---
 status: current
-updated: 2026-11-02
+updated: 2026-11-04
 verified: not verified
 ---
 
 # Фронтенд PlaceLens
 
-Работающая версия по исходникам `fe6f92d`, без нового runtime-прогона. Целевая замена оболочки и владельца состояния — [контракт задачи поиска](plans/search-task-contract.md) и [карта изменений](plans/interface-replacement-plan.md); новая оболочка ещё не подключена. Изолированное ядро П1 описано ниже.
+Карта существующих модулей и владельцев состояния. `/search` — изолированная оболочка без подключения ядра, API и хранения. Решения о её использовании в анализе места — в [очереди](plans/roadmap.md#ближайшая-очередь).
 
 ## Каталоги и соглашения
 
@@ -26,27 +26,31 @@ Vue/TypeScript — `resources/js`, CSS — `resources/css`, оболочка Bla
 
 Компоненты — PascalCase и script setup с TypeScript; composables — use*. Локальные типы держать рядом с кодом, общие — в types. Алиас `@` указывает на resources/js в Vite и tsconfig. TypeScript 6 закреплён для совместимости с vue-tsc; проверка — [testing](testing.md).
 
-## Ядро нового поиска: П1
+<a id="ядро-нового-поиска-п1"></a>
+
+## Ядро поиска
 
 [search/task.ts](../resources/js/search/task.ts) предоставляет `createSearchTask({ nextId, now })`: один независимый owner, команды редактирования/расчёта, `snapshot`, `exportDocument`, проекции `trip`/`environment`/`annotations`. Документ, runtime и view раздельны; наружу возвращаются копии, замороженные на всех уровнях. [types](../resources/js/search/types.ts) задаёт локальные типы, [document](../resources/js/search/document.ts) — проверку ввода и явную проекцию без runtime. Это не формат хранения или ссылки.
 
-Ядро реализует постоянные ID, лимиты и независимость из [целевого контракта](plans/search-task-contract.md). Расчёт возвращает намерения по ячейкам с token и снимком условий, не HTTP-запросы. `markLoading`/`acceptResult`/`rejectRequest` принимает будущий адаптер; token действует только у своего owner и до изменения зависимости. Группировка этих намерений в API-запросы, очередь, реестр действий и проверка backend response остаются следующим поставкам. Нельзя подключать непроверенный HTTP-ответ напрямую к `acceptResult`.
+Ядро реализует постоянные ID, лимиты и независимость из [архивного целевого контракта](archive/housing-search/search-task-contract.md). Расчёт возвращает намерения по ячейкам с token и снимком условий, не HTTP-запросы. `markLoading`/`acceptResult`/`rejectRequest` принимает будущий адаптер; token действует только у своего owner и до изменения зависимости. Адаптер группировки намерений в API-запросы и проверки ответов пока не подключён. Нельзя подключать непроверенный HTTP-ответ напрямую к `acceptResult`.
 
 Восстановление документа очищает runtime и требует разрешения адресных ID. `resolutionRequest`/`applyResolution` — чистая граница, без вызова resolver; пропавший ID не заменяется сохранёнными координатами. Неразрешённое место/кандидат не блокирует независимые задания. Замена исходной точки сбрасывает зависимости; обнаруженная смена известного снимка источника делает их stale. Порог/роль не меняют отпечаток поездки. Stale и ожидающая повторная проверка не получают текущую оценку порога или маршрутную линию.
 
-П1а разделяет обычную смену и замену missing: `changeCandidateAddress` добавляет отдельного кандидата с новым ID, оставляя прежний вариант/пару/данные. Старого `replaceCandidateAddress` нет. `prepareMissingCandidateReplacement` требует завершённого resolver-состояния missing и фиксирует адрес, заметки, удаляемые отметки/hints и роли. `replaceMissingCandidate` принимает только своё неизменённое подтверждение при прежних generation/documentRevision и том же resolver-evidence; замена с новым ID выполняется за одну ревизию даже при пяти кандидатах. Старый slot переходит новому ID по подтверждённому перечню, просмотр возвращается к адресам; расчёт не запускается.
+Обычная смена адреса и замена missing разделены: `changeCandidateAddress` добавляет отдельного кандидата с новым ID, оставляя прежний вариант/пару/данные. Старого `replaceCandidateAddress` нет. `prepareMissingCandidateReplacement` требует завершённого resolver-состояния missing и фиксирует адрес, заметки, удаляемые отметки/hints и роли. `replaceMissingCandidate` принимает только своё неизменённое подтверждение при прежних generation/documentRevision и том же resolver-evidence; замена с новым ID выполняется за одну ревизию даже при пяти кандидатах. Старый slot переходит новому ID по подтверждённому перечню, просмотр возвращается к адресам; расчёт не запускается.
 
 Переносятся только заметки: `previousObject` хранит исходный candidateId/адрес, а basis и время пользовательской правки сохраняются. `annotations` даёт постоянную пометку «Относилось к прежнему объекту» и needsReview; повторная замена/правка текста/restore не стирают происхождение. Чек-лист, результаты и street choices не переносятся. Исправление координат того же OSM ID в источнике остаётся обновлением существующего кандидата, без переноса заметок.
 
-`exportDocument` сохраняет исходные сведения о выборе и основания заметок/отметок, включая ссылки на удалённые места для пересмотра; результаты и calculatedAt туда не входят. Реального storage, сохранения/подтверждения удаления, Vue provide/inject, HTTP и публичного UI пока нет. Регрессии — [search-task.test.mjs](../tests/frontend/search-task.test.mjs) через существующий TS loader; порядок подключения — [план поставок](plans/search-task-delivery-plan.md).
+`exportDocument` сохраняет исходные сведения о выборе и основания заметок/отметок, включая ссылки на удалённые места для пересмотра; результаты и calculatedAt туда не входят. Само ядро не выполняет хранение, HTTP и UI-эффекты; отдельный адаптер хранения описан ниже. Регрессии — [search-task.test.mjs](../tests/frontend/search-task.test.mjs) через существующий TS loader.
 
-## Хранение нового поиска: П3
+<a id="хранение-нового-поиска-п3"></a>
 
-[search/storage.ts](../resources/js/search/storage.ts) — IndexedDB `placelens-search-v1`, версия БД 1: `records` (`generation`, `active`) и `cache`. `active` содержит `schemaVersion: 1`, `storageRevision` и allowlisted-документ с `searchId`; метрики, calculatedAt и геометрия результата не проходят проекцию. Маркер не экспортируется. Соединение после close/versionchange не переоткрывается для записи; неизвестный/повреждённый формат сохраняется без перезаписи. Протокол и окно гонки — [контракт](plans/search-task-contract.md#поколение-и-защита-от-старой-вкладки).
+## Хранение поиска
 
-[search/persistence.ts](../resources/js/search/persistence.ts) — новый независимый адаптер ядра, не старый composable. `createSearchPersistence({ ports })` восстанавливает ввод без результатов; предоставляет `task`, `state`, `save`, `prepareDelete`/`delete`, `reload`, `check`, `retrySettingsCleanup`, `close`. Подтверждение связано с ревизией и экземпляром; на время удаления правка через facade запрещена. Сброс runtime отзывает поздние tokens даже при abort. Новые состояния не подключены к публичному UI; watcher/HTTP/автозапуска нет. П4 будет вызывать сохранение после явных команд редактирования и `check` при возврате фокуса; BroadcastChannel — только подсказка, CAS остаётся обязательным.
+[search/storage.ts](../resources/js/search/storage.ts) — IndexedDB `placelens-search-v1`, версия БД 1: `records` (`generation`, `active`) и `cache`. `active` содержит `schemaVersion: 1`, `storageRevision` и allowlisted-документ с `searchId`; метрики, calculatedAt и геометрия результата не проходят проекцию. Маркер поколения — 128 случайных бит через `crypto.getRandomValues`, без вывода из данных. Он остаётся после удаления и не экспортируется; подтверждение удаления должно называть эту отметку. Соединение после close/versionchange не переоткрывается для записи; неизвестный/повреждённый формат сохраняется без перезаписи. Протокол и окно гонки — [архивный контракт](archive/housing-search/search-task-contract.md#поколение-и-защита-от-старой-вкладки).
 
-«Сохранено» относится только к завершённой текущей ревизии. Удаляющая вкладка принимает поколение при complete и может сохранить новый поиск без reload. Очистка известных localStorage-ключей и reset настроек в памяти — отдельные эффекты после commit; частичная ошибка остаётся через `settingsCleanupPending`, повтор очистки не удаляет поиск повторно. Порты cancelRequests/resetSettings подключаются новым UI в П4; старые composables не импортируются.
+[search/persistence.ts](../resources/js/search/persistence.ts) — новый независимый адаптер ядра, не старый composable. `createSearchPersistence({ ports })` восстанавливает ввод без результатов; предоставляет `task`, `state`, `save`, `prepareDelete`/`delete`, `reload`, `check`, `retrySettingsCleanup`, `close`. Подтверждение связано с ревизией и экземпляром; на время удаления правка через facade запрещена. Сброс runtime отзывает поздние tokens даже при abort. Новые состояния не подключены к публичному UI; watcher/HTTP/автозапуска нет. При подключении UI сохранение должно следовать за явными командами редактирования, а `check` — выполняться при возврате фокуса; BroadcastChannel — только подсказка, CAS остаётся обязательным.
+
+«Сохранено» относится только к завершённой текущей ревизии. Удаляющая вкладка принимает поколение при complete и может сохранить новый поиск без reload. Очистка известных localStorage-ключей и reset настроек в памяти — отдельные эффекты после commit; частичная ошибка остаётся через `settingsCleanupPending`, повтор очистки не удаляет поиск повторно. Порты cancelRequests/resetSettings требуют подключения в UI; старые composables не импортируются.
 
 Проверки в уже подготовленном `node` (пользователь `node`):
 
@@ -59,9 +63,29 @@ docker compose exec --user node node node node_modules/@playwright/test/cli.js t
 
 Нужен доступный Chromium: обычный Playwright, либо `STORAGE_CHROMIUM` с путём внутри контейнера. Альтернатива для подготовленного внешнего Chrome — `STORAGE_CDP_URL` только к отдельному временному профилю, не пользовательскому; node и браузеру нужен общий localhost (временный network override), без публикации CDP. Сеанс и профиль после прогона закрыть. Проверка моделирует quota/abort/сбой настроек, но транзакции и гонки исполняет настоящий IndexedDB; это не проверка реальных устройств/GIS.
 
+<a id="оболочка-нового-поиска-п41"></a>
+
+## Оболочка поиска
+
+Вход `/search` использует существующие `welcome` и `app.js`, лениво монтирует `search-ui/SearchPage.vue`; `/`, `/compare`, `/address/{id}`, `/trips` не переключены. Это внутренний маршрут разработки без отдельной защиты доступа, не опубликованный основной сценарий. `SearchPage` хранит только выбранный раздел; `SearchShell` принимает `section: 'conditions' | 'addresses'`, выдаёт `navigate(section)` и показывает default slot. У оболочки нет HTTP, owner, storage и сохранённых результатов; подпись прямо говорит, что изменения пока не сохраняются. Недоступные разделы и карта не имитируют работу.
+
+Новые компоненты генерируются CLI в `search-ui/components`, helpers — `search-ui/lib`, CSS — `resources/css/search-ui.css`; `components.json` направлен только туда. Button использует локальный helper `cn` на clsx/tailwind-merge. Навигация статическая и семантическая; Sidebar не подключён.
+
+Manifest `tests/frontend/fixtures/search-ui-import-policy.json` — исполняемый список текущих разрешений. UI не импортирует ядро, API или хранение даже через типы; ядро и хранение проверяется отдельно на независимость от прежнего UI. Расширение списка при подключении выполняет Codex после сверки с картой, не исполнитель компонента. Старые компоненты, composables, owners, styles и новые пакеты запрещены.
+
+Подписи — `search-ui/copy.ts`; проверка `search-ui-copy.test.mjs` охватывает каталог текста, литеральный текст шаблонов и доступные имена. Запрещены технические слова из `forbiddenUiWords` в `tests/frontend/support/search-ui-policy.mjs` (включая API/backend/runtime, внутренние ID, названия хранилищ, UNKNOWN/null). Идентификаторы кода не являются подписью; произвольный вычисленный текст эта проверка не доказывает — динамические сообщения потребуют тестов представления при подключении.
+
+Целевые проверки: `node --test tests/frontend/search-ui-{imports,copy}.test.mjs`, typecheck, PHP `SearchPageTest`, browser `search-shell.spec.mjs` на четырёх viewport. Выполнять Node в контейнере от `node`, по [testing](testing.md). Browser использует существующий синтетический сервер без backend; опциональный `SEARCH_SHELL_CDP_URL` — только отдельный временный профиль Chrome с loopback и общим localhost контейнера/браузера. Отчёты в test-results; production build не нужен.
+
 ## Загрузка и страницы
 
-`app.js` монтирует HomePage на `/`, лениво загружает AddressProfilePage на `/address/:id`, ComparePage на `/compare`, TripsPage на `/trips`. Laravel отдаёт одну Blade-оболочку при прямом открытии/reload. Обычные ссылки и history API покрывают нынешний объём; отдельного Vue Router/глобального store нет.
+`app.js` отдельно монтирует SearchPage на `/search` и HomePage на `/`, лениво загружает AddressProfilePage на `/address/:id`, ComparePage на `/compare`, TripsPage на `/trips` и демонстрационную PlaceAnalysisPage на `/analysis`. Laravel отдаёт одну Blade-оболочку при прямом открытии/reload. Обычные ссылки и history API покрывают нынешний объём; отдельного Vue Router/глобального store нет.
+
+### Демонстрационная страница анализа: `/analysis`
+
+Первая страница A6 для визуального ревью — `PlaceAnalysisPage.vue`, `components/place-analysis/PlaceAnalysisMap.vue`, данные `place-analysis-demo.ts`, стили `resources/css/place-analysis.css`. Она показывает четыре состояния одного экрана (обзор, объекты, спутник, воздух), выбор точки и радиуса 200–1000 м, панель слоёв и один общий каркас. Это **макет на условных данных**: адреса, объекты, даты, NDVI, станции и числа синтетические, API/хранилище не подключены, тяжёлой GIS-логики в UI нет. Страница не является завершением A6 и не подтверждает реальные POI, снимки или воздух. Визуальные ориентиры и ограничения — [UI-референс](plans/place-analysis-ui-reference.md); контракт данных — [анализ места](features/place-analysis.md).
+
+Проверки: `PlaceAnalysisPageTest` (маршрут), typecheck/build и browser `place-analysis.spec.mjs` (один desktop-сценарий; при отсутствии Chromium проверка ограничена).
 
 | Сценарий | Основные модули и ownership |
 |---|---|
@@ -128,14 +152,14 @@ MapLayersPanel/MapLayerDetails и Stop/Area/LinearLayerInfo управляют �
 Tailwind CSS 4 подключён через Vite, shadcn-vue — components.json/reka-nova/neutral, CSS variables — app.css, cn.ts указан alias генератора. Базовый шрифт Instrument Sans подключается Vite fonts plugin. Существование tooling/dependency не означает, что все готовые UI-компоненты уже установлены или используются.
 
 ```bash
-docker compose exec node npm run ui:add -- button
-docker compose exec node npm run typecheck
+docker compose exec --user node node npm run ui:add -- button
+docker compose exec --user node node npm run typecheck
 ```
 
 Первая команда — пример генерации новых исходников, не проверка; выполнять только при потребности в компоненте, проверить CSS/source/lock. Работать в node от пользователя node. Карта имеет собственные темы, а CSS-вариант `.dark` сам по себе не означает готовый переключатель темы всего приложения.
 
 ## Развитие и проверка
 
-Состояние самостоятельных поездок выделено в useTripsState ([протокол R2](history/trips-state-r2-2026-10-25.md)); loaders объединены в R1. Fragment/restore сравнения выделен в useComparisonLink ([протокол R3](history/comparison-link-r3-2026-10-25.md)). Маршрутный overlay выделен в R4 ([протокол](history/trip-overlay-r4-2026-10-25.md)). Не вводить общий state manager или универсальный компонент со всеми параметрами ради сокращения строк. Точные findings/Goals — [аудит](research/structure-quality-audit.md); эти рекомендации сами по себе не разрешают новые изменения.
+Не вводить общий state manager или универсальный компонент со всеми параметрами ради сокращения строк. Ответственность существующих owners описана выше.
 
 Проверять настоящие компоненты/composables, клавиатуру, фокус, историю, поздние ответы, отказ подложки и независимость результатов. Команды и границы mocked/live проверок — [testing](testing.md), [browser smoke](browser-smoke.md).

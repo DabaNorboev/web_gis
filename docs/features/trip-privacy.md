@@ -1,13 +1,13 @@
 ---
 status: current
-updated: 2026-10-27
+updated: 2026-11-04
 verified: not verified
 replaces: local-routing-privacy-access-fixes-2026-10-21.md
 ---
 
 # Приватность и доступ в поездках
 
-Действующие правила извлечены из протокола исправлений; исторические результаты не повторялись. Общий контракт — [trips](trips.md), текущий запуск Nginx privacy в CI — [testing](../testing.md#etl-и-nginx).
+Общий контракт — [trips](trips.md), текущий запуск Nginx privacy в CI — [testing](../testing.md#etl-и-nginx).
 
 ## Ссылки и хранение
 

@@ -1,6 +1,6 @@
 ---
 status: history
-updated: 2026-10-27
+updated: 2026-11-04
 verified: run 2026-10-27
 ---
 
@@ -14,7 +14,7 @@ verified: run 2026-10-27
 - В roadmap и [D08](../decisions.md#d08-снятие-исключения-плана-интерфейса) условие снятия исключения привязано к current/G2. По строкам 3 и 5 защищённого плана G2 уже выполнен, поэтому CLI/API обход удалён. План не редактировался.
 - Ссылки на ignored data/reports в features/plans/data дают WARN; в исторических материалах — INFO. Проверки шапок и ссылок сохранены; history/archive теперь отклоняют статус current.
 - Повторы принятых вводных заменены ссылками на decisions в constraints, roadmap и историческом current-state. Исторический контекст оставлен кратким, без нового пересказа решения.
-- В [testing](../testing.md#размер-контекста-без-запуска-сессий) добавлена исполняемая команда размеров и отдельная короткая процедура будущего сравнения usage на двух коммитах. Новый постоянный скрипт для разового измерения не создавался.
+- В [testing](#размер-контекста-без-запуска-сессий) добавлена исполняемая команда размеров и отдельная короткая процедура будущего сравнения usage на двух коммитах. Новый постоянный скрипт для разового измерения не создавался.
 
 ## Результаты проверок
 
@@ -72,10 +72,10 @@ Documentation: 86 files, 5 errors, 1 warnings, 3 informational notes
 
 | Пункт | Результат | Основное место и строка |
 |---|---|---|
-| L01–L20, число записей | Исправлено: 20 записей, L20 явно исторический выполненный пункт | [constraints](../plans/project-constraints.md), строка 9 |
+| L01–L20, число записей | Исправлено: 20 записей, L20 явно исторический выполненный пункт | [constraints](../archive/housing-search/project-constraints.md), строка 9 |
 | Walking в основной части продукта | Исправлено: оба режима в сценарии и таблице | [product](../product.md), строки 24 и 37 |
 | Walking в гипотезах | Исправлено: старый No-Go отделён от последующего ORS street | [hypotheses](../plans/product-hypotheses.md), строка 48 |
-| L07 и отложенный E1 | Исправлено: ссылка на D06, без обязательных новых сессий | [constraints](../plans/project-constraints.md), строка 23 |
+| L07 и отложенный E1 | Исправлено: ссылка на D06, без обязательных новых сессий | [constraints](../archive/housing-search/project-constraints.md), строка 23 |
 | Прежняя рекомендация об аудитории | Исправлено: superseded и ссылка D01 о замене рекомендации | [opportunities](../research/product-opportunities.md), строки 2 и 11 |
 
 ## Размеры и оставшиеся сообщения
@@ -106,7 +106,7 @@ Typical set: AGENTS.md + docs/README.md + docs/features/trips.md
 TOTAL	45129	27067
 ```
 
-Сам будущий замер usage описан в [testing](../testing.md#будущий-замер-реальных-токенов); он в этом задании не выполнялся.
+Сам будущий замер usage описан в [testing](#будущий-замер-реальных-токенов); он в этом задании не выполнялся.
 
 ## Будущие коммиты: план, команды не выполнялись
 
@@ -267,3 +267,75 @@ git add -p -- \
 Существующий интерфейсный WIP вместе с переносом ссылок/шапками: `docs/features/address-comparison.md`, `docs/features/address-profile.md`, `docs/browser-smoke.md`, `docs/frontend-structure.md`, `docs/features/point-analysis.md`, `docs/testing.md`, `docs/features/trips.md`.
 
 Автоматически разделить все три коммита командами добавления целых файлов нельзя. Команды `git add -p` выше являются точными точками ручного выбора, а не обещанием автоматического разделения. Приложение, его тесты, весь experiments/interface-v2 и interface-v2-plan не включать. Ни одна команда staging/commit из этого плана в доводке не выполнялась.
+
+
+## Сохранённый замер контекста и предложение эксперимента
+
+Материал из testing относится к реорганизации 27.10.2026. Команды эксперимента ниже не являются текущей очередью.
+
+### Размер контекста без запуска сессий
+
+Команда ниже только читает UTF-8 файлы. Она перечисляет AGENTS, индекс и все прямые Markdown-ссылки AGENTS как кандидатов чтения по задаче; это не требование загружать их все. Ссылки не раскрываются рекурсивно. Типовой набор здесь — `AGENTS.md + docs/README.md + один контракт поездок`. Символы и байты не пересчитываются в токены.
+
+```bash
+python3 -B - <<'PY'
+from pathlib import Path
+import re
+import subprocess
+
+root = Path.cwd()
+agents = (root / 'AGENTS.md').read_text(encoding='utf-8')
+paths = {'AGENTS.md', 'docs/README.md'}
+paths.update(re.findall(r'\]\((docs/[^)#]+)(?:#[^)]*)?\)', agents))
+def size(name, revision=None):
+    blob = (subprocess.check_output(['git', 'show', f'{revision}:{name}'], cwd=root)
+            if revision else (root / name).read_bytes())
+    return len(blob), len(blob.decode('utf-8'))
+print('file\tUTF-8 bytes\tcharacters')
+for name in sorted(paths):
+    byte_count, char_count = size(name)
+    print(f'{name}\t{byte_count}\t{char_count}')
+sample = ['AGENTS.md', 'docs/README.md', 'docs/features/trips.md']
+sizes = [size(name) for name in sample]
+print('Typical set: ' + ' + '.join(sample))
+print('TOTAL\t' + str(sum(v[0] for v in sizes)) + '\t' + str(sum(v[1] for v in sizes)))
+old_revision = '0f30b60'
+old_sample = ['AGENTS.md', 'docs/README.md', 'docs/trips.md']
+for label, revision, names in [('BEFORE ' + old_revision, old_revision, old_sample),
+                               ('AFTER working tree', None, sample)]:
+    measured = [size(name, revision) for name in names]
+    print(label)
+    for name, (byte_count, char_count) in zip(names, measured):
+        print(f'{name}\t{byte_count}\t{char_count}')
+    print('TOTAL\t' + str(sum(v[0] for v in measured)) + '\t' + str(sum(v[1] for v in measured)))
+PY
+```
+
+### Сопоставление размеров до и после реорганизации
+
+Замер 27.10.2026 выполнен командой выше: «до» — содержимое объектов `git show 0f30b60:<путь>`, «после» — текущие файлы рабочего дерева, без нового коммита. Checkout не выполнялся. Старое и новое имя trips сопоставлены явно; не подменять рабочую копию содержимым HEAD.
+
+| Файл набора | До: байты UTF-8 | До: символы | После: байты UTF-8 | После: символы |
+|---|---:|---:|---:|---:|
+| AGENTS.md | 9 669 | 5 649 | 12 292 | 7 170 |
+| Индекс docs/README.md | 14 411 | 9 492 | 9 617 | 5 891 |
+| Контракт trips (docs/trips.md → docs/features/trips.md) | 17 333 | 10 592 | 23 042 | 13 912 |
+| **Всего** | **41 413** | **25 733** | **44 951** | **26 973** |
+
+Основная доля в обоих наборах — trips: 41.9% байтов до и 51.3% после. Общий объём вырос на 8.5% по байтам и 4.8% по символам. Это размеры, не фактические токены. В рабочей версии trips также сохранены ранее существовавшие незакоммиченные уточнения интерфейса, поэтому сравнение не изолирует эффект одного переноса файлов. Строка после относится к этому замеру; дальнейшие изменения измеряются повторно, а не считаются прежним результатом.
+
+### Будущий замер реальных токенов
+
+Процедура выполняется только отдельным заданием; в доводке docs сессии не запускаются. После фиксации документации взять старый `0f30b60` и новый коммит в двух отдельных чистых копиях, не переключая рабочее дерево с интерфейсом. Зафиксировать одинаковые версию клиента, модель, effort, настройки и инструменты. Для каждой из трёх задач запускать новую сессию без resume и без вложения всей документации:
+
+1. «Найди контракт личных точек поездок и перечисли правила приватности. Только чтение, без изменений и запуска приложения».
+2. «Найди команды проверки небольшой правки frontend и объясни их побочные эффекты. Только чтение, команды не выполнять».
+3. «Сопоставь ограничения пешего и автомобильного режимов по текущим контрактам. Только чтение, без запуска runtime».
+
+В подготовленной копии пример будущего запуска (переменные задаются исполнителем; сейчас не выполнялся):
+
+```bash
+codex exec --json --sandbox read-only "$context_task_prompt" > "$context_events_file"
+```
+
+В сохранённом JSONL смотреть `turn.completed.usage`: записать `input_tokens`, `cached_input_tokens`, `output_tokens` и `reasoning_output_tokens`, если поле доступно. Эти события и JSON-режим описаны в [официальной документации](https://learn.chatgpt.com/docs/non-interactive-mode#make-output-machine-readable). Сохранить вместе с числами commit, дословный prompt, модель/effort, число прочитанных документов, время и результат задачи; отсутствие счётчика записать как неизвестность. Cache учитывать отдельно, а не суммировать повторно с input. Полные prompts/tool outputs из журнала не публиковать. Сравнивать три пары успешных результатов, не объяснять экономию только разницей байтов; ошибки и различия cache отмечать отдельно.
