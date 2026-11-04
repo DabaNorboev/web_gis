@@ -2,7 +2,9 @@ import { createApp } from 'vue';
 import HomePage from './pages/HomePage.vue';
 
 const profilePath = window.location.pathname.match(/^\/address\/([^/]+)$/);
-if (window.location.pathname === '/trips') {
+if (window.location.pathname === '/search') {
+    import('./search-ui/SearchPage.vue').then(({ default: page }) => createApp(page).mount('#app'));
+} else if (window.location.pathname === '/trips') {
     import('./pages/TripsPage.vue').then(({ default: page }) => createApp(page).mount('#app'));
 } else if (window.location.pathname === '/compare') {
     import('./pages/ComparePage.vue').then(({ default: page }) => createApp(page).mount('#app'));

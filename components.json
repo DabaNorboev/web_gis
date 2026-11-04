@@ -4,7 +4,7 @@
     "typescript": true,
     "tailwind": {
         "config": "",
-        "css": "resources/css/app.css",
+        "css": "resources/css/search-ui.css",
         "baseColor": "neutral",
         "cssVariables": true,
         "prefix": ""
@@ -13,11 +13,11 @@
     "rtl": false,
     "pointer": false,
     "aliases": {
-        "components": "@/components",
-        "utils": "@/utils/cn",
-        "ui": "@/components/ui",
-        "lib": "@/utils",
-        "composables": "@/composables"
+        "components": "@/search-ui/components",
+        "utils": "@/search-ui/lib/utils",
+        "ui": "@/search-ui/components/ui",
+        "lib": "@/search-ui/lib",
+        "composables": "@/search-ui/composables"
     },
     "menuColor": "default",
     "menuAccent": "subtle",
