@@ -10,6 +10,9 @@ use App\Http\Middleware\LimitPointAddressRequest;
 use App\Http\Middleware\LimitTripRequest;
 use Illuminate\Support\Facades\Route;
 
+Route::post('v1/place-analysis', \App\Http\Controllers\Api\V1\PlaceAnalysisController::class)
+    ->middleware([\App\Http\Middleware\LimitPlaceAnalysisRequest::class, 'throttle:60,1,place-analysis']);
+
 Route::get('v1/transport/analysis', TransportAnalysisController::class);
 
 Route::get('v1/addresses/search', AddressSearchController::class)->middleware('throttle:120,1');

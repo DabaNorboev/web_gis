@@ -10,11 +10,13 @@
             <exclude>tests/Integration/PostgisConnectionTest.php</exclude>
             <exclude>tests/Integration/RoutingGeometryGuardTest.php</exclude>
             <exclude>tests/Integration/RoutingSnapTest.php</exclude>
+            <exclude>tests/Integration/PlaceAnalysisTest.php</exclude>
         </testsuite>
         <testsuite name="PostGISReadOnly">
             <file>tests/Integration/PostgisConnectionTest.php</file>
             <file>tests/Integration/RoutingGeometryGuardTest.php</file>
             <file>tests/Integration/RoutingSnapTest.php</file>
+            <file>tests/Integration/PlaceAnalysisTest.php</file>
         </testsuite>
     </testsuites>
     <source>
@@ -23,6 +25,11 @@
         </include>
     </source>
     <php>
+        <server name="PLACE_ANALYSIS_PARKS_ENABLED" value="false" force="true"/>
+        <env name="PLACE_ANALYSIS_PARKS_ENABLED" value="false" force="true"/>
+        <!-- Local provider activation must not leak into isolated tests. -->
+        <server name="PLACE_ANALYSIS_OFFICIAL_STOPS_ENABLED" value="false" force="true"/>
+        <env name="PLACE_ANALYSIS_OFFICIAL_STOPS_ENABLED" value="false" force="true"/>
         <!-- Laravel also reads inherited $_SERVER values before $_ENV. Pin both. -->
         <server name="APP_ENV" value="testing" force="true"/>
         <server name="DB_CONNECTION" value="pgsql" force="true"/>

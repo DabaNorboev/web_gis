@@ -74,6 +74,47 @@ payload=$(head -c 1100 /dev/zero | tr '\0' x)
 grep -Eq 'HTTP/[0-9.]+ 413( |\r|$)' "$audit_dir/point-large.txt"
 grep -qi 'Cache-Control: no-store' "$audit_dir/point-large.txt"
 printf 'STAGE: point label privacy, no-store and size limit checked\n'
+stage='place analysis body limits and headers'
+# Exact 8 KiB is accepted in memory; the next byte is rejected, including chunked input.
+for length in 8192 8193; do
+ payload=$(head -c "$length" /dev/zero | tr '\0' x)
+ for framing in length chunked; do
+  {
+   printf 'POST /api/v1/place-analysis?private=SYNTHETIC_PRIVATE_CANARY HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nReferer: http://synthetic.invalid/SYNTHETIC_PRIVATE_CANARY\r\nConnection: close\r\n'
+   if [ "$framing" = length ]; then
+    printf 'Content-Length: %s\r\n\r\n%s' "$length" "$payload"
+   else
+    printf 'Transfer-Encoding: chunked\r\n\r\n%x\r\n%s\r\n0\r\n\r\n' "$length" "$payload"
+   fi
+   sleep .2
+  } | nc -w 2 127.0.0.1 28080 > "$audit_dir/place-client.txt"
+  expected=502
+  code=SERVICE_UNAVAILABLE
+  if [ "$length" -gt 8192 ]; then expected=413; code=REQUEST_TOO_LARGE; fi
+  grep -Eq "HTTP/[0-9.]+ $expected( |\r|$)" "$audit_dir/place-client.txt"
+  test "$(grep -ci '^Cache-Control: no-store' "$audit_dir/place-client.txt")" -eq 1
+  test "$(grep -ci '^Referrer-Policy: no-referrer' "$audit_dir/place-client.txt")" -eq 1
+  grep -q "\"code\":\"$code\"" "$audit_dir/place-client.txt"
+  if grep -q 'SYNTHETIC_PRIVATE_CANARY' "$audit_dir/place-client.txt"; then exit 43; fi
+ done
+done
+stage='place analysis upstream timeout'
+# A local TCP listener accepts FastCGI and deliberately never returns headers.
+# Only the disposable config shortens the wait; production keeps its 15s budget.
+sed -i -e 's/fastcgi_read_timeout 15s;/fastcgi_read_timeout 1s;/' \
+ -e 's/fastcgi_pass 127.0.0.1:9;/fastcgi_pass 127.0.0.1:28081;/g' "$audit_dir/server.conf"
+nginx -p "$audit_dir/" -c "$audit_dir/main.conf" -s reload >/dev/null 2>&1
+(sleep 4 | nc -l -p 28081 > "$audit_dir/synthetic-fastcgi.txt") &
+listener=$!
+sleep .3
+{ printf 'POST /api/v1/place-analysis HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}'; sleep 2; } | nc -w 3 127.0.0.1 28080 > "$audit_dir/place-timeout.txt"
+stage='place analysis timeout status'
+grep -Eq 'HTTP/[0-9.]+ 504( |\r|$)' "$audit_dir/place-timeout.txt"
+stage='place analysis timeout safe body'
+grep -q '"code":"SERVICE_UNAVAILABLE"' "$audit_dir/place-timeout.txt"
+grep -qi '^Cache-Control: no-store' "$audit_dir/place-timeout.txt"
+grep -qi '^Referrer-Policy: no-referrer' "$audit_dir/place-timeout.txt"
+wait "$listener"
 stage='Nginx graceful shutdown'
 nginx -p "$audit_dir/" -c "$audit_dir/main.conf" -s quit > /dev/null 2>&1
 for audit_attempt in 1 2 3 4 5; do [ ! -f "$audit_dir/nginx.pid" ] && break; sleep .1; done
@@ -81,12 +122,13 @@ test ! -f "$audit_dir/nginx.pid"
 stage='fixed access route classes'
 grep -q 'GET trips HTTP' "$audit_dir/access.log"
 grep -q 'POST trip_analysis HTTP' "$audit_dir/access.log"
+grep -q 'POST place_analysis HTTP' "$audit_dir/access.log"
 grep -q 'POST point_address HTTP' "$audit_dir/access.log"
 stage='server log privacy'
 if grep -Eq 'SYNTHETIC_PRIVATE_CANARY|synthetic.invalid|[?&]|"lon"|"places"' "$audit_dir/access.log" "$audit_dir/global.log" "$audit_dir/startup.txt" "$audit_dir/config-check.txt"; then exit 41; else test "$?" -eq 1; fi
 stage='fixed access route classes'
 # Every access record must use a fixed route class, not just the checked rows.
-if grep -Ev '^[0-9.]+ \[[^]]+\] "(GET|POST) (other|trips|trip_analysis|point_address|health) HTTP/[0-9.]+" [0-9]{3} [0-9]+$' "$audit_dir/access.log" > /dev/null; then exit 42; else test "$?" -eq 1; fi
+if grep -Ev '^[0-9.]+ \[[^]]+\] "(GET|POST) (other|trips|trip_analysis|point_address|place_analysis|health) HTTP/[0-9.]+" [0-9]{3} [0-9]+$' "$audit_dir/access.log" > /dev/null; then exit 42; else test "$?" -eq 1; fi
 stage='request body spool'
 test -z "$(ls -A "$audit_dir/body")"
 printf 'PASS: safe access format, no-referrer, 502, 413, no request spool; isolated PID exited\n'
