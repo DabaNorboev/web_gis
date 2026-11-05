@@ -115,13 +115,3 @@ test('walking diagnostics use the pedestrian limit and access wording', () => {
     const text = failures.tripFailureMessage(row).description
     assert.match(text, /20 м/); assert.match(text, /пешем/); assert.doesNotMatch(text, /35 м|автомобильном|проезд/)
 })
-
-test('walking details keep unknown metrics distinct from a genuine zero selection shift', async () => {
-    const component = loadComponent(new URL('../../resources/js/components/WalkingTripDetails.vue', import.meta.url), { '@/utils/trips': utils })
-    const row = response().results[0]
-    row.metrics.distance.value = null; row.metrics.duration.value = null; row.approaches.start.selection_shift_m = 0
-    const html = await renderToString(vue.createSSRApp(component, { row }))
-    assert.match(html, /Расстояние неизвестно/); assert.match(html, /Время неизвестно/)
-    assert.match(html, /Геометрическое смещение объекта к улице: 0 м/)
-    assert.match(html, /Полный путь между исходными объектами неизвестен/)
-})

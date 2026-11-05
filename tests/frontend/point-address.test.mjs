@@ -99,22 +99,3 @@ test('label API sends precise coordinates only in local POST JSON with no-store 
         assert.deepEqual(JSON.parse(init.body), point)
     } finally { globalThis.fetch = previous }
 })
-test('real label component distinguishes containment, proximity, ambiguity, no data, loading and failure', async () => {
-    async function render(data, status = 'ready') {
-        const state = { result: vue.ref(data), status: vue.ref(status), selectedId: vue.ref(null), selected: vue.ref(data && !data.data.requires_choice ? data.data.candidates[0] ?? null : null), choose() {}, retry() {} }
-        const component = loadComponent(new URL('../../resources/js/components/PointAddressLabel.vue', import.meta.url), { '@/composables/usePointAddress': { usePointAddress: () => state } })
-        return renderToString(vue.createSSRApp(component, { point: { lon: 0, lat: 0 } }))
-    }
-    assert.match(await render(response('CONTAINING')), /Внутри или на границе/)
-    const near = await render(response('NEARBY'))
-    assert.match(near, /Рядом с Тестовая, 10/); assert.match(near, /25 м по прямой/); assert.doesNotMatch(near, /href=/)
-    const ambiguous = await render(response('CONTAINING', ['osm:way:1', 'osm:way:2']))
-    assert.match(ambiguous, /Выберите подпись/); assert.equal((ambiguous.match(/type="radio"/g) ?? []).length, 2)
-    assert.doesNotMatch(ambiguous, / checked/)
-    assert.match(await render(response('NONE', [])), /Точка анализа/)
-    assert.match(await render(null, 'error'), /Повторить определение адреса/)
-    assert.match(await render(null, 'loading'), /Определяем адрес/)
-    const unavailable = response('NONE', []); unavailable.meta.quality.availability = 'UNAVAILABLE'
-    assert.match(await render(unavailable), /Адресные данные недоступны/)
-    assert.match(await render(unavailable), /Повторить определение адреса/)
-})

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import * as vue from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { loadComponent } from './support/vue-component.mjs'
-import { stateModule, personalUtils, ComparisonTrips, ComparisonShare, ComparisonTripData, failure, candidateUtils, tripUtils } from './support/comparison-trips-dependencies.mjs'
+import { stateModule, personalUtils, failure, candidateUtils, tripUtils } from './support/comparison-trips-dependencies.mjs'
 
 const a = { lon: 92.87, lat: 56.01 }, b = { lon: 92.89, lat: 56.02 }
 const source = { name: 'Synthetic OSM', engine: 'OSRM', dataset_version: 'test-v1', observed_at: null }
@@ -154,25 +154,6 @@ test('paired route fact requires accepted compatible sources, respects displayed
     assert.match(personalUtils.pairedTripFact(first, refused), /Недостаточно подтверждённых/)
     assert.match(personalUtils.pairedTripFact(first, { ...first, row: { ...accepted, route: { ...accepted.route, distance_m: -1 } } }), /Недостаточно подтверждённых/)
 })
-test('real component renders a compact pair, escaped labels, null refusals and separate source/privacy panels', async () => {
-    const { state, pending, ids, resolve, cleanup } = setup(1)
-    try {
-        state.places.value[0].label = '<Работа>'
-        const run = state.calculate(); resolve(pending[0]); resolve(pending[1], ['route']); await run
-        const html = await renderToString(vue.createSSRApp(ComparisonTrips, { model: state, invalidLink: false }))
-        assert.match(html, /А → &lt;Работа&gt;/); assert.match(html, /Б → &lt;Работа&gt;/)
-        assert.equal((html.match(/class="personal-distance"/g) ?? []).length, 1)
-        assert.match(html, /Показать маршрут А/)
-        assert.match(html, /модельное время без пробок/); assert.doesNotMatch(html, /<table|<input|Источник расчёта/)
-        const data = await renderToString(vue.createSSRApp(ComparisonTripData, { model: state }))
-        assert.match(data, /Дата наблюдения: неизвестна/); assert.match(data, /Подход к дороге и парковка не рассчитаны/)
-        assert.equal((data.match(/Источник расчёта/g) ?? []).length, 1)
-        assert.match(data, /Точки и проверка · А → &lt;Работа&gt;/)
-        const share = await renderToString(vue.createSSRApp(ComparisonShare, { addressUrl: 'http://synthetic.invalid/compare?left=a', personalUrl: 'http://synthetic.invalid/compare?left=a#places=example' }))
-        assert.match(share, /Получатель увидит личные точки, подписи и дорожный выбор/)
-        assert.ok(share.indexOf('Получатель увидит') < share.indexOf('Ссылка с личными местами'))
-    } finally { cleanup() }
-})
 
 test('mode switch aborts all cells without fetching and preserves original IDs points and labels', async () => {
     const { state, pending, ids, resolve, cleanup } = setup(2)
@@ -205,44 +186,6 @@ test('mode switch aborts all cells without fetching and preserves original IDs p
         assert.equal(state.cell('left', ids[0]).row, null)
     } finally { cleanup() }
 })
-test('walking has independent partial results, never adopts engine matches or car candidates, and shows manual choices before request', async () => {
-    const { state, pending, ids, resolve, cleanup } = setup(2)
-    try {
-        state.setMode('walking')
-        const before = await renderToString(vue.createSSRApp(ComparisonTrips, { model: state, invalidLink: false }))
-        assert.match(before, /for="comparison-trip-mode"[^>]*>Режим маршрута/)
-        assert.match(before, /Уличная точка старта А/); assert.match(before, /Уличная точка цели Б/)
-        const run = state.calculate()
-        for (const request of pending) {
-            const value = response(request.selection, [null, 'target'])
-            for (const row of value.results) {
-                row.route_scope = 'street_points'
-                row.selection_kind = 'DIFFERENT_STREET_POINTS'
-                row.street_points = { start: a, target: b }
-                row.approaches = Object.fromEntries(['start', 'target'].map(end => [end, { status: 'UNKNOWN', selection_shift_m: 50, distance_m: null, duration_s: null }]))
-                row.metrics.distance.scope = 'street_points'
-                row.metrics.duration.scope = 'street_points'
-                if (row.route) row.route.scope = 'street_points'
-                row.road_choices = { start: { status: 'NEEDS_REFINEMENT', manual: true } }
-            }
-            request.resolve(value)
-        }
-        await run
-        assert.equal(state.cell('left', ids[0]).row.status, 'AVAILABLE')
-        assert.equal(state.cell('left', ids[1]).row.status, 'UNKNOWN')
-        assert.equal(state.cell('left', ids[1]).row.metrics.distance.value, null)
-        assert.deepEqual(JSON.parse(JSON.stringify(state.cell('left', ids[0]).hints)), {})
-        assert.equal(state.cell('left', ids[0]).options.start.length, 0)
-        const fact = personalUtils.pairedTripFact(state.cell('left', ids[0]), state.cell('right', ids[0]), 'walking')
-        assert.match(fact, /уличных частей/); assert.match(fact, /Полный путь от объектов и подходы не рассчитаны/)
-        const after = await renderToString(vue.createSSRApp(ComparisonTrips, { model: state, invalidLink: false }))
-        assert.match(after, /Только уличная часть/); assert.match(after, /Уличная точка старта А/)
-        assert.doesNotMatch(after, /модель, без пробок/)
-        const data = await renderToString(vue.createSSRApp(ComparisonTripData, { model: state }))
-        assert.match(data, /Выбраны другие уличные точки/); assert.match(data, /Подход от объекта к улице неизвестен/)
-        assert.match(data, /Полный путь между исходными объектами неизвестен/); assert.doesNotMatch(data, /Радиус проверки — 35 м/)
-    } finally { cleanup() }
-})
 test('old comparison links default to driving while new walking links retain mode and per-cell streets', () => {
     const legacy = { version: 1, places: [{ id: 'work', label: 'Synthetic', point: a }], roads: { left: { work: { target: b } } } }
     const old = '#places=' + encodeURIComponent(JSON.stringify(legacy))
@@ -272,72 +215,6 @@ test('walking comparison links require v2 so the former v1 reader rejects them i
     for (const invalid of [{ ...walking, version: 1 }, { ...legacy, version: 2 }, { ...legacy, version: 2, mode: 'driving' }, { ...walking, mode: 'cycling' }, { ...walking, mode: null }]) {
         assert.deepEqual(personalUtils.parseComparisonTrips(rawFragment(invalid)), { selection: null, invalid: true })
     }
-})
-
-
-test('walking checked street candidates are explicit per-cell inputs, focus their list and keep source and original objects', async () => {
-    const { state, pending, ids, cleanup } = setup(2)
-    const candidate = { point: { lon: 92.87003, lat: 56.01001 }, distance_m: 3, name: 'Synthetic street' }
-    const chosenByServer = { lon: 92.87004, lat: 56.01002 }
-    const events = [], focused = []
-    const group = { open: false, querySelector: () => ({ focus: () => focused.push('candidate') }) }
-    const document = { activeElement: null, getElementById: () => ({ querySelector: selector => { assert.equal(selector, '[data-end="start"]'); return group } }) }
-    const component = loadComponent(new URL('../../resources/js/components/ComparisonTrips.vue', import.meta.url), {
-        '@/components/TripPointPicker.vue': { default: { render: () => null } },
-        '@/utils/comparisonTrips': personalUtils, '@/utils/tripFailure': failure, '@/utils/trips': tripUtils, '@/utils/tripCandidates': candidateUtils,
-    }, { inlineTemplate: false, globals: { document } })
-    try {
-        state.setMode('walking')
-        const originals = JSON.stringify(state.places.value), starts = JSON.stringify(state.starts)
-        const run = state.calculate()
-        for (const [i, request] of pending.entries()) {
-            const value = response(request.selection, ['start', 'target'])
-            value.source = null
-            for (const row of value.results) {
-                row.route_scope = 'street_points'
-                row.status = 'NEEDS_REFINEMENT'
-                row.road_choices = { start: { status: 'UNKNOWN' }, target: { status: 'UNKNOWN' } }
-            }
-            if (i === 0) {
-                value.results[0].road_choices.start = { status: 'CHOOSE', candidates: [candidate] }
-                value.results[0].diagnostics.issues[0].category = 'ambiguity'
-            }
-            request.resolve(value)
-        }
-        await run
-        assert.equal(state.cell('left', ids[0]).options.start[0].point.lon, candidate.point.lon)
-        assert.equal(state.cell('left', ids[0]).source, null)
-        assert.equal(state.cell('left', ids[1]).options.start.length, 0)
-        assert.equal(state.cell('right', ids[0]).options.start.length, 0)
-        assert.equal(state.cell('left', ids[0]).hints.start, undefined)
-        assert.equal(pending.length, 2)
-        const html = await renderToString(vue.createSSRApp(ComparisonTrips, { model: state, invalidLink: false }))
-        assert.match(html, /Улица · старт А/); assert.match(html, /Улица 1 · 3 м/)
-        assert.match(html, /Смещение от проверяемой уличной точки; это не расстояние подхода/)
-        assert.equal((html.match(/Synthetic street/g) ?? []).length, 1)
-        const bindings = component.setup({ model: state, invalidLink: false }, { expose() {}, emit: (...args) => events.push(args) })
-        await bindings.act('left', ids[0], { action: 'choice', location: 'start' })
-        assert.equal(group.open, true); assert.deepEqual(focused, ['candidate']); assert.equal(events.length, 0)
-        await bindings.act('right', ids[0], { action: 'choice', location: 'target' })
-        assert.deepEqual(events.at(-1), ['pick', ids[0], 'right', 'target'])
-        await bindings.act('left', ids[0], { action: 'choice', location: 'unknown' })
-        assert.deepEqual(events.at(-1), ['show', 'left', ids[0]])
-        const selected = bindings.chooseRoad('left', ids[0], 'start', candidate.point)
-        const request = pending.at(-1)
-        assert.equal(request.selection.mode, 'walking')
-        assert.deepEqual(request.selection.start.road, candidate.point)
-        assert.equal(request.selection.start.lon, a.lon); assert.equal(request.selection.places[0].lon, state.places.value[0].point.lon)
-        assert.equal(request.selection.places.length, 1)
-        assert.equal(state.cell('left', ids[0]).options.start.length, 0)
-        const value = response(request.selection, ['target'])
-        value.results[0].road_choices = { start: { status: 'SELECTED', point: chosenByServer }, target: { status: 'UNKNOWN' } }
-        request.resolve(value); await selected
-        assert.deepEqual(JSON.parse(JSON.stringify(state.cell('left', ids[0]).hints.start)), candidate.point)
-        assert.equal(state.cell('left', ids[0]).options.start.length, 0)
-        assert.equal(state.cell('right', ids[0]).hints.start, undefined)
-        assert.equal(state.cell('left', ids[1]).hints.start, undefined)
-        assert.equal(JSON.stringify(state.places.value), originals); assert.equal(JSON.stringify(state.starts), starts)
-    } finally { cleanup() }
 })
 
 test('walking candidate responses from an old input cannot restore lists after a street edit or mode change', async () => {

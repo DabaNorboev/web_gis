@@ -10,7 +10,7 @@ class ComparePageTest extends TestCase
     {
         $this->withoutVite();
         foreach (['/compare', '/compare?left=osm%3Away%3A1', '/compare?left=osm%3Away%3A1&right=osm%3Anode%3A2&radius_m=300', '/compare?left=unknown'] as $url) {
-            $this->get($url)->assertOk()->assertViewIs('welcome');
+            $this->get($url)->assertRedirect('/');
         }
         $this->assertGuest();
     }

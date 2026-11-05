@@ -195,8 +195,8 @@ class TripAnalysisTest extends TestCase
     public function test_trip_page_and_direct_link_are_public(): void
     {
         $this->withoutVite();
-        $this->get('/trips')->assertOk()->assertViewIs('welcome');
-        $this->get('/trips?trip=invalid')->assertOk()->assertViewIs('welcome');
+        $this->get('/trips')->assertRedirect('/');
+        $this->get('/trips?trip=invalid')->assertRedirect('/');
     }
 
     public function test_unconfirmed_territory_is_rejected_before_network_even_inside_graph_bbox(): void

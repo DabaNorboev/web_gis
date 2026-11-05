@@ -18,22 +18,3 @@ export const mapDependencies = {
     MapThemeControl: { render: () => vue.h('div') },
     AddressMapLabels: { render: () => vue.h('div') },
 }
-
-// Explicit import boundary shared only by the CityMap component tests.
-export function cityMapDependencies(deps) {
-    return {
-        'maplibre-gl': { Map: deps.Map, NavigationControl: deps.NavigationControl, ScaleControl: deps.ScaleControl, setWorkerUrl: deps.setWorkerUrl },
-        'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url': deps.workerUrl,
-        'maplibre-gl/dist/maplibre-gl.css': {}, // Styles have no Node runtime.
-        '@/maps/basemap.json': deps.basemap,
-        './MapThemeControl.vue': deps.MapThemeControl,
-        './AddressMapLabels.vue': deps.AddressMapLabels,
-        '@/composables/useMapTheme': { useMapTheme: deps.useMapTheme },
-        '@/utils/mapTheme': themeUtils,
-        '@/utils/mapLabels': labelUtils,
-        '@/utils/mapLayerPresentation': presentation,
-        '@/utils/addressMap': { addressFeatures: deps.addressFeatures, addressBounds: deps.addressBounds },
-        '@/utils/tripOverlay': overlay,
-        '@/utils/mapSidebarScroll': sidebar,
-    }
-}

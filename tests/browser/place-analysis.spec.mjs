@@ -1,51 +1,31 @@
 import { test, expect } from '@playwright/test'
+import { responseFor } from '../frontend/fixtures/place-analysis.mjs'
+import { pointReference } from '../frontend/fixtures/point-address-reference.mjs'
 
-test('A6 first page keeps one shell and exposes the four states', async ({ page }, testInfo) => {
-    const calls = [], errors = []
-    page.on('pageerror', error => errors.push(error.message))
-    await page.route('**/api/**', route => {
-        calls.push(route.request().url())
-        return route.abort()
+test('root is the only screen; retired URLs redirect, demo is gone and stored records are untouched', async ({ page }) => {
+    await page.addInitScript(() => {
+        if (!sessionStorage.getItem('single-ui-test-seeded')) {
+            localStorage.setItem('synthetic-existing-record', 'SYNTHETIC_PRESERVE');
+            sessionStorage.setItem('single-ui-test-seeded', 'yes');
+        }
     })
-
-    await page.goto('/analysis')
-    await expect(page.getByRole('heading', { name: 'Обзор', exact: true })).toBeVisible()
-    await expect(page.locator('.pa-demo-badge')).toHaveText('Макет • условные данные')
-    await expect(page.locator('.pa-map')).toBeVisible()
-    await expect(page.locator('.pa-layers')).toBeVisible()
-    await expect(page.getByRole('tab', { name: 'Обзор', exact: true })).toHaveAttribute('aria-selected', 'true')
-    await expect(page.getByText('R = 500 м')).toBeVisible()
-    await expect(page.locator('.pa-map-marker')).toHaveCount(19)
-
-    await page.getByRole('tab', { name: 'Объекты', exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'Объекты в радиусе 500 м', exact: true })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Аптеки (3)', exact: true })).toBeVisible()
-    await expect(page.locator('.pa-map-marker')).toHaveCount(3)
-    await page.getByRole('button', { name: /Аптека «Пример»/ }).click()
-    await expect(page.getByText('Часы работы: не указаны')).toBeVisible()
-
-    await page.getByRole('tab', { name: 'Спутник', exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'Спутниковый анализ (NDVI)', exact: true })).toBeVisible()
-    await expect(page.getByText('Пригодные данные: 72% круга')).toBeVisible()
-    await expect(page.getByText('Штриховка показывает пропуски внутри анализируемого круга').or(page.getByText('Нет данных'))).toBeVisible()
-
-    await page.getByRole('tab', { name: 'Воздух', exact: true }).click()
-    await expect(page.getByText('Не удалось загрузить наблюдения')).toBeVisible()
-    await page.getByRole('button', { name: /Повторить/ }).click()
-    await expect(page.getByRole('heading', { name: 'Станция «Центр»', exact: true })).toBeVisible({ timeout: 5_000 })
-
-    await page.locator('.pa-radius__number').fill('1000')
-    await page.locator('.pa-radius__number').press('Tab')
-    await expect(page.getByText('R = 1000 м')).toBeVisible()
-
-    const canvas = page.locator('.pa-map .maplibregl-canvas')
-    await expect(canvas).toBeVisible()
-    await canvas.click({ position: { x: 420, y: 260 } })
-    await expect(page.getByRole('dialog', { name: 'Выбранная точка' })).toBeVisible()
+    await page.route('**/api/v1/addresses/resolve-point', route => route.fulfill({ json: pointReference() }))
+    await page.route('**/api/v1/place-analysis', route => route.fulfill({ json: responseFor(route.request().postDataJSON(), { poi: 'READY' }) }))
+    for (const url of ['/', '/analysis?demo=1', '/compare?left=osm:node:1', '/search', '/address/osm:node:1', '/trips?trip=SYNTHETIC_OLD#trip=SYNTHETIC_FRAGMENT', '/?demo=1']) {
+        await page.goto(url)
+        await expect(page.getByRole('heading', { name: 'Анализ выбранного места', exact: true })).toBeVisible()
+        expect(new URL(page.url()).pathname).toBe('/')
+        await expect(page.locator('.pa-map-marker, .pa-map-station, .pa-map-pin')).toHaveCount(0)
+        await expect(page.getByRole('link', { name: /демо/i })).toHaveCount(0)
+        await expect(page.getByText('ДЕМО', { exact: false })).toHaveCount(0)
+        expect(await page.evaluate(() => localStorage.getItem('synthetic-existing-record'))).toBe('SYNTHETIC_PRESERVE')
+    }
+    await expect.poll(() => page.evaluate(() => !!window.__smokeMapIn('.pa-map')?.isStyleLoaded())).toBe(true)
+    await page.getByRole('button', { name: 'Точка на карте', exact: true }).focus()
+    await page.keyboard.press('Enter'); await page.keyboard.press('Enter')
     await page.getByRole('button', { name: 'Анализировать', exact: true }).click()
-    await expect(page.locator('.pa-search__input')).toHaveValue('Точка на карте')
-
-    expect(calls).toEqual([])
-    expect(errors).toEqual([])
-    await testInfo.attach('place-analysis', { body: await page.screenshot({ fullPage: true }), contentType: 'image/png' })
+    await expect(page.locator('[data-analysis-block="poi"] [role="status"]')).toHaveText('Готово')
+    await page.getByRole('button', { name: 'Открыть объекты', exact: true }).click()
+    await page.getByRole('button', { name: 'Все', exact: true }).click()
+    await expect(page.locator('.pa-objects > li')).toHaveCount(1)
 })

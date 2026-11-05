@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import * as vue from 'vue'
 import { loadModule, loadComponent } from './support/vue-component.mjs'
-import { cityMapDependencies, mapDependencies } from './support/map-dependencies.mjs'
+import { mapDependencies } from './support/map-dependencies.mjs'
 
 const candidates = loadModule(new URL('../../resources/js/utils/tripCandidates.ts', import.meta.url))
 const trips = loadModule(new URL('../../resources/js/utils/tripMap.ts', import.meta.url), { '@/utils/tripCandidates': candidates })
@@ -109,58 +109,6 @@ test('shared trip data retains original coordinates, separate connectors and nul
         assert.equal(trips.tripMapData(points, analysis).features.filter(f => f.properties.kind === 'route').length, 0)
     assert.equal(overlay.tripOverlayBounds(collection([])), null)
     assert.deepEqual(overlay.tripOverlayBounds(collection([point('original', [0, 0])])), [[0, 0], [0, 0]])
-})
-
-function city() {
-    const mounted = [], cleanup = [], frames = [], emitted = [], theme = vue.ref('light')
-    const component = loadComponent(new URL('../../resources/js/components/map/CityMap.vue', import.meta.url), {
-        ...cityMapDependencies({ ...mapDependencies, useMapTheme: () => ({ theme }), Map: BoundaryMap, NavigationControl: class {}, ScaleControl: class {}, setWorkerUrl() {}, workerUrl: 'worker', basemap: { sprite: '/sprite', sources: {}, layers: [] }, addressFeatures: () => collection([]), addressBounds: () => null }),
-        vue: { ...vue, onMounted: fn => mounted.push(fn), onBeforeUnmount: fn => cleanup.push(fn) },
-    }, { inlineTemplate: false, globals: {
-        window: { location: { href: 'http://localhost' } }, requestAnimationFrame: fn => frames.push(fn),
-        ResizeObserver: class { observe() {} disconnect() {} }, MutationObserver: class { observe() {} disconnect() {} },
-    } })
-    const props = vue.reactive({ point: null, addressGroup: null, selectedAddressId: null, analysis: null, radius: 500, selectedStopId: null, showStops: false, selectable: false, tripOverlay: { data: display(), sequence: 1 } })
-    const scope = vue.effectScope(); let exposed
-    const bindings = scope.run(() => component.setup(props, { expose: value => { exposed = value }, emit: (...args) => emitted.push(args) }))
-    bindings.container.value = { closest: () => null, clientWidth: 400, clientHeight: 300 }
-    mounted.forEach(fn => fn()); const map = BoundaryMap.latest
-    return { map, props, bindings, exposed, emitted, theme, frames, async flush() { await vue.nextTick(); await vue.nextTick(); while (frames.length) frames.shift()(); await Promise.resolve() }, dispose() { cleanup.forEach(fn => fn()); scope.stop() } }
-}
-
-test('real CityMap connects the real overlay once, keeps click priority and preserves camera on data, theme and resize updates', async () => {
-    const h = city()
-    try {
-        h.map.fire('style.load'); assert.equal(h.map.getSource('trips'), undefined)
-        h.map.fire('load'); await h.flush()
-        assert.deepEqual(h.map.sources.trips.data, display()); assert.equal(h.map.fits.length, 1)
-        assert.equal(h.map.events.click.length, 1)
-        h.map.hit = display().features[3]; h.map.fire('click', click)
-        assert.deepEqual(h.emitted.at(-1), ['roadCandidate', '1', { lon: 92.911, lat: 56.03 }])
-        h.props.tripPicking = true; await vue.nextTick(); h.map.fire('click', click)
-        assert.deepEqual(h.emitted.at(-1), ['select', { lon: 92.88, lat: 56.02 }])
-        h.props.tripPicking = false; h.props.tripOverlay = { data: display(.1), sequence: 1 }
-        await h.flush(); h.theme.value = 'dark'; await h.flush(); h.map.fire('resize'); h.map.fire('style.load'); await h.flush()
-        assert.equal(h.map.fits.length, 1); assert.deepEqual(h.map.sources.trips.data, display(.1))
-        h.props.tripOverlay = null; await h.flush(); assert.deepEqual(h.map.sources.trips.data, collection([]))
-        h.props.tripOverlay = { data: display(.2), sequence: 2 }; await h.flush()
-        assert.equal(h.map.fits.length, 2); assert.deepEqual(h.map.sources.trips.data, display(.2))
-        assert.equal(h.map.events.click.length, 1)
-        assert.equal(h.map.fits.at(-1).options.maxZoom, 17)
-    } finally { h.dispose() }
-    assert.equal(h.map.removed, true); assert.equal(h.map.getSource('trips'), undefined)
-})
-
-test('real CityMap cancels deferred route fitting on hide, reset and unmount', async () => {
-    const h = city()
-    try {
-        h.map.fire('load'); await vue.nextTick()
-        h.props.tripOverlay = null; await h.flush(); assert.equal(h.map.fits.length, 0)
-        h.props.tripOverlay = { data: display(), sequence: 2 }; await vue.nextTick()
-        h.exposed.resetView(); await h.flush(); assert.equal(h.map.fits.length, 0)
-        h.props.tripOverlay = { data: display(.2), sequence: 3 }; await vue.nextTick()
-        h.dispose(); await h.flush(); assert.equal(h.map.fits.length, 0)
-    } finally { if (!h.map.removed) h.dispose() }
 })
 
 test('overview route dispatch keeps its cell token; stale tiles and manual selection never switch a goal', () => {

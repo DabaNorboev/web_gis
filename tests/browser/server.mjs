@@ -58,7 +58,8 @@ try {
         const pathname = new URL(req.url, 'http://127.0.0.1').pathname
         if (pathname === '/favicon.ico') { res.writeHead(204); res.end(); return }
         if (pathname === '/smoke-background.json') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"type":"FeatureCollection","features":[]}'); return }
-        if (pathname === '/' || pathname === '/analysis' || pathname === '/search' || pathname === '/compare' || pathname === '/trips' || pathname.startsWith('/address/')) { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(html); return }
+        if (['/analysis', '/search', '/compare', '/trips'].includes(pathname) || pathname.startsWith('/address/')) { res.writeHead(302, { Location: '/', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); res.end(); return }
+        if (pathname === '/') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(html); return }
         if (/^\/smoke-sprite(@2x)?\.(json|png)$/.test(pathname)) {
             const png = pathname.endsWith('.png')
             res.writeHead(200, { 'Content-Type': png ? 'image/png' : 'application/json' })

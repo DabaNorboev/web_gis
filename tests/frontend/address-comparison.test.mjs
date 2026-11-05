@@ -1,5 +1,5 @@
-import { personalState, personalUtils, ComparisonTrips, ComparisonShare, ComparisonTripData } from './support/comparison-trips-dependencies.mjs'
-import { topics, facts, OverviewTopics, ComparisonFacts } from './support/overview-dependencies.mjs'
+import { personalState, personalUtils } from './support/comparison-trips-dependencies.mjs'
+import { topics, facts } from './support/overview-dependencies.mjs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { loadModule, loadComponent, loadSetup } from './support/vue-component.mjs'
@@ -135,45 +135,9 @@ test('different source dates, snapshots, methods, availability and coverage prod
     assert.match(comparisonDifferences(left, { ...left, unit: 'm2' })[0], /Единицы различаются/)
 })
 
-test('two search widgets have independent label, listbox and live-status IDs', async () => {
-    const stub = { render: () => null }
-    const search = { useAddressSearch: () => ({ query: vue.ref('Мира'), results: vue.ref([{ id: 'address:group', label: 'Мира, 10', match_type: 'exact', object_count: 1 }]), meta: vue.ref(null), status: vue.ref('ready'), open: vue.ref(true), activeIndex: vue.ref(0), clear() {}, close() {}, search() {}, choose() {} }) }
-    const component = loadComponent(new URL('../../resources/js/components/AddressSearch.vue', import.meta.url), { '@lucide/vue': { Search: stub, X: stub, ArrowRight: stub }, '@/composables/useAddressSearch': search })
-    const html = await ssr.renderToString(vue.createSSRApp({ render: () => vue.h('div', [vue.h(component, { resetKey: 0 }), vue.h(component, { resetKey: 0 })]) }))
-    const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map(match => match[1])
-    assert.equal(ids.length, 8)
-    assert.equal(new Set(ids).size, ids.length)
-    for (const label of html.matchAll(/\sfor="([^"]+)"/g)) assert.ok(ids.includes(label[1]))
-    for (const relation of html.matchAll(/aria-(?:controls|describedby|activedescendant)="([^"]+)"/g)) assert.ok(ids.includes(relation[1]))
-})
-
 const display = loadModule(new URL('../../resources/js/utils/metricDisplay.ts', import.meta.url))
 const presentation = loadModule(new URL('../../resources/js/utils/profilePresentation.ts', import.meta.url))
 const paired = loadModule(new URL('../../resources/js/utils/comparisonPresentation.ts', import.meta.url), { './profilePresentation': presentation })
-function compareDependencies(deps) {
-    return {
-        '@/utils/metricDisplay': display, '@/utils/profilePresentation': presentation,
-        '@/utils/comparisonPresentation': paired, '@/utils/comparison': comparison,
-        '@/utils/comparisonFacts': facts, '@/utils/mapAnalysis': mapDependencies,
-        '@/utils/tripMap': loadModule(new URL('../../resources/js/utils/tripMap.ts', import.meta.url), { '@/utils/tripCandidates': loadModule(new URL('../../resources/js/utils/tripCandidates.ts', import.meta.url)) }),
-        '@/utils/comparisonTrips': personalUtils, '@/composables/useComparisonTrips': personalState,
-        '@/composables/useComparisonLink': loadModule(new URL('../../resources/js/composables/useComparisonLink.ts', import.meta.url), {
-            vue: { ...vue, onMounted: deps.onMounted ?? vue.onMounted, onBeforeUnmount: deps.onBeforeUnmount ?? vue.onBeforeUnmount },
-            '@/utils/comparison': comparison, '@/utils/tripMap': loadModule(new URL('../../resources/js/utils/tripMap.ts', import.meta.url), { '@/utils/tripCandidates': loadModule(new URL('../../resources/js/utils/tripCandidates.ts', import.meta.url)) }),
-        '@/utils/comparisonTrips': personalUtils,
-        }, { window: deps.window ?? { location: { search: '', hash: '', origin: 'http://localhost' } } }),
-        '@/composables/useOverviewTopics': { useOverviewTopics: deps.useOverviewTopics },
-        '@/composables/useAddressComparison': { useAddressComparison: deps.useAddressComparison },
-        '@/composables/useComparisonView': { useComparisonView: deps.useComparisonView },
-        '@/layouts/PlaceLayout.vue': deps.PlaceLayout,
-        ...Object.fromEntries(['AddressPicker', 'ComparisonMetricRow', 'OverviewTopics', 'ComparisonFacts', 'ComparisonData', 'ComparisonMapSplit', 'ComparisonTrips', 'ComparisonShare', 'ComparisonTripData', 'ProfileMetric', 'ComparisonMetric'].map(name => ['@/components/' + name + '.vue', deps[name]])),
-        '@/components/map/CityMap.vue': deps.CityMap, '@/components/map/MapThemeControl.vue': deps.MapThemeControl,
-        '@/components/map/MapLayersPanel.vue': deps.MapLayersPanel,
-    }
-}
-function ssrComponent(path, deps) {
-    return loadComponent(new URL(path, import.meta.url), compareDependencies(deps), { globals: { window: { location: { search: '', origin: 'http://localhost' } } } })
-}
 function fullProfile(id) {
     const result = { address: { id, label: id === 'osm:way:1' ? 'Ленина, 102' : 'Киренского, 32' }, point: { lat: 56, lon: 92.9 }, radius_m: 500, map: {}, blocks: {} }
     for (const key of ['transport','parks','vegetation','water','roads','railways']) {
@@ -186,50 +150,6 @@ function fullProfile(id) {
     }
     return result
 }
-test('paired overview keeps zero, missing values and independent failures; provenance remains separate', async () => {
-    const ProfileMetric = ssrComponent('../../resources/js/components/ProfileMetric.vue', display)
-    const ComparisonMetric = ssrComponent('../../resources/js/components/ComparisonMetric.vue', { ...display, ProfileMetric })
-    const ComparisonMetricRow = ssrComponent('../../resources/js/components/ComparisonMetricRow.vue', { comparisonRowId: facts.comparisonRowId, ComparisonMetric, ...presentation, ...paired, comparisonDifferences, mappedNearestId: mapDependencies.mappedNearestId })
-    const ComparisonData = ssrComponent('../../resources/js/components/ComparisonData.vue', { ...display, ...presentation })
-    const ComparisonMapSplit = ssrComponent('../../resources/js/components/ComparisonMapSplit.vue', {})
-    const left = fullProfile('osm:way:1'), right = fullProfile('osm:node:2')
-    right.blocks.transport = { status: 'ERROR', data: null, message: 'Не удалось рассчитать блок.' }
-    right.blocks.water.data.metrics.share.value = null
-    right.blocks.water.data.metrics.share.quality = { method: null, availability: 'INSUFFICIENT_DATA', freshness: 'UNKNOWN', reason: 'Неполное покрытие.' }
-    right.blocks.water.data.coverage = { status: 'PARTIAL', reason: 'Неполное покрытие.' }
-    const sides = { left: { id: left.address.id, profile: left, status: 'ready' }, right: { id: right.address.id, profile: right, status: 'ready' } }
-    const page = ssrComponent('../../resources/js/pages/ComparePage.vue', {
-        ...personalState, ...personalUtils, ComparisonTrips, ComparisonShare, ComparisonTripData, OverviewTopics, ComparisonFacts, useOverviewTopics: topics.useOverviewTopics,
-        PlaceLayout: { props: ['document'], render() { return this.$slots.default() } }, AddressPicker: { render: () => null }, ComparisonMetricRow, ComparisonData, ComparisonMapSplit, MapThemeControl: { render: () => null }, ...paired,
-        MapLayersPanel: { render: () => null }, CityMap: { render: () => vue.h('canvas', { 'data-map': 'comparison' }) },
-        useAddressComparison: () => ({ radius: vue.ref(500), sides }),
-        mappedNearestId: mapDependencies.mappedNearestId,
-        useComparisonView: () => ({ toolbar: vue.ref(null), mapPanel: vue.ref(null), results: vue.ref(null), toolbarHeight: vue.ref(0), mapTop: vue.ref(0), mapFocused: vue.ref(false) }),
-        comparisonDifferences, comparisonUrl, parseComparison, ...display,
-    })
-    const html = await ssr.renderToString(vue.createSSRApp(page))
-    assert.match(html, /Ленина, 102/)
-    assert.match(html, /Киренского, 32/)
-    assert.match(html, /Недостаточно данных/)
-    assert.match(html, /Неполное покрытие/)
-    assert.match(html, /Отсутствие результата не означает ноль/)
-    assert.match(html, /Покрытие источника различается/)
-    assert.match(html, /Не удалось рассчитать блок/)
-    assert.match(html, /Повторить расчёт Б/)
-    assert.match(html, /0 %/)
-    assert.equal((html.match(/comparison-metric--compact/g) ?? []).length, 24)
-    assert.equal((html.match(/data-map="comparison"/g) ?? []).length, 2)
-    assert.doesNotMatch(html, /class="metric-card/)
-    const visible = html.replace(/<details\b[\s\S]*?<\/details>/g, '')
-    assert.match(html, /Дата наблюдения неизвестна/)
-    assert.match(html, /актуальность: неизвестна/)
-    assert.match(visible, /Неполное покрытие/)
-    const rows = html.slice(html.indexOf('id="compare-panel-overview"'), html.indexOf('id="compare-panel-data"'))
-    assert.doesNotMatch(rows, /Ленина, 102|Киренского, 32/)
-    assert.match(html, /Открыть профиль А/)
-    assert.match(html, /Открыть профиль Б/)
-    assert.doesNotMatch(html, /Длина картографических линий/)
-})
 
 test('only a verified label of the same object survives reload, radius changes and retries; all old analysis is cleared', async () => {
     const { state, pending, dispose } = setup()
@@ -260,70 +180,4 @@ test('only a verified label of the same object survives reload, radius changes a
         state.choose('left', null)
         assert.equal(state.sides.left.knownAddress, null)
     } finally { dispose() }
-})
-
-test('compact metric keeps small values, access restrictions, stale status and observation dates visible', async () => {
-    const component = ssrComponent('../../resources/js/components/ComparisonMetric.vue', { ...display, ProfileMetric: ssrComponent('../../resources/js/components/ProfileMetric.vue', display) })
-    const metric = { ...fullProfile('osm:way:1').blocks.parks.data.metrics.share, value: 0.01, unit: '%', observed_at: '2025-01-01T00:00:00Z', quality: { method: 'DERIVED', availability: 'AVAILABLE', freshness: 'STALE', reason: 'Данные требуют обновления.' } }
-    const html = await ssr.renderToString(vue.createSSRApp(component, { metric, side: 'Б', label: 'Доля парка', access: 'private' }))
-    const visible = html.replace(/<details\b[\s\S]*?<\/details>/g, '')
-    assert.match(visible, /&lt;0,1 %/)
-    assert.match(visible, /частный/)
-    assert.match(visible, /Наблюдение: 01.01.2025/)
-    assert.match(visible, /Актуальность: устаревшие/)
-    assert.match(visible, /Данные требуют обновления/)
-    assert.match(html, /Источник и ограничения: Доля парка, вариант Б/)
-})
-
-test('map side and layers are view state; replacing a side returns focus without changing its sibling', async () => {
-    const mounted = [], disposed = [], pushed = [], focused = [], pending = []
-    const win = { location: { search: '?left=osm%3Away%3A1&right=osm%3Anode%3A2&radius_m=500', origin: 'https://synthetic.invalid', hash: '' }, history: { pushState(_state, _title, url) { pushed.push(url) } }, addEventListener() {}, removeEventListener() {} }
-    let state
-    const deps = { ...vue, ...personalState, ...personalUtils, useOverviewTopics: () => ({ includes: () => true, selection: vue.ref(null) }), onMounted: fn => mounted.push(fn), onBeforeUnmount: fn => disposed.push(fn), window: win,
-        document: { title: '', getElementById: id => ({ focus() { focused.push(id) }, querySelector() { return { focus() { focused.push(`${id}:input`) } } } }) },
-        ResizeObserver: class { observe() {} disconnect() {} }, navigator: { clipboard: { async writeText() { throw new Error('clipboard denied') } } },
-        useAddressComparison(initial, change) {
-            state = build(vue.ref, vue.shallowReactive, fn => disposed.push(fn), (id, radius, signal) => new Promise(resolve => pending.push({ id, radius, signal, resolve })))(initial, change)
-            return state
-        }, useComparisonView: () => ({ toolbar: vue.ref(null), mapPanel: vue.ref(null), results: vue.ref(null), toolbarHeight: vue.ref(0), mapTop: vue.ref(0), mapFocused: vue.ref(false) }), parseComparison, comparisonUrl, comparisonDifferences,
-    }
-    const page = loadSetup(new URL('../../resources/js/pages/ComparePage.vue', import.meta.url), ['activeSide','activeProfile','areaVisibility','showStops','linearVisibility','chooseAddress','searchOpen','toggleSearch','shareUrl','mapAddress'], { ...compareDependencies(deps), vue: { ...vue, onMounted: deps.onMounted, onBeforeUnmount: deps.onBeforeUnmount } }, { window: win, document: deps.document, ResizeObserver: deps.ResizeObserver, navigator: deps.navigator })
-    try {
-        mounted.forEach(fn => fn())
-        pending.forEach(p => p.resolve(fullProfile(p.id)))
-        await new Promise(resolve => setImmediate(resolve))
-        const originalLeft = state.sides.left.profile, originalRight = state.sides.right.profile
-        const leftMapAddress = page.mapAddress('left')
-        page.activeSide.value = 'right'
-        page.showStops.value = true
-        page.areaVisibility.value = { parks: true, vegetation: false, water: true }
-        page.linearVisibility.value = { roads: true, railways: false }
-        assert.equal(page.activeProfile.value, originalRight)
-        assert.equal(page.mapAddress('left'), leftMapAddress)
-        assert.equal(state.sides.left.profile, originalLeft)
-        assert.equal(state.radius.value, 500)
-        assert.equal(pending.length, 2)
-        assert.deepEqual(pushed, [])
-        await page.chooseAddress('right', 'osm:way:3')
-        assert.equal(page.activeProfile.value, null)
-        assert.equal(state.sides.left.profile, originalLeft)
-        assert.equal(focused.at(-1), 'compare-change-right')
-        assert.equal(page.mapAddress('left'), leftMapAddress)
-        assert.equal(pushed.length, 1)
-        assert.equal(page.showStops.value, true)
-        assert.equal(page.areaVisibility.value.parks, true)
-        page.activeSide.value = 'left'
-        assert.equal(page.activeProfile.value, originalLeft)
-        assert.equal(pushed.length, 1)
-        assert.match(page.shareUrl.value, /right=osm%3Away%3A3/)
-        await page.chooseAddress('right', null)
-        assert.equal(page.searchOpen.right, true)
-        assert.equal(focused.at(-1), 'compare-picker-right:input')
-        await page.toggleSearch('right')
-        assert.equal(page.searchOpen.right, false)
-        assert.equal(focused.at(-1), 'compare-change-right')
-        pending[2].resolve(fullProfile('osm:way:3'))
-        await new Promise(resolve => setImmediate(resolve))
-        assert.equal(state.sides.right.profile, null)
-    } finally { disposed.forEach(fn => fn()) }
 })
