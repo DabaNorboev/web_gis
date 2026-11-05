@@ -83,7 +83,7 @@ AST учитывает default, named, aliases, named re-export и type-only bin
 
 ## 4. R2 — ownership и актуальность самостоятельной поездки
 
-Основные участки: [useTripsState](../../resources/js/composables/useTripsState.ts:15), [useTripAnalysis](../../resources/js/composables/useTripAnalysis.ts:5), [TripsPage](../../resources/js/pages/TripsPage.vue:23).
+Основные участки: [useTripsState](../../resources/js/composables/useTripsState.ts:15), [useTripAnalysis](../../resources/js/composables/useTripAnalysis.ts:5), [TripsPage](https://github.com/DabaNorboev/web_gis/blob/d597c053c704ecfab45461e271a745ed8eafc9d3/resources/js/pages/TripsPage.vue#L23).
 
 Черновик, road hints, candidate options, dirty/pending/failed и правила сохранения строк принадлежат useTripsState. `analysis/status/error` — те же refs из useTripAnalysis; второй независимо изменяемой копии результата не создано. Временно сохранённые строки при запросе — осмысленный retained result, а не второй источник истины. Потребители страницы читают результаты; записи в analysis/status/error или самостоятельной инвалидации страницы не найдено. Writable draft нужен форме, noticeDismissed — представлению. Возможность внешнего потребителя вручную переписать ref не равна существующему обходу инвариантов; readonly-фасад автоматически не требуется.
 
@@ -129,7 +129,7 @@ Effects интерфейс не прячет предметных зависим
 
 ## 6. R4 — renderer, camera и GeoJSON worker
 
-Основные участки: [adapter ComparePage](../../resources/js/pages/ComparePage.vue:60), [tripOverlay](../../resources/js/utils/tripOverlay.ts:27), [CityMap](../../resources/js/components/map/CityMap.vue:71), [installTripLayers](../../resources/js/utils/tripMap.ts:43).
+Основные участки: [adapter ComparePage](https://github.com/DabaNorboev/web_gis/blob/d597c053c704ecfab45461e271a745ed8eafc9d3/resources/js/pages/ComparePage.vue#L60), [tripOverlay](../../resources/js/utils/tripOverlay.ts:27), [CityMap](https://github.com/DabaNorboev/web_gis/blob/d597c053c704ecfab45461e271a745ed8eafc9d3/resources/js/components/map/CityMap.vue#L71), [installTripLayers](../../resources/js/utils/tripMap.ts:43).
 
 CityMap владеет MapLibre instance, initialize/remove, событиями и камерой. Overlay не создаёт карту, не подписывается на события и не вызывает fitBounds/jumpTo. Его getter читает текущий подготовленный GeoJSON, собственное состояние ограничено disposed/layerIds. Ячейки/запросы/цели не копируются в renderer.
 
@@ -175,7 +175,7 @@ useTripsState остаётся крупным специализированны
 
 ### A-O1 — P3: закрепить контекстный candidate ID тестом настоящего adapter
 
-- **Участок:** [trip-overlay.test.mjs:62](../../tests/frontend/trip-overlay.test.mjs:62), fixture `display` на строках 13–18; producer ID — [ComparePage.vue:72](../../resources/js/pages/ComparePage.vue:72).
+- **Участок:** [trip-overlay.test.mjs:62](../../tests/frontend/trip-overlay.test.mjs:62), fixture `display` на строках 13–18; producer ID — [ComparePage.vue:72](https://github.com/DabaNorboev/web_gis/blob/d597c053c704ecfab45461e271a745ed8eafc9d3/resources/js/pages/ComparePage.vue#L72).
 - **Факт и доказательство:** постоянный stale-rendered тест меняет data через `display(.1)`, где одновременно меняются координаты и вручную заданный ID. Он проверяет consumer guard, но не доказывает, что scenario producer различает цели/стороны с одинаковыми road coordinates. Текущий producer корректен; независимый тест этого аудита прошёл.
 - **Минимальная последовательность:** удержать rendered feature цели X; подготовить через настоящий adapter цель Y с той же координатой дорожного кандидата; кликнуть старый feature. Аналогично сменить сторону. Отдельно округлить только rendered geometry.
 - **Ожидаемое / фактическое:** текущий продукт отвергает устаревший контекст и использует исходные координаты. В постоянном suite точный случай producer отсутствует; дефект пользовательского поведения не воспроизведён.

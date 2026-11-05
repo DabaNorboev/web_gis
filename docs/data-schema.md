@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-11-04
+updated: 2026-11-05
 verified: not verified
 ---
 
@@ -70,3 +70,15 @@ verified: not verified
 `osm_green_areas` / `osm_water`: независимые dataset_key green_areas/water. FK на журнал; уникальность `(dataset_import_id, osm_type, osm_id)`, type way/relation, версия/время правки, `feature_type`, `representation`, `name`, валидная непустая 2D Polygon/MultiPolygon4326, `crosses_boundary`, исходные теги/узлы/members в `raw_data`. GiST по geom и geom::geography, индексы идентификатора и представления в снимке. Ограничения сверяют тип/представление с тегом. Растительное землепользование и границы парков различаются; перекрытия сохраняются, суммировать их площади нельзя. [Классификация, команды и ограничения](data/osm-areas.md).
 
 Новая миграция от 20.10.2026 добавляет в `osm_green_areas` хранимые GENERATED ALWAYS `is_park`, `is_garden`, `is_vegetation` из исходных тегов. Флаги независимы, заполняются и для старых снимков, вручную не присваиваются. Первичные `feature_type`/`representation` и все исходные поля остаются прежними. Продуктовый поиск парков использует `is_park`; расчёты площади — объединение пересечений с радиусом отдельно по каждой категории в EPSG:32646. Существующие пространственные индексы используются для кандидатов, дополнительные индексы на boolean на этом объёме не добавлялись. [Методика и проверка Татышева/Гвардейского парка](features/area-analysis.md).
+
+## Grocery-снимки OSM
+
+`osm_grocery`: ключ `(dataset_import_id,source_id)`, FK на журнал, полная Point/Polygon/MultiPolygon4326, исходные теги/версия/время элемента в `raw_data` и колонках, nullable name/address/access. GiST geometry и geography; покрытие в `dataset_coverages`. Отдельный OpenStreetMap/grocery snapshot не использует адресные или прежние профильные POI. [Импорт и identity](data/osm-grocery.md).
+
+## Аптечные снимки OSM
+
+`osm_pharmacy` — отдельная таблица той же формы, ключей и spatial-индексов, что `osm_grocery`, с независимым OpenStreetMap/pharmacy snapshot и coverage. Создана новой миграцией от 05.11.2026 в локальной рабочей БД; активен pharmacy snapshot 15, независимо от grocery №14. [Категория, геометрия, identity и подготовка](data/osm-pharmacy.md).
+
+## Park-снимки OSM
+
+`osm_park` — отдельный dataset_key=park, та же snapshot/source_id Point/Polygon/MultiPolygon4326 схема и GiST, что у grocery/pharmacy. Новая миграция от 05.11.2026 применена локально; активен park snapshot №16 (271 объект). [Категория, aliases и покрытие](data/osm-parks.md). Старый `osm_green_areas` не изменяется.

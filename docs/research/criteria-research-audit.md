@@ -302,7 +302,7 @@ OSM — условия ODbL. В ГИС ЖКХ есть отдельный раз
 
 ## 7. Аудит нынешних слоёв и метрик
 
-Основания: [профиль](../features/address-profile.md), [сравнение](../features/address-comparison.md), [площади](../features/area-analysis.md), [покрытия](../features/coverage.md), [линейные объекты](../data/osm-linear.md). Реализация показа дополнительно прочитана в [ComparePage.vue](../../resources/js/pages/ComparePage.vue:23) и [ProfileSummary.vue](../../resources/js/components/ProfileSummary.vue:42). Ниже — оценка смысла, а не повторная инструментальная проверка расчётов.
+Основания: [профиль](../features/address-profile.md), [сравнение](../features/address-comparison.md), [площади](../features/area-analysis.md), [покрытия](../features/coverage.md), [линейные объекты](../data/osm-linear.md). Реализация показа дополнительно прочитана в [ComparePage.vue](https://github.com/DabaNorboev/web_gis/blob/d597c053c704ecfab45461e271a745ed8eafc9d3/resources/js/pages/ComparePage.vue#L23) и [ProfileSummary.vue](https://github.com/DabaNorboev/web_gis/blob/d597c053c704ecfab45461e271a745ed8eafc9d3/resources/js/components/ProfileSummary.vue#L42). Ниже — оценка смысла, а не повторная инструментальная проверка расчётов.
 
 ### Что уже даёт основание доверять расчёту
 

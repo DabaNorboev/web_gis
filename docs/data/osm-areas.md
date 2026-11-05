@@ -1,12 +1,14 @@
 ---
 status: current
-updated: 2026-11-04
+updated: 2026-11-05
 verified: not verified
 ---
 
 # Локальная зелень и вода OSM
 
 `osm_green_areas` / `osm_water` и офлайн-команда `osm:import-areas green_areas|water`. Импорт сохраняет исходные геометрии. Независимые `is_park`, `is_garden`, `is_vegetation` и формулы площади — в [методике анализа](../features/area-analysis.md). Подготовка и импорт с буфером — в [покрытии данных](../features/coverage.md).
+
+Для объектной категории парков нового анализа подготовлен [отдельный park-срез](osm-parks.md): он добавляет точки с неизвестными границами и structural aliases. Существующие area-снимки и расчёты площадей не подменяются.
 
 ## Что входит
 

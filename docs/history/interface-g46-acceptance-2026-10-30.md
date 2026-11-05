@@ -88,7 +88,7 @@ Playwright трактует аргументы как regex: дополните�
 
 **Фактически:** «Добавьте общие цели в редакторе слева. Профиль окружения уже доступен». Редактор находится в скрытом/inert экране «Настройки»; слева на телефоне его нет. Основное действие доступно через «Настройки», потери данных и полного блокирования нет. Это ошибка контекстной инструкции, а не требование пиксельного соответствия референсу.
 
-Свидетельство: `first-path-single.png` после реального пути поиска и выбора; отдельные `defect-mobile-guidance-390x844.png`, `defect-mobile-guidance-320x740.png`, `defect-mobile-guidance-390x480.png` и `defect-mobile-guidance.json` фиксируют активное «Сравнение», невидимость редактора и доступность его через «Настройки». Корень: [HomeAddressResults.vue](../../resources/js/components/home/HomeAddressResults.vue), строка 83. **Вернуть G4.2/G4.4**, затем повторить пустой → одиночный → пара на телефоне и desktop. P0/P1 в выполненных проверках не обнаружены.
+Свидетельство: `first-path-single.png` после реального пути поиска и выбора; отдельные `defect-mobile-guidance-390x844.png`, `defect-mobile-guidance-320x740.png`, `defect-mobile-guidance-390x480.png` и `defect-mobile-guidance.json` фиксируют активное «Сравнение», невидимость редактора и доступность его через «Настройки». Корень: [HomeAddressResults.vue](https://github.com/DabaNorboev/web_gis/blob/d597c053c704ecfab45461e271a745ed8eafc9d3/resources/js/components/home/HomeAddressResults.vue), строка 83. **Вернуть G4.2/G4.4**, затем повторить пустой → одиночный → пара на телефоне и desktop. P0/P1 в выполненных проверках не обнаружены.
 
 ## Свидетельства, проверки docs и ограничения
 

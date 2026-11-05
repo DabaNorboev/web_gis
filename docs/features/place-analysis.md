@@ -1,25 +1,25 @@
 ---
-status: plan
-updated: 2026-11-04
-verified: not verified
+status: current
+updated: 2026-11-05
+verified: code
 ---
 
 # Анализ одного места: целевой контракт API
 
-Контракт А5 для А6–А12. Он **не реализован**: общего анализа адреса/точки, радиуса 200–1000 м, POI-блока, NDVI дат и станций воздуха в приложении нет. Существующие `/api/v1/addresses/{id}/profile` с 300/500 м и `/api/v1/transport/analysis` продолжают работать без изменений.
+Backend/API А7 реализован: POST `/api/v1/place-analysis`, явный адрес/точка, 200–1000 м, эхо и серверный круг. Клиент проверяет ответ, epochs/abort/retry и независимость блоков. POI: [grocery](../data/osm-grocery.md), [аптеки](../data/osm-pharmacy.md) и [официальные остановки](../data/transport-import.md#остановки-в-анализе-места-а8); остановки включены локально на снимке №9. [Парки](../data/osm-parks.md) подключены локально (№16). Спутники/воздух не подключены. Без доступных POI — `UNAVAILABLE / POI_SNAPSHOTS_UNAVAILABLE`, ошибки не подменяются нулём.
 
-Состав и критерии блоков — в [плане анализа](../plans/analysis-transition-plan.md#вопросы-и-конечный-объём-анализа).
+Экран — `/`; прежние UI URL перенаправляются на него. Демо удалено; недоступные блоки без синтетических данных. Хранение/обмен/reload остаются открытым решением владельца. Прежние profile (300/500 м) и transport API сохранены.
 
 ## 1. Решение о совместимости
 
 Выбран новый вход `POST /api/v1/place-analysis`, а не расширение адресного профиля:
 
-- профиль закреплён за конкретным адресным ID и радиусами 300/500 м, содержит шесть других блоков и используется работающими страницами;
+- профиль закреплён за конкретным адресным ID и радиусами 300/500 м, содержит шесть других блоков и сохраняется как совместимый API;
 - свободная точка не должна получать выдуманный адресный ID, а профиль без адреса невозможен;
 - новый вход принимает адрес или точку, 200–1000 м, дату и отдельный выбор станций, не ослабляя старые контракты;
 - координаты и списки передаются в JSON-теле, а не в query; ответы не кэшируются.
 
-Новый вход переиспользует resolver, проверку покрытия и построение круга, когда это подходит. Новый GIS-сервис, очередь, брокер или вторая карта не нужны. Импорт POI, raster-подготовка и importer станций остаются задачами А8–А11; до реализации блок возвращает `UNAVAILABLE`, а не выдуманные данные. Сверены `AddressProfileRequest`, `AddressProfileService`, `AddressResolverService`, `AnalysisArea`, `DatasetCoverage`, клиенты `profiles.ts`/`searchProfiles.ts`, `useAddressProfile` и тесты профиля/покрытия; они не меняются.
+Переиспользуются resolver, coverage и серверный круг без нового GIS-сервиса/очереди. Остальные POI, raster и станции остаются задачами А8–А11; до реализации блок возвращает `UNAVAILABLE`, а не выдуманные данные. Прежние resolver, профиль и клиенты сохраняют свои контракты.
 
 ## 2. Вход
 
@@ -40,7 +40,17 @@ verified: not verified
 | `stations.radius_m` | Необязательное целое 1000–20000, по умолчанию 5000. Отдельная область выбора станций; не ограничена `radius_m` места и не расширяет круг анализа. |
 | `blocks` | Необязательный уникальный непустой список `poi`, `satellite`, `air`; по умолчанию все. Не реализованный блок — `UNAVAILABLE` с причиной; незапрошенный отсутствует. |
 
-Некорректный ввод — HTTP 422 без частичного анализа. Лимит — 60 запросов/мин на IP; 429 содержит `Retry-After`, автоматического повтора нет. Ответы — `Cache-Control: no-store`, `Referrer-Policy: no-referrer`. Тела запросов, координаты и ID станций не пишутся в журналы; технический лог содержит только тип исключения и ключ блока.
+Некорректный ввод — HTTP 422 без частичного анализа. Лимит — 60 запросов/мин на IP, включая отдельные запросы блоков; 429 содержит `Retry-After`, автоматического повтора нет.
+
+### 2.1. Приватность нового POST
+
+- Клиент: фиксированный POST JSON, `cache: no-store`/`referrerPolicy: no-referrer`; ввод из query не принимается, API stateless. В журналах/ошибках нет тела, координат, адресных/станционных ID.
+- Middleware до FormRequest/сервиса: фактическое тело ≤8 KiB, не только Content-Length; иначе 413, не-JSON — 415. Валидация/разбор JSON не возвращают ввод; throttle хранит только счётчики.
+- Laravel `report`: новый путь, включая ошибки до/после контроллера; фиксированное сообщение, тип исключения и известный ключ блока. Без exception message/object, stack arguments, SQL/bindings, URL/тела; то же для блочных catch.
+- `render`: предметные 4xx сохраняются, неожиданный отказ — безопасный 503 `SERVICE_UNAVAILABLE`, включая debug. `respond`: `Cache-Control: no-store` и `Referrer-Policy: no-referrer` на всех ответах пути, включая 404/405/413/415/422/429/5xx.
+- Nginx: отдельный location, `client_max_body_size 8k`, `client_body_buffer_size 16k`, без spool принятых тел. Сохранить `zend.exception_ignore_args=1`, safe access log с фиксированным классом `place_analysis` вместо URI/query/Referer/body и отключённый request error log. Оба заголовка — `always`, без дублей upstream; 413/502/504 безопасны до Laravel, в том числе без Content-Length.
+
+Серверные защиты реализованы в Laravel/Nginx; файлы и регрессии — §11. Ответы Nginx до PHP сохраняют HTTP 413/502/504 с фиксированным JSON-кодом; Laravel отдаёт безопасный 503 при неожиданном отказе. Изменённый Nginx config требует штатного применения в целевом окружении; этот срез не перезапускает рабочий Nginx.
 
 ## 3. Общий ответ
 
@@ -51,12 +61,16 @@ verified: not verified
 | `place.address` | Адресная часть resolver: `id`, `label`, `object` (`id`, `lon`, `lat`, `geometry`, `point_method`, `object_type`, `levels`), `bounds`, `source`, `dataset_import_id`, `observed_at`, `source_updated_at`, `reason`. Точка контура не вход. |
 | `place.point` | Точка анализа: для адреса — `object.lon/lat`, для точки — ввод. EPSG:4326. |
 | `radius_m` | Эхо принятого радиуса. |
+| `analysis_area` | Обязательный GeoJSON Polygon круга `place.point`/`radius_m`, EPSG:4326, `lon, lat`; строится сервером через существующий `AnalysisArea::forPoint` (PostGIS geography). |
+| `analysis_bounds` | Обязательный bbox этого контура `[west, south, east, north]`, EPSG:4326; не bounds адресного объекта. |
 | `date` | Эхо `date` или `null`. |
 | `station_selection` | Эхо `selected_ids` и `radius_m`. |
 | `calculated_at` | Время сборки ответа, UTC ISO-8601. Не дата наблюдения. |
 | `blocks` | Только запрошенные `poi`, `satellite`, `air`. |
 
-Ответ всегда возвращает эхо `place`, `radius_m`, `date` и `station_selection`. Клиент отвергает ответ, если эхо не совпадает с текущим вводом, даже при HTTP 200.
+В каждом HTTP 200 круг полный, без обрезки источниками: поля сохраняются при `PARTIAL`/`UNKNOWN`/`OUTSIDE_SERVICE_AREA` и всех `UNAVAILABLE`. Клиент рисует серверный контур, не рассчитывает замену. Отказ resolver/круга — без частичного тела (§8).
+
+Эхо проверяется относительно **отправленного запроса**, актуальность — по §8. Defaults: `radius_m=500`, `date=null`, `stations.selected_ids=[]`, `stations.radius_m=5000`, `blocks` — все три. Ответ называет `stations` полем `station_selection`; ID сравниваются как множество. Точка: `kind=point`, `address/label=null`, `place.point` точно повторяет ввод. Адрес: `kind=address`, `place.address.id=place.address.object.id` равно отправленному `place.address_id`; `place.point` равна `object.lon/lat` resolver, не прежним UI-координатам/подписи. Чужое эхо/состав блоков отклоняются даже при HTTP 200.
 
 ## 4. Конверт блока
 
@@ -122,18 +136,22 @@ verified: not verified
 | `geometry` | GeoJSON Point/Polygon/MultiPolygon, EPSG:4326. |
 | `point` | Координата метки/списка; для площадного — внутренняя точка, не вход. |
 | `distance_m` | Прямое расстояние до `geometry`, м; 0 внутри контура. |
+| `source_version`, `source_url`, `limitations` | Необязательные версия, HTTPS-паспорт и ограничения источника; строки или null. |
+| `identity_note` | Необязательное пояснение возможного дубля или `null`; без догадки об общей identity. |
 | `access` | Исходный `access`/аналог парка или `null`; не подтверждение общественного доступа. |
 | `source`, `dataset_import_id` | `OpenStreetMap`/`official-stops` и ID активного снимка или `null`. |
 | `observed_at`, `source_updated_at` | Дата наблюдения и дата версии источника или `null`; дата импорта их не заменяет. |
 
 Элементы упорядочены по `distance_m`, затем `id`; порядок не рейтинг. Расстояние до территории не является расстоянием до входа.
 
-- `method_version` — обязательное правило прямого расстояния/дедупликации; значение уточняет А8.
-- `coverage.by_category` и `completeness.by_category` обязательны: источники различаются. Элемент `coverage.by_category` содержит `status`, `reason`, `available_radius_m`; элемент `completeness.by_category` — `status`, `reason`. Сводный `coverage.status` — `OUTSIDE_SERVICE_AREA`, если все категории вне сервиса; иначе `PARTIAL`, если есть `PARTIAL` или `OUTSIDE_SERVICE_AREA`; иначе `UNKNOWN`, если есть `UNKNOWN`; иначе `COVERED`. Сводная полнота — `PARTIAL`, если есть `PARTIAL`; иначе `UNKNOWN`, если есть `UNKNOWN`; `COMPLETE` только если все `COMPLETE`.
+- `method_version` — обязательная версия правил. `poi-v3-geography-source-geometry-park-outer-aliases` с парками; иначе v2/retail. [Правила](../data/osm-parks.md).
+- Обязательны `coverage.by_category` (`status`, `reason`, `available_radius_m`) и `completeness.by_category` (`status`, `reason`). Сводный `coverage.status` — `OUTSIDE_SERVICE_AREA`, если все категории вне сервиса; иначе `PARTIAL`, если есть `PARTIAL` или `OUTSIDE_SERVICE_AREA`; иначе `UNKNOWN`, если есть `UNKNOWN`; иначе `COVERED`. Сводная полнота — `PARTIAL`, если есть `PARTIAL`; иначе `UNKNOWN`, если есть `UNKNOWN`; `COMPLETE` только если все `COMPLETE`.
+- `availability_by_category` — необязательное поле; retail-provider возвращает `{status: READY|UNAVAILABLE|ERROR, code: null|string, message: string}` для всех категорий. TS валидирует, UI показывает ошибки. [Правила](../data/osm-pharmacy.md).
 - `data.items` — найденные элементы; при `PARTIAL` это неполный список.
 - `data.count` — число возвращённых элементов; `null`, если хотя бы одна категория имеет `coverage != COVERED` или `completeness == PARTIAL`. `counts_by_category` считается независимо: такая категория даёт `null`, покрытая — число. `UNKNOWN` полнота не обнуляет счёт используемого набора, но не превращает 0 в отсутствие объектов.
+- `data.official_stop_summary` — необязательные `found_count` и `source_without_coordinates` (целые ≥0 или null): найденные точки круга и негеокодированные записи всего источника; не полный итог и не длина страницы. [Подпись и ошибки](../data/transport-import.md#подпись-найденного-количества).
 - `count: 0` при `COVERED` — «в используемом наборе найдено 0»; при `UNKNOWN` полноте это не «объектов нет».
-- Если ни одна категория не может быть рассчитана, блок — `UNAVAILABLE`. Отсутствующий источник категории даёт `coverage/completeness: UNKNOWN` и не скрывает другие категории; неожиданный отказ расчёта блока — `ERROR` (другие блоки независимы).
+- Отсутствие/отказ источника даёт категории UNKNOWN/count=null, сохраняя остальные. Без готовых категорий блок `ERROR` при ошибке, иначе `UNAVAILABLE / POI_SNAPSHOTS_UNAVAILABLE`. Другие блоки независимы.
 - Площади, доли круга и рейтинг здесь не возвращаются. Парк/сквер не равен растительной территории.
 
 ## 6. Блок `satellite`
@@ -189,12 +207,12 @@ verified: not verified
 
 ## 8. Независимость и поздние ответы
 
-1. Блоки рассчитываются независимо. Ошибка одного блока не отменяет остальные; HTTP 200 с `ERROR` одного блока допустим. Полный отказ оркестрации (resolver, общий круг) — 503 `SERVICE_UNAVAILABLE` без частичного тела.
-2. Снимки каждого источника фиксируются один раз до расчёта блоков; публикация нового снимка между блоками не смешивает данные. `dataset_import_id` в элементах это подтверждает.
-3. Смена места, радиуса, даты или выбора станций делает прежний результат неактуальным. Клиент отменяет текущий запрос, не показывает прежние блоки как текущие и не пересчитывает автоматически без действия пользователя. Поздний ответ отбрасывается по токену и эху; сервер не обязан успеть прервать работу.
-4. При выборочном `blocks` клиент может обновить только затронутый блок. Неизменённые блоки сохраняют собственные `calculated_at`; нельзя выдавать их за единый атомарный снимок нового запроса.
-5. Смена даты влияет на `satellite.selected`; выбор станций — на `air`; место/радиус — на `poi`, `satellite` и расстояния `air`. Старый и новый ответ не смешиваются.
-6. Back/Forward/reload — А6/А7: восстанавливают ввод и запрашивают текущие данные, а не исторический снимок. Сервер результаты не хранит и по ссылке не отдаёт.
+1. Подтверждение адреса/здания или точки запускает независимые POST к одному endpoint, каждый с `blocks:[один блок]`, своими `loading`/`error`/`retry`, AbortController/epoch/таймаутом. POI показывается по своему ответу, не ждёт air/satellite. Пакетный API сохранён, но один JSON не даёт поэтапной доставки и для независимой загрузки UI не используется.
+2. Ошибка/повтор затрагивают только свой блок. Неожиданный отказ resolver/круга — 503 `SERVICE_UNAVAILABLE` данного запроса; предметные 404/503 адреса сохраняются. Бюджет А7: в транзакции resolver/круга `statement_timeout=2s`, `lock_timeout=500ms`; до трёх предметных SELECT (снимок адресов, объект, круг), без сетевых providers. Настройки локальны транзакции и снимаются при commit/rollback. Nginx: connect 2s, read 15s; read timeout ограничивает ожидание upstream, не гарантирует остановки PHP. Подключение к БД зависит от конфигурации соединения; общего wall-clock deadline PHP этот срез не добавляет. Клиент ждёт каждый блок не более 20s, различает timeout/cancel и не повторяет автоматически. А10/А12 задают бюджеты будущих providers; abort fetch не гарантирует остановки сервера.
+3. Снимки фиксируются один раз на HTTP-запрос; независимые ответы сохраняют свои `dataset_import_id`/`calculated_at`, не общий атомарный snapshot. Изменившиеся координаты resolver того же ID не смешиваются со старым кругом: зависимые результаты неактуальны до явного обновления.
+4. Зависимости: `poi` — место/радиус; `satellite` — место/радиус/дата; `air` — место/радиус/selection. Дата инвалидирует только satellite, selection — только air, сохраняя остальные результаты и pending-запросы. Место/радиус инвалидируют все три; старые показатели не показываются текущими. Экран запускает анализ при подтверждении места и через 350ms после изменения радиуса. До нового ответа остаётся серверный контур прежнего радиуса с явной пометкой «предыдущий»; при смене места он удаляется. Дата/selection требуют отдельного запуска.
+5. Запуск/повтор/инвалидация увеличивает epoch только затронутого блока и отменяет его запрос. Приём ответа требует эха своего запроса (§3), текущего epoch и неизменных зависимостей. А→Б→А не оживляет старый ответ А. `date=D1` у pending POI допустима после выбора D2. После смены места/unmount старые response/error/finally не меняют данные/loading/карту.
+6. Хранение/обмен и восстановление после reload/Back/Forward не реализованы: решение владельца открыто. Новый ввод живёт только в памяти экрана; URL с координатами не создаётся, старые ссылки/records не мигрируются. Сервер результаты не хранит.
 7. Сеть, таймаут, 429, 422, 404/503 адреса и предметные `ERROR`/`UNAVAILABLE` различаются в клиенте. Повтор — только по конкретной причине; автоматического повтора нет.
 
 ## 9. Совместимость
@@ -204,136 +222,56 @@ verified: not verified
 | `GET /api/v1/addresses/{id}/profile` | Полный профиль, шесть блоков, 300/500, default 500, `scope=selected` v1, поля/ошибки. Новый контракт его не меняет. |
 | `GET /api/v1/addresses/{id}` | Resolver, 404/503, `resolver_version: 1`, `selected_profile_version: 1`; новая capability не требуется. |
 | `/api/v1/transport/analysis`, `/api/v1/trips/analyze`, `/api/v1/addresses/search`, `/api/v1/addresses/resolve-point` | Прежние методы, параметры, лимиты и ответы. Официальные остановки остаются отдельным источником. |
-| URL `/?lon=…&lat=…&radius_m=300|500`, `/address/{id}?radius_m=300|500` | Прежние страницы и радиусы. Новый анализ их не переинтерпретирует; `radius_m=1000` в старом профиле по-прежнему 422. |
+| URL `/?lon=…&lat=…&radius_m=300|500`, `/address/{id}?radius_m=300|500` | Старые страницы удалены; query/fragment не восстанавливаются, отдельные URL перенаправляются на `/`. В API `radius_m=1000` в старом профиле по-прежнему 422. |
 | Типы `AddressProfile`, `SelectedAddressProfile`, `TransportAnalysis`, `SpatialCoverage` | Не ослабляются до optional-полей и не переиспользуются как новый контракт. Новые типы — отдельные. |
 | Ссылки и результат | Ссылка не является снимком анализа. Новый URL/состояние определяет А7; сервер результаты не хранит. |
 
-Новый клиент вызывает только `POST /api/v1/place-analysis`. Он не делает fallback на старый профиль при 404/422/503 и не отправляет 1000 м в старый endpoint. Если новый endpoint недоступен, UI показывает причину, а старые страницы продолжают работать.
+Расчёт использует только `POST /api/v1/place-analysis`; [адрес-ориентир точки](point-address.md#ориентир-точки-на-analysis) независим. Он не делает fallback на старый профиль при 404/422/503 и не отправляет 1000 м в старый endpoint. Если новый endpoint недоступен, UI показывает причину, старые серверные API сохраняются.
 
 ## 10. Синтетические примеры
 
-Все ID, координаты, даты, сцены, станции и значения вымышлены и не описывают реальный объект или измерение. Примеры сокращены до ключевых полей; полный состав — в таблицах. Это не результат запуска приложения.
-
-### 10.1. Вход с явным адресом
+Два вымышленных входа, не runtime:
 
 ```json
 {"place":{"kind":"address","address_id":"osm:way:1"},"radius_m":300,"blocks":["poi"]}
 ```
 
-### 10.2. Успех
-
 ```json
-{
-  "analysis_version": 1,
-  "place": {"kind": "point", "label": null, "address": null, "point": {"lon": 92.9, "lat": 56.0}},
-  "radius_m": 500,
-  "date": "2026-08-12",
-  "station_selection": {"selected_ids": ["synthetic-station-1"], "radius_m": 5000},
-  "calculated_at": "2026-11-03T12:00:00Z",
-  "blocks": {
-    "poi": {"status": "READY", "code": null, "message": null, "calculated_at": "2026-11-03T12:00:00Z",
-      "coverage": {"status": "COVERED"}, "completeness": {"status": "UNKNOWN"},
-      "data": {"items": [{"id": "osm:node:900001", "category": "grocery", "distance_m": 120.5, "source": "OpenStreetMap"}],
-        "count": 1, "counts_by_category": {"grocery": 1, "pharmacy": 0, "official_stop": 0, "park": 0}}},
-    "satellite": {"status": "READY", "code": null, "message": null, "calculated_at": "2026-11-03T12:00:00Z",
-      "data": {"available_dates": [{"date": "2026-08-12", "scene_id": "SYNTH-SCENE-1", "cloud_cover_percent": 0.014}],
-        "selected": {"status": "READY", "coverage": {"status": "COVERED", "valid_fraction": 0.42, "masked_fraction": 0.55, "nodata_fraction": 0.03},
-          "scene": {"scene_id": "SYNTH-SCENE-1", "acquired_at": "2026-08-12T05:03:00Z"},
-          "assets": {"ndvi": {"href": "/synthetic/ndvi.png", "value_min": -1, "value_max": 1, "nodata": null}}}}},
-    "air": {"status": "READY", "code": null, "message": null, "calculated_at": "2026-11-03T12:00:00Z",
-      "data": {"stations": [{"id": "synthetic-station-1", "distance_m": 2790.2, "group": "selected",
-        "latest": {"observed_at": "2026-08-15 23:00:00", "timezone": null, "values": [
-          {"key": "pm2_5", "value": 12.4, "unit": "µg/m³", "quality": {"availability": "AVAILABLE", "qc": "UNKNOWN"}}]}}],
-        "counts": {"selected": 1, "nearest": 0, "other": 0}}}
-  }
-}
+{"place":{"kind":"point","lon":92.9,"lat":56.0},"radius_m":500,"blocks":["poi"]}
 ```
 
-### 10.3. Частичный результат
+Для точки ещё два POST — с `blocks:["satellite"]` и `blocks:["air"]`. Общие поля/состояния — §3–7; независимость ответов и повторов — §8.
 
-Радиус обрезан; найденный элемент виден, агрегаты не выглядят полными. HTTP 200.
+## 11. Файлы реализации и оставшаяся работа
 
-```json
-{
-  "analysis_version": 1,
-  "place": {"kind": "point", "label": null, "address": null, "point": {"lon": 92.9, "lat": 56.0}},
-  "radius_m": 1000, "date": null, "station_selection": {"selected_ids": [], "radius_m": 5000},
-  "blocks": {"poi": {"status": "READY", "code": null, "message": null, "calculated_at": "2026-11-03T12:00:00Z",
-    "coverage": {"status": "PARTIAL", "reason": "Область отбора обрезает радиус.", "by_category": {"grocery": {"status": "PARTIAL"}}},
-    "completeness": {"status": "UNKNOWN", "reason": "Полнота источников не подтверждена."},
-    "data": {"items": [{"id": "osm:node:900002", "category": "pharmacy", "distance_m": 251.0}],
-      "count": null, "counts_by_category": {"grocery": null, "pharmacy": null, "official_stop": null, "park": null}}}}
-}
-```
-
-### 10.4. Независимый отказ блока
-
-POI готов, станции упали; готовый блок не скрыт, отказ не стал нулём. HTTP 200.
-
-```json
-{
-  "analysis_version": 1,
-  "place": {"kind": "point", "label": null, "address": null, "point": {"lon": 92.9, "lat": 56.0}},
-  "radius_m": 500, "date": null, "station_selection": {"selected_ids": [], "radius_m": 5000},
-  "blocks": {
-    "poi": {"status": "READY", "code": null, "message": null, "calculated_at": "2026-11-03T12:00:00Z",
-      "coverage": {"status": "COVERED"}, "completeness": {"status": "UNKNOWN"},
-      "data": {"items": [], "count": 0, "counts_by_category": {"grocery": 0, "pharmacy": 0, "official_stop": 0, "park": 0}}},
-    "air": {"status": "ERROR", "code": "BLOCK_CALCULATION_FAILED", "message": "Блок станций временно недоступен; остальные блоки сохранены.",
-      "calculated_at": "2026-11-03T12:00:00Z", "coverage": null, "completeness": null, "data": null}
-  }
-}
-```
-
-## 11. Что менять при реализации
-
-Код, тесты и миграции сейчас не менялись. Таблица — план работ А6–А12.
+API и клиентский lifecycle А7 реализованы без миграций и изменения данных. Весь А7 не закрыт: хранение/URL и восстановление требуют решения владельца.
 
 ### 11.1. Backend
 
-| Файл | Изменение | Назначение |
-|---|---|---|
-| `routes/api.php` | Новый `POST v1/place-analysis` с throttle | Единственная точка входа; старые маршруты не меняются |
-| `app/Http/Requests/PlaceAnalysisRequest.php` | Новый FormRequest | XOR адрес/точка, 200–1000, дата, лимиты станций, whitelist блоков |
-| `app/Http/Controllers/Api/V1/PlaceAnalysisController.php` | Новый controller | JSON, `no-store`/`no-referrer`, 404/503 адреса, безопасный 503 оркестрации |
-| `app/Services/Analysis/PlaceAnalysisService.php` | Новый оркестратор | Фиксация снимков, эхо, независимые блоки, конверт без второй GIS-логики |
-| `app/Services/Analysis/PoiAnalysisService.php` | Новый (А8) | Категории/теги/дедупликация/расстояния; детали — А8 |
-| `app/Services/Satellite/…` | Новые (А9/А10) | Подготовленные даты, NDVI, маски, покрытие, assets; без тяжёлого расчёта в HTTP |
-| `app/Services/Air/…` | Новые (А11/А12) | Справочник/наблюдения станций, отдельное selection, история — А12 |
-| `app/Services/Addresses/AddressResolverService.php`, `app/Services/Gis/AnalysisArea.php`, `app/Services/Gis/DatasetCoverage.php` | Не меняются | Точный ID, круг и покрытие переиспользуются |
-| `app/Services/Addresses/AddressProfileService.php`, `app/Http/Requests/AddressProfileRequest.php` | Не меняются | 300/500, шесть блоков и старый API сохраняются |
+`PlaceAnalysisRequest`, `LimitPlaceAnalysisRequest`, `PlaceAnalysisController`, `Services/Analysis/PlaceAnalysisService`, `routes/api.php`, `bootstrap/app.php`, `docker/nginx/nginx.conf` реализуют §2–4. Resolver/AnalysisArea переиспользуются; старый профиль не изменён. `GroceryPoiProvider` использует `DatasetCoverage` для отдельного grocery-снимка. Предметные данные А8–А12 — §5–7.
 
 ### 11.2. Frontend
 
-| Файл | Изменение | Назначение |
-|---|---|---|
-| `resources/js/types/placeAnalysis.ts` | Новый | Типы входа/выхода, блоков, покрытия, полноты, POI/сцены/станции |
-| `resources/js/api/placeAnalysis.ts` | Новый | POST, проверка эха/блоков/`null`, нейтральное сообщение 422; без fallback на профиль |
-| `resources/js/composables/usePlaceAnalysis.ts` | Новый (А6/А7) | Abort, токен, поздние ответы, раздельные блоки, отсутствие автопересчёта |
-| `resources/js/api/searchProfiles.ts`, `resources/js/types/profile.ts`, `resources/js/types/transport.ts` | Не меняются | Старый профиль и его валидатор остаются отдельным контрактом |
-| `resources/js/api/errors.ts` | Не меняется | Новый клиент переиспользует `requestJson`/`ApiRequestError` и сам задаёт сообщение 422 |
-| `resources/js/pages/…`, `resources/js/components/…` | А6 | Экран, легенда, слои, станции, состояния; не входят в А5 |
+В `resources/js`: `types/placeAnalysis.ts` — типы; `api/placeAnalysis.ts` — POST/schema/эхо; `composables/usePlaceAnalysis.ts` — lifecycle §8. `PlaceAnalysisPage` выбирает объект/точку, `PlaceAnalysisResults` показывает состояния/POI/выбор даты и станций, `PlaceAnalysisMap` получает серверный круг/bbox и проверенные списки. При открытии реального экрана метки места нет до выбора. Raster/наблюдения подключаются с А10/А12, без синтетической замены.
 
 ### 11.3. Проверки
 
-| Файл | Изменение | Что проверяет |
-|---|---|---|
-| `tests/Feature/PlaceAnalysisApiTest.php` | Новый (SQLite/моки) | XOR/радиус/дата/станции, эхо, 404/503/422, независимые `ERROR`/`UNAVAILABLE`, `no-store`, отсутствие секретов |
-| `tests/Integration/PlaceAnalysisTest.php` | Новый, только `web_gis_test` через `Tests\PostgisTestCase` | 200/1000, границы покрытия, `COVERED`/`PARTIAL`/`OUTSIDE`, пустой полный набор ≠ частичный, остановки ≠ OSM, заморозка снимков, независимость |
-| `tests/frontend/place-analysis-api.test.mjs` | Новый | Эхо, радиус, дата, станции, `null`/`ERROR`/`UNAVAILABLE`; отклонение чужого/неполного ответа |
-| `tests/frontend/place-analysis-state.test.mjs` | Новый (А6/А7) | Смена места/радиуса/даты/станций, abort, поздний/устаревший ответ, независимое обновление блока |
-| `tests/browser/place-analysis.spec.mjs` | Новый (А6/А13) | Экран, легенда/слои, состояния, клавиатура/фокус/мобильный; синтетический API |
-| `tests/Feature/SearchProfileApiTest.php`, `tests/Integration/AddressProfileTest.php`, `tests/Integration/TransportAnalysisTest.php`, `tests/Integration/OsmAreaAnalysisTest.php` | Не меняются | Регрессии старых 300/500, resolver, покрытия и независимости |
-| `tests/frontend/search-api.test.mjs`, `tests/frontend/address-profile.test.mjs`, `tests/frontend/transport-coverage.test.mjs` | Не меняются | Регрессии существующих клиентов и состояний `null`/покрытия |
+| Файл | Проверка |
+|---|---|
+| `tests/Feature/PlaceAnalysisApiTest.php` | SQLite/моки: XOR/строгие типы/defaults/эхо, выбор блоков/независимый отказ, 404/405/413/415/422/429/503 и headers, debug-canary до контроллера/в сервисе, старые 300/500 |
+| `tests/Integration/PlaceAnalysisTest.php` | Защищённый `PostGISReadOnly`: реальный круг/bbox 200/1000 без providers, UNKNOWN/null, SQL timeout и восстановление настроек; без импорта/записи fixtures |
+| `tests/security/test_trip_nginx.py`, `tests/security/trip_nginx_probe.sh` | Изолированный Nginx: граничные тела с Content-Length/chunked, безопасные 413/502/504/headers, нет canary в logs/temp; старые пути |
 
-Команды реализации (не выполнялись в А5): `composer test -- --filter=PlaceAnalysisApiTest`, `composer test:postgis -- --filter=PlaceAnalysisTest`, `npm test`, `npm run typecheck`, целевой browser-сценарий. GIS-тесты — только защищённая `web_gis_test`; рабочая БД не используется.
+Клиентские регрессии: `tests/frontend/place-analysis-api.test.mjs` (schema/эхо/контур/ошибки), `place-analysis-state.test.mjs` (зависимости/epochs/abort/timeout), browser `place-analysis-api.spec.mjs` (независимая доставка/UI) и `place-analysis.spec.mjs` (единственный экран, redirect, отсутствие демо и сохранность browser records). Старые API/records сохранены.
+
+Команды и эффекты — [testing](../testing.md). Клиент: целевые Node tests, typecheck и browser-файлы; сборка отдельно от `public/build`. GIS — только `web_gis_test`.
 
 ## 12. Ограничения и открытые вопросы
 
-- **Не реализовано:** endpoint, POI-импорт, спутниковые layers/API, importer/API станций, UI и хранение. Документ не подтверждает реальный результат.
-- **А8:** теги/границы категорий, дедупликация, полнота и пригодность данных. Контракт задаёт форму, но не качество POI. Пользовательская польза проверяется отдельно с людьми, не А8.
+- **Источники:** grocery поддержан отдельным снимком и provider. Рабочая активация не выполнена. Остальные категории, спутники и воздух недоступны; старые наборы их не подменяют.
+- **А8:** допуск grocery в рабочее окружение и остальные категории. Правила первого среза — [grocery](../data/osm-grocery.md). Пользовательская польза проверяется отдельно с людьми, не А8.
 - **А9/А10:** радиометрия, маски, геометрия, легенда, формат assets и реальные даты. `valid_fraction` — покрытие данных, не процент растительности; композиции/различия не входят.
 - **А11/А12:** часовой пояс, QC, история оборудования/координат, полный ряд и стабильность ID. `timezone: null`/`qc: UNKNOWN` обязательны, пока это не подтверждено.
-- **А6:** экран, легенда, панель слоёв, станции, мобильные состояния, хранение/ссылки. **А7:** новый URL/состояние; старые 300/500 не переинтерпретируются.
+- **Остаток А7:** решение владельца о хранении, обмене, URL и восстановлении reload/Back/Forward; затем отдельная реализация и регрессии совместимости. Сейчас новый ввод только в памяти. А6 и весь А7 не закрыты; полная проверка UI на данных будущих providers — А8–А12/И1–И3/А13.
 - **Производительность:** число дат/станций ограничивают А10/А12; тяжёлая raster/GIS-обработка в HTTP запрещена. 5 станций и 5 км — стартовые технические значения, не обещание полной сети.
 - **Пользовательская польза** не подтверждена; контракт не является продуктовым доказательством.
