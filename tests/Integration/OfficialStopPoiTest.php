@@ -122,7 +122,37 @@ class OfficialStopPoiTest extends PostgisTestCase
         $incomplete = $this->response(93.1)['blocks']['poi'];
         $this->assertSame('PARTIAL', $incomplete['completeness']['by_category']['official_stop']['status']);
         $this->assertNull($incomplete['data']['counts_by_category']['official_stop']);
-        $this->assertSame(['found_count' => 0, 'source_without_coordinates' => 1], $incomplete['data']['official_stop_summary']);
+        $this->assertSame(['found_count' => 0, 'source_without_coordinates' => 1, 'excluded_outside_scope' => 0], $incomplete['data']['official_stop_summary']);
+    }
+
+    public function test_known_outside_scope_records_require_exact_source_version_and_city_boundary(): void
+    {
+        if (! ($file = getenv('A8_OFFICIAL_STOPS_FILE'))) {
+            $this->markTestSkipped('Explicit official CSV fixture required.');
+        }
+        $boundary = base_path('data/raw/boundaries/krasnoyarsk/2026-10-07/boundary.geojson');
+        $result = app(OfficialStopsImporter::class)->import($file, $boundary, ['buffer_m' => 1000, 'source_version' => '20250531T1612']);
+        $id = $result['import_id'];
+        $snapshot = DB::table('dataset_imports')->where('id', $id)->first();
+        $data = fn () => $this->response(92.855136533542, 56.011162843471)['blocks']['poi'];
+        $original = $data();
+        $this->assertSame(2, $original['data']['official_stop_summary']['excluded_outside_scope']);
+        $this->assertNotNull($original['data']['counts_by_category']['official_stop']);
+        foreach ([['checksum_sha256' => str_repeat('0', 64)], ['source_version' => 'next-version'], ['configuration' => '{}']] as $foreign) {
+            DB::table('dataset_imports')->where('id', $id)->update($foreign);
+            $poi = $data();
+            $this->assertSame(0, $poi['data']['official_stop_summary']['excluded_outside_scope']);
+            $this->assertNull($poi['data']['counts_by_category']['official_stop']);
+            $this->assertSame('PARTIAL', $poi['completeness']['by_category']['official_stop']['status']);
+            DB::table('dataset_imports')->where('id', $id)->update(array_intersect_key((array) $snapshot, $foreign));
+        }
+        $report = json_decode($snapshot->result, true);
+        $report['invalid_coordinates'][] = 'unknown-new-record';
+        DB::table('dataset_imports')->where('id', $id)->update(['result' => json_encode($report)]);
+        $poi = $data();
+        $this->assertSame(['found_count' => $original['data']['official_stop_summary']['found_count'], 'source_without_coordinates' => 3, 'excluded_outside_scope' => 2], $poi['data']['official_stop_summary']);
+        $this->assertNull($poi['data']['counts_by_category']['official_stop']);
+        $this->assertSame('PARTIAL', $poi['completeness']['by_category']['official_stop']['status']);
     }
 
     public function test_error_is_not_a_zero_and_does_not_echo_private_exception(): void
@@ -168,11 +198,11 @@ class OfficialStopPoiTest extends PostgisTestCase
             $response = $this->postJson('/api/v1/place-analysis', $request)->assertOk()->json();
             $poi = $response['blocks']['poi'];
             $stops = array_values(array_filter($poi['data']['items'], fn ($i) => $i['category'] === 'official_stop'));
-            $this->assertSame(['found_count' => count($stops), 'source_without_coordinates' => 2], $poi['data']['official_stop_summary']);
+            $this->assertSame(['found_count' => count($stops), 'source_without_coordinates' => 2, 'excluded_outside_scope' => 2], $poi['data']['official_stop_summary']);
             $this->assertContains('official-stop:3965', array_column($stops, 'id'));
             $this->assertContains('official-stop:3966', array_column($stops, 'id'));
-            $this->assertSame('PARTIAL', $poi['completeness']['by_category']['official_stop']['status']);
-            $this->assertNull($poi['data']['counts_by_category']['official_stop']);
+            $this->assertSame('UNKNOWN', $poi['completeness']['by_category']['official_stop']['status']);
+            $this->assertSame(count($stops), $poi['data']['counts_by_category']['official_stop']);
             if ($radius === 1000) {
                 $this->assertSame($base, array_values(array_filter($poi['data']['items'], fn ($i) => $i['category'] !== 'official_stop')));
             }

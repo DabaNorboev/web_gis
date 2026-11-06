@@ -44,7 +44,7 @@ export interface AnalysisPoi {
     access: string | null; source: string; dataset_import_id: number | null
     observed_at: string | null; source_updated_at: string | null
 }
-export interface PoiData { official_stop_summary?: { found_count: number | null; source_without_coordinates: number | null }; items: AnalysisPoi[]; count: number | null; counts_by_category: Record<PoiCategory, number | null> }
+export interface PoiData { official_stop_summary?: { found_count: number | null; source_without_coordinates: number | null; excluded_outside_scope?: number }; items: AnalysisPoi[]; count: number | null; counts_by_category: Record<PoiCategory, number | null> }
 export interface SatelliteData {
     available_dates: { date: string; scene_id: string; cloud_cover_percent: number | null }[]
     // Scene/assets are supplied by A10. The current screen does not render unchecked raster assets.

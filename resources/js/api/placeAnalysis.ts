@@ -77,6 +77,9 @@ function block(v: any, key: AnalysisBlockKey): boolean {
             && (d.official_stop_summary.found_count === null || integer(d.official_stop_summary.found_count, 0)
                 && d.official_stop_summary.found_count >= d.items.filter((p: any) => p.category === 'official_stop').length)
             && (d.official_stop_summary.source_without_coordinates === null || integer(d.official_stop_summary.source_without_coordinates, 0))
+            && (d.official_stop_summary.excluded_outside_scope === undefined || integer(d.official_stop_summary.excluded_outside_scope, 0)
+                && integer(d.official_stop_summary.source_without_coordinates, 0)
+                && d.official_stop_summary.excluded_outside_scope <= d.official_stop_summary.source_without_coordinates)
             && (v.availability_by_category?.official_stop?.status !== 'READY' ? d.official_stop_summary.found_count === null : true))
         && typeof v.method_version === 'string' && v.method_version.length > 0 && record(d.counts_by_category)
         && categories.every(c => {

@@ -34,7 +34,15 @@ class OfficialStopPoiProvider
             }
             $report = json_decode($snapshot->result ?? '{}', true);
             $invalid = $report['invalid_coordinates'] ?? null;
-            $partial = is_array($invalid) && $invalid !== [];
+            // Owner-approved scope exclusions from the pinned official CSV:
+            // 2219 Kara-Bellyk / 2220 Bellyk, Krasnoturansky district, outside city analysis.
+            // Match both source identity and city boundary; never reuse IDs for a new input.
+            $configuration = json_decode($snapshot->configuration ?? '{}', true);
+            $knownScope = $snapshot->checksum_sha256 === '7ef6db18c365078c9db8e8b5fdeffb7e654e9249012d8aa35d6d6e2900a12e2c'
+                && $snapshot->source_version === '20250531T1612'
+                && ($configuration['boundary_sha256'] ?? null) === '0a631518e68855b2eba44a72429b9a11fa95e0de075c013f523eafa4b84ef5f8';
+            $excluded = $knownScope && is_array($invalid) ? count(array_intersect($invalid, ['2219', '2220'])) : 0;
+            $partial = is_array($invalid) && count($invalid) > $excluded;
             $reason = self::LIMITATIONS;
             if ($partial) {
                 $reason .= ' В исходном наборе есть записи без координат; полный итог неизвестен.';
@@ -67,7 +75,7 @@ class OfficialStopPoiProvider
 
             return ['status' => 'READY', 'code' => null, 'coverage' => ['by_category' => ['official_stop' => $coverage]],
                 'completeness' => ['by_category' => ['official_stop' => ['status' => $partial ? 'PARTIAL' : 'UNKNOWN', 'reason' => $reason]]],
-                'data' => ['official_stop_summary' => ['found_count' => $foundCount, 'source_without_coordinates' => is_array($invalid) ? count($invalid) : null], 'items' => $items, 'counts_by_category' => ['official_stop' => $coverage['status'] === 'COVERED' && ! $partial ? count($items) : null]]];
+                'data' => ['official_stop_summary' => ['found_count' => $foundCount, 'source_without_coordinates' => is_array($invalid) ? count($invalid) : null, 'excluded_outside_scope' => $excluded], 'items' => $items, 'counts_by_category' => ['official_stop' => $coverage['status'] === 'COVERED' && ! $partial ? count($items) : null]]];
         });
     }
 

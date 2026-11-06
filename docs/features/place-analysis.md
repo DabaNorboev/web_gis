@@ -149,7 +149,7 @@ Backend/API А7 реализован: POST `/api/v1/place-analysis`, явный 
 - `availability_by_category` — необязательное поле; retail-provider возвращает `{status: READY|UNAVAILABLE|ERROR, code: null|string, message: string}` для всех категорий. TS валидирует, UI показывает ошибки. [Правила](../data/osm-pharmacy.md).
 - `data.items` — найденные элементы; при `PARTIAL` это неполный список.
 - `data.count` — число возвращённых элементов; `null`, если хотя бы одна категория имеет `coverage != COVERED` или `completeness == PARTIAL`. `counts_by_category` считается независимо: такая категория даёт `null`, покрытая — число. `UNKNOWN` полнота не обнуляет счёт используемого набора, но не превращает 0 в отсутствие объектов.
-- `data.official_stop_summary` — необязательные `found_count` и `source_without_coordinates` (целые ≥0 или null): найденные точки круга и негеокодированные записи всего источника; не полный итог и не длина страницы. [Подпись и ошибки](../data/transport-import.md#подпись-найденного-количества).
+- `data.official_stop_summary` — `found_count`, `source_without_coordinates` (≥0|null) и `excluded_outside_scope?` (≥0, не больше source_without_coordinates): отбор круга, исходные и исключённые негеокодированные записи. [Семантика](../data/transport-import.md#подпись-найденного-количества).
 - `count: 0` при `COVERED` — «в используемом наборе найдено 0»; при `UNKNOWN` полноте это не «объектов нет».
 - Отсутствие/отказ источника даёт категории UNKNOWN/count=null, сохраняя остальные. Без готовых категорий блок `ERROR` при ошибке, иначе `UNAVAILABLE / POI_SNAPSHOTS_UNAVAILABLE`. Другие блоки независимы.
 - Площади, доли круга и рейтинг здесь не возвращаются. Парк/сквер не равен растительной территории.

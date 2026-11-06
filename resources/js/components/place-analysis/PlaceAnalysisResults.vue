@@ -41,6 +41,8 @@ const items = computed<AnalysisPoi[]>(() => poi.value?.status === 'READY' ? poi.
 const visibleCategories = computed(() => props.category === 'all' ? Object.keys(categories) as PoiCategory[] : [props.category])
 const distanceFormat = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 })
 const stopSummary = computed(() => poi.value?.status === 'READY' ? poi.value.data.official_stop_summary : undefined)
+const unlocatedStops = computed(() => Math.max(0, (stopSummary.value?.source_without_coordinates ?? 0) - (stopSummary.value?.excluded_outside_scope ?? 0)))
+const unlocatedWord = computed(() => { const plural = new Intl.PluralRules('ru').select(unlocatedStops.value); return plural === 'one' ? 'запись' : plural === 'few' ? 'записи' : 'записей' })
 function categoryCount(category: PoiCategory) {
     if (category === 'official_stop') return stopSummary.value?.found_count ?? '—'
     return poi.value?.status === 'READY' ? poi.value.data.counts_by_category[category] ?? '—' : '—'
@@ -143,7 +145,7 @@ function toggleStation(id: string) {
         </div>
         <template v-for="categoryKey in visibleCategories" :key="categoryKey">
             <p v-if="poi.availability_by_category?.[categoryKey]?.status !== undefined && poi.availability_by_category[categoryKey].status !== 'READY'" class="pa-note" role="status">{{ categories[categoryKey] }}: {{ poi.availability_by_category[categoryKey].status === 'ERROR' ? 'Ошибка категории' : 'Категория недоступна' }}: {{ poi.availability_by_category[categoryKey].message }}</p>
-            <p v-if="categoryKey === 'official_stop' && stopSummary?.source_without_coordinates" class="pa-note pa-stop-unlocated">В исходном наборе {{ stopSummary.source_without_coordinates }} записи без координат. Неизвестно, относятся ли они к этой окрестности</p>
+            <p v-if="categoryKey === 'official_stop' && unlocatedStops" class="pa-note pa-stop-unlocated">В исходном наборе {{ unlocatedStops }} {{ unlocatedWord }} без координат. Неизвестно, относятся ли они к этой окрестности</p>
         </template>
         <ul class="pa-objects">
             <li v-for="(item, index) in items" :key="item.id" :data-poi-id="item.id">
