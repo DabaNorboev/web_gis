@@ -11,8 +11,7 @@ replaces: local-routing-integration-2026-10-21.md
 
 ## Ограничения ресурсов и изоляция
 
-`docker-compose.routing.yml` дополняет основной Compose: пятый, только
-опциональный сервис `local-router`. Он не требует изменения `.env`.
+Единый `docker-compose.yml` содержит опциональный `local-router` под профилем `routing`. Он не требует изменения `.env`.
 Router подключён только к сети `routing` с `internal:true`, портов хоста нет;
 из приложения к нему обращается PHP по фиксированному hostname. Корневая ФС,
 данные и startup script read-only, capabilities сняты, no-new-privileges.
@@ -62,7 +61,7 @@ SHA `graph.sha256`: `6b4b314f72190f18c85ad9950bf8a9ba4dc57ad19688997147a8610c0a3
 При наличии проверенного локального снимка:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.routing.yml up -d --no-build --wait --wait-timeout 30 php local-router
+docker compose --profile routing up -d --no-build --wait --wait-timeout 30 php local-router
 ```
 
 Открыть `/trips`. Если router выключен или снимок отсутствует/изменён, страница

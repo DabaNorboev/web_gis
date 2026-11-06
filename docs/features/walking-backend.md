@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-11-04
+updated: 2026-11-05
 verified: not verified
 ---
 
@@ -139,7 +139,7 @@ Manifest SHA-256:
 проверяет graph list, все файлы графа, конфигурацию и исходный extract.
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.routing.yml -f docker-compose.walking.yml up -d --no-build --wait --wait-timeout 120 php local-router local-walking
+docker compose --profile routing --profile walking up -d --no-build --wait --wait-timeout 120 php local-router local-walking
 ```
 
 Команда запускает подготовленный контур и может поднять обычную db по зависимости

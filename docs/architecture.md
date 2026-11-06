@@ -64,9 +64,9 @@ MapLibre: подложка + геометрии ответа
 
 Базовые сервисы: nginx, php, node, db; точные версии/сети — в Compose/Dockerfile. Nginx 80, Vite 5173, PostGIS 54325 опубликованы на loopback. PHP обращается к `db:5432`; Node-зависимости контейнера находятся в named volume.
 
-Автомобильный пилот добавляет `local-router` через `docker-compose.routing.yml`. Существующий относительный симлинк `docker-compose.override.yml` подключает его к обычному Compose. У OSRM нет опубликованного порта; сеть routing внутренняя, snapshot монтируется read-only. Команды для нового и подготовленного окружения различаются — [README](../README.md).
+Единый `docker-compose.yml` запускает Node/Vite автоматически, Nginx ждёт его healthcheck. Автомобильный `local-router` включается профилем `routing` того же файла. У OSRM нет опубликованного порта; сеть routing внутренняя, snapshot монтируется read-only. Команды для нового и подготовленного окружения различаются — [README](../README.md).
 
-Пеший backend добавляет `local-walking` отдельным `docker-compose.walking.yml`.
+Пеший `local-walking` включается профилем `walking` того же Compose-файла.
 Его неизменяемый снимок монтируется read-only; проверенный граф копируется в
 tmpfs для служебного lock GraphHopper. Исходный граф не переписывается. У ORS
 нет опубликованных портов/внешней сети, logging отключён. Контракт и выпуск —

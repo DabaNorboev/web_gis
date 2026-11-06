@@ -10,4 +10,4 @@
 
 ## Как запустить
 
-Нужны Docker и Compose v2. Подготовка нового окружения и работа с существующим описаны в [локальном runbook](docs/runbook-local.md). Приложение открывается через [localhost](http://localhost).
+Для подготовленного окружения достаточно `docker compose up -d`: Vite запускается автоматически. Все сервисы описаны в одном `docker-compose.yml`, OSRM/ORS включаются опциональными профилями. Нужны Docker и Compose v2. Подготовка нового окружения и работа с существующим описаны в [локальном runbook](docs/runbook-local.md). Приложение открывается через [localhost](http://localhost).

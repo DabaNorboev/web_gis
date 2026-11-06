@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-11-04
+updated: 2026-11-06
 verified: not verified
 ---
 
@@ -14,7 +14,7 @@ verified: not verified
 
 PHP 8.4 / Laravel 13, PostgreSQL 16 / PostGIS 3.4, Vue 3 / TypeScript 6, Vite, MapLibre, Tailwind CSS 4 и shadcn-vue. Python ETL — одноразовая офлайн-подготовка, без постоянного сервиса. Точные зависимости — manifests/lock, версии контейнеров — Compose/Dockerfile; установленный пакет не означает реализованную функцию.
 
-Базовые четыре сервиса: nginx, php, node, db. Nginx 80, Vite 5173 и БД 54325 опубликованы только на loopback. PHP использует `db:5432`; для IDE — `127.0.0.1:54325`, учётные данные из локального `.env`. Node-зависимости контейнера хранятся в named volume.
+Базовые четыре сервиса: nginx, php, node, db. Nginx 80, Vite 5173 и БД 54325 опубликованы только на loopback. PHP использует `db:5432`; для IDE — `127.0.0.1:54325`, учётные данные из локального `.env`. Node-зависимости контейнера хранятся в named volume. Единственный Compose-файл — `docker-compose.yml`; Node сам запускает Vite от пользователя node, Nginx ждёт готовности dev-assets.
 
 ## Первый запуск нового окружения
 
@@ -24,20 +24,16 @@ PHP 8.4 / Laravel 13, PostgreSQL 16 / PostGIS 3.4, Vue 3 / TypeScript 6, Vite, M
 test -f .env || cp .env.example .env
 ```
 
-Настроить параметры БД в локальном `.env`; на Linux при необходимости LOCAL_UID/LOCAL_GID по `id -u`/`id -g`. Новый checkout не содержит подготовленного графа OSRM, поэтому сначала использовать только базовый compose:
+Настроить параметры БД в локальном `.env`; на Linux при необходимости LOCAL_UID/LOCAL_GID по `id -u`/`id -g`. Зависимости нового checkout устанавливаются один раз до обычного запуска:
 
 ```bash
-docker compose -f docker-compose.yml up -d --build
-docker compose exec php composer install
+docker compose build
+docker compose run --rm --no-deps php composer install
+docker compose run --rm --no-deps --user node node npm ci
+docker compose up -d
 ```
 
-Только если APP_KEY пустой — `docker compose exec php php artisan key:generate`. Для новой БД применить миграции, затем установить/собрать frontend от пользователя node:
-
-```bash
-docker compose exec php php artisan migrate
-docker compose exec --user node node npm ci
-docker compose exec --user node node npm run build
-```
+Только если APP_KEY пустой — `docker compose exec php php artisan key:generate`. Только для новой БД — `docker compose exec php php artisan migrate`. Автоматических миграций/импортов или переустановки зависимостей при обычном старте нет. После изменения package-lock зависимости обновляются отдельно; сборка production-assets не требуется для dev-режима.
 
 Миграции и установка меняют окружение; это не диагностические команды для уже работающего экземпляра. Без локального импорта профиль/поиск не получают выдуманных данных: подготовка наборов описана в [runbooks](data/README.md).
 
@@ -45,34 +41,31 @@ docker compose exec --user node node npm run build
 
 ## Разработка и автомобильный пилот
 
-В существующем окружении с готовым routing runtime обычный Compose автоматически читает относительный симлинк `docker-compose.override.yml` → `docker-compose.routing.yml`:
+Для подготовленного окружения достаточно одной команды:
 
 ```bash
 docker compose up -d
-docker compose exec --user node node npm run dev
 ```
 
-Vite работает в отдельном терминале, без `--host`; приложение открывается через Nginx. Обычный запуск сохраняет общую routing-сеть PHP/OSRM. Router не имеет опубликованного порта и использует закреплённый локальный выпуск read-only.
+Vite запускается как основной процесс Node-сервиса, без отдельного терминала и без `--host`. Порт 5173 фиксирован (`--strictPort`), готовность проверяется HTTP-healthcheck. Повторный `up -d` не запускает второй Vite. Логи: `docker compose logs -f node`. Изменения кода доступны через [localhost](http://localhost); `public/build` не перезаписывается.
 
-Для намеренного запуска базового контура: `docker compose -f docker-compose.yml up -d`. Он исключает routing-сеть PHP; расчёт поездок будет недоступен до запуска с override, локальное окружение/остановки сохраняют свой сценарий. Менять `.env` или COMPOSE_FILE для выбора режима не нужно.
-
-[Поездки и ограничения](features/trips.md) · [Подготовка runtime и запуск](data/local-routing.md). Не создавать runtime автоматически из HTTP и не удалять связанные отчёты/источники подготовки.
-
-Пеший режим `/trips` и `/compare` имеет отдельный закреплённый ORS runtime.
-Он считает только уличную часть; подходы от объектов остаются неизвестными.
-При наличии проверенного пешего снимка
-добавить opt-in override явно:
+Основной анализ использует четыре базовых сервиса и не требует routing-графов. Автомобильный OSRM сохранён в том же файле под профилем `routing`:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.routing.yml -f docker-compose.walking.yml up -d --no-build --wait --wait-timeout 120 php local-router local-walking
+docker compose --profile routing up -d
 ```
 
-Эта команда может запустить обычный db по зависимости PHP; это команда запуска
-подготовленного окружения, не read-only проверка. Базовый Compose и существующий
-override-симлинк не изменены. Внешний ORS API и ключ не используются. Подготовка
-снимка, контракт `walking`, пределы и свежие проверки — [пеший backend](features/walking-backend.md).
+Router не имеет опубликованного порта; внутренняя сеть, read-only snapshot, лимиты и guards сохранены. Перед включением требуется подготовленный проверенный набор по [runbook OSRM](data/local-routing.md). Обычный старт не удаляет и не останавливает ранее включённые опциональные контейнеры.
 
-Интерактивные оболочки при необходимости: `docker compose exec php bash`, `docker compose exec --user node node bash`. UI-компоненты добавляются только в node: [frontend conventions](frontend-structure.md).
+## Пеший пилот (opt-in)
+
+ORS сохранён в едином файле под профилем `walking`. После отдельной подготовки/проверки снимка оба режима включаются так:
+
+```bash
+docker compose --profile routing --profile walking up -d --no-build --wait --wait-timeout 120
+```
+
+Профили не импортируют и не строят графы автоматически. Неизменяемый ORS snapshot, tmpfs для lock, ограничения ресурсов/сети и отключённое журналирование сохранены. Внешний ORS и ключ не используются. Подготовка и ограничения — [walking-backend](features/walking-backend.md). Дополнительные Compose YAML и override-симлинк больше не нужны; `.env` для выбора режима не изменяется.
 
 ## Проверки
 
