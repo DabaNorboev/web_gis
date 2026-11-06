@@ -15,7 +15,10 @@ import { usePlaceAnalysis } from '@/composables/usePlaceAnalysis'
 import { searchAddresses } from '@/api/addresses'
 import type { AddressResult } from '@/types/address'
 import type { AddressMapState } from '@/utils/addressMap'
-import type { AnalysisBlockKey, PlaceAnalysisInput, PlaceAnalysisResponse } from '@/types/placeAnalysis'
+import type {
+    AnalysisBlockKey, PlaceAnalysisInput, PlaceAnalysisResponse, SatelliteData, SatelliteRasterSource,
+} from '@/types/placeAnalysis'
+import { satelliteLayerLabel } from '@/utils/satellite'
 import '../../css/place-analysis.css'
 
 const analysis = usePlaceAnalysis()
@@ -36,6 +39,15 @@ let searchController: AbortController | null = null
 let searchEpoch = 0
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 const realPoi = computed(() => analysis.blocks.poi.response?.blocks.poi)
+const satelliteCatalog = shallowRef<SatelliteData | null>(null)
+const satelliteData = computed<SatelliteData | null>(() => {
+    const block = analysis.blocks.satellite.response?.blocks.satellite
+    return block?.status === 'READY' ? block.data : null
+})
+const satelliteSelected = computed(() => satelliteData.value?.selected ?? null)
+const satelliteLayers = computed<Partial<Record<'true-color' | 'ndvi', SatelliteRasterSource>> | null>(() => satelliteSelected.value?.layers ?? null)
+const satelliteCatalogData = computed(() => satelliteData.value ?? satelliteCatalog.value)
+const satelliteLegend = computed(() => satelliteCatalogData.value?.legend ?? null)
 const realStations = computed(() => {
     const block = analysis.blocks.air.response?.blocks.air
     return block?.status === 'READY' ? block.data.stations.map((s, i) => ({ ...s, number: i + 1, distance_km: s.distance_m / 1000 })) : []
@@ -69,6 +81,13 @@ function setStationRadius(value: number) {
     stationRadius.value = Number.isInteger(value) ? Math.max(1000, Math.min(20000, value)) : 5000
 }
 function loadBlock(key: AnalysisBlockKey) { syncInput(); void analysis.load(key) }
+function chooseSatelliteDate(value: string) {
+    if (value !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return
+    if (realDate.value === value) return
+    // The watcher on realDate updates the request synchronously; only satellite is invalidated/loaded.
+    realDate.value = value
+    if (analysis.input.value) void analysis.load('satellite')
+}
 
 
 const tabOrder: AnalysisTab[] = ['overview', 'objects', 'satellite', 'air']
@@ -93,7 +112,7 @@ const selectedPoiId = ref<string | null>(null)
 const selectedStationId = ref<string | null>(null)
 const stationFocusRequest = ref(0)
 const satelliteMode = ref<SatelliteMode>('ndvi')
-const satelliteOpacity = ref(0.35)
+const satelliteOpacity = ref(0.7)
 const showObjects = ref(true)
 const showSatellite = ref(true)
 const showStations = ref(true)
@@ -120,7 +139,7 @@ const layerIcons: Record<AnalysisLayer, Component> = {
 }
 function layerLabel(key: AnalysisLayer) {
     if (key === 'objects') return 'Объекты (POI)'
-    if (key === 'satellite') return mapSatelliteMode.value === 'ndvi' ? 'NDVI (Sentinel-2)' : 'Спутниковый снимок'
+    if (key === 'satellite') return satelliteLayerLabel(mapSatelliteMode.value, satelliteData.value)
     if (key === 'stations') return 'Станции мониторинга'
     return `Радиус анализа (${radius.value} м)`
 }
@@ -157,12 +176,14 @@ function selectPreviewAddress(id: string) {
 watch(filteredAddresses, () => { activeSuggestion.value = -1; hoveredAddressId.value = null })
 watch(realMapPois, () => { selectedPoiId.value = null })
 watch(analysis.map, value => { if (value) displayedGeometry.value = value }, { flush: 'sync' })
-watch(place, () => { displayedGeometry.value = null }, { flush: 'sync' })
+watch(satelliteData, value => { if (value) satelliteCatalog.value = value }, { flush: 'sync' })
+watch(place, () => { displayedGeometry.value = null; satelliteCatalog.value = null }, { flush: 'sync' })
 watch(() => Object.values(analysis.blocks).some(block => block.error?.code === 'ADDRESS_POINT_CHANGED'), changed => {
     if (changed) displayedGeometry.value = null
 }, { flush: 'sync' })
 watch([place, radius, realDate, stationRadius, selectedStationIds, hasSelection], syncInput, { deep: true, flush: 'sync' })
 watch(radius, () => {
+    satelliteCatalog.value = null
     if (radiusTimer) clearTimeout(radiusTimer)
     if (hasSelection.value) radiusTimer = setTimeout(() => {
         radiusTimer = null
@@ -198,7 +219,7 @@ watch(addressQuery, query => {
     }, 300)
 })
 watch(showObjects, value => { if (!value) selectedPoiId.value = null })
-const mapSatelliteMode = computed<SatelliteMode>(() => activeTab.value === 'overview' ? 'snapshot' : satelliteMode.value)
+const mapSatelliteMode = computed<SatelliteMode>(() => satelliteMode.value)
 const mapShowObjects = computed(() => showObjects.value)
 const mapShowStations = computed(() => showStations.value)
 const mapCategoryFilter = computed<PoiCategory | null>(() => activeTab.value === 'objects' && activeCategory.value !== 'all' ? activeCategory.value : null)
@@ -467,9 +488,11 @@ onBeforeUnmount(() => {
 
                 <div :id="`pa-panel-${activeTab}`" class="pa-panel__scroll" role="tabpanel" :aria-labelledby="`pa-tab-${activeTab}`">
                     <PlaceAnalysisResults :tab="activeTab" :blocks="analysis.blocks" :selected-poi="selectedPoiId" :category="activeCategory"
-                        :can-load="!!analysis.input.value" :date="realDate" :station-radius="stationRadius" :selected-ids="selectedStationIds"
+                        :can-load="!!analysis.input.value" :date="realDate" :satellite-mode="satelliteMode" :satellite-catalog="satelliteCatalog"
+                        :station-radius="stationRadius" :selected-ids="selectedStationIds"
                         @load="loadBlock" @open="openAnalysisTab" @poi="selectPoi" @category="selectCategory" @station="selectStation"
-                        @date="realDate = $event" @station-radius="setStationRadius" @station-selection="selectedStationIds = $event" />
+                        @date="chooseSatelliteDate" @satellite-mode="satelliteMode = $event"
+                        @station-radius="setStationRadius" @station-selection="selectedStationIds = $event" />
                 </div>
             </aside>
 
@@ -497,6 +520,7 @@ onBeforeUnmount(() => {
                     :layer-order="layerOrder"
                     :satellite-mode="mapSatelliteMode"
                     :satellite-opacity="satelliteOpacity"
+                    :satellite-layers="satelliteLayers"
                     :category-filter="mapCategoryFilter"
                     :selected-poi="selectedPoiId"
                     :selected-station="selectedStationId"
@@ -507,6 +531,7 @@ onBeforeUnmount(() => {
                     @cancel-pick="cancelPick"
                     @select-poi="selectPoiFromMap"
                     @select-station="selectStation"
+                    @retry-satellite="loadBlock('satellite')"
                 />
 
                 <div v-if="pendingPoint" class="pa-point-card" role="dialog" aria-label="Выбранная точка" @keydown.esc="cancelPoint">
@@ -584,8 +609,8 @@ onBeforeUnmount(() => {
                             <span>Базовая карта</span>
                         </div>
                         <label v-if="showSatellite" class="pa-opacity">
-                            <span>Прозрачность:</span>
-                            <input v-model.number="satelliteOpacity" type="range" min="0" max="1" step="0.05" aria-label="Прозрачность спутникового слоя">
+                            <span>Непрозрачность:</span>
+                            <input v-model.number="satelliteOpacity" type="range" min="0" max="1" step="0.05" aria-label="Непрозрачность спутникового слоя" title="0% — слой невидим, 100% — полностью непрозрачен">
                             <output>{{ Math.round(satelliteOpacity * 100) }}%</output>
                         </label>
 
@@ -593,6 +618,22 @@ onBeforeUnmount(() => {
                             <strong class="pa-legend__title">Условные обозначения</strong>
                             <div class="pa-legend__row"><RadioTower class="pa-legend__icon" :size="14" aria-hidden="true" /> Станция мониторинга</div>
                             <div class="pa-legend__row"><CircleDashed class="pa-legend__icon" :size="14" aria-hidden="true" /> Радиус анализа ({{ radius }} м)</div>
+                        </div>
+                        <div v-else-if="activeTab === 'satellite'" class="pa-legend">
+                            <strong class="pa-legend__title">Легенда {{ satelliteMode === 'ndvi' ? 'NDVI' : 'снимка' }}</strong>
+                            <template v-if="satelliteMode === 'ndvi' && satelliteLegend">
+                                <div v-for="legendClass in satelliteLegend.classes" :key="legendClass.label" class="pa-legend__row">
+                                    <span class="pa-legend__swatch" :style="{ background: legendClass.color }" aria-hidden="true" />
+                                    {{ legendClass.label }}
+                                </div>
+                                <div class="pa-legend__row">
+                                    <span class="pa-legend__swatch pa-legend__swatch--unknown" aria-hidden="true" />
+                                    {{ satelliteLegend.unknown.label }}
+                                </div>
+                                <p class="pa-legend__note">Неизвестное прозрачно и не считается низким NDVI. Легенда общая для всех дат; индекс не равен проценту растительности.</p>
+                            </template>
+                            <p v-else-if="satelliteMode === 'snapshot'" class="pa-legend__note">Исходное цветное изображение Sentinel-2. Это не количественные данные NDVI.</p>
+                            <p v-else class="pa-legend__note">Загрузите каталог и дату, чтобы получить общую легенду NDVI.</p>
                         </div>
                         <div v-else class="pa-legend">
                             <strong class="pa-legend__title">Категории</strong>

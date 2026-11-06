@@ -45,10 +45,74 @@ export interface AnalysisPoi {
     observed_at: string | null; source_updated_at: string | null
 }
 export interface PoiData { official_stop_summary?: { found_count: number | null; source_without_coordinates: number | null; excluded_outside_scope?: number }; items: AnalysisPoi[]; count: number | null; counts_by_category: Record<PoiCategory, number | null> }
+export interface SatelliteScene {
+    scene_id: string; product_uri: string; tile: string; platform: string; baseline: string; datatake: string
+    acquired_at_catalog: string; acquired_at_granule: string
+}
+export interface SatelliteWarning { code: string; message: string }
+export interface SatelliteReleaseRef {
+    date: string; release_id: string; manifest_sha256: string
+    scenes: SatelliteScene[]; warnings: SatelliteWarning[]; limitations: string[]
+}
+export interface SatelliteCoverage {
+    circle_pixels: number; source_footprint_pixels: number; prepared_pixels: number
+    outside_rectangle_pixels: number; inside_rectangle_outside_target_pixels: number
+    geographic_pixels: number; usable_pixels: number
+    source_footprint_fraction: number; prepared_fraction: number; geographic_fraction: number; usable_fraction: number
+    reason_counts: Record<string, number>; source_pixels: Record<string, number>
+    scope: string
+}
+export interface SatelliteRelease extends SatelliteReleaseRef {
+    status: 'READY' | 'UNAVAILABLE'
+    reason: string | null
+    coverage: SatelliteCoverage | null
+    mean_ndvi: number | null
+    mean_ndvi_reason: string | null
+}
+export interface SatelliteLegendClass { min: number; max: number; color: string; label: string }
+export interface SatelliteLegend {
+    version: string; units: string; intervals: string
+    unknown: { color: string; label: string }
+    classes: SatelliteLegendClass[]
+}
+export type SatelliteLayerKey = 'true-color' | 'ndvi'
+export interface SatelliteRasterSource {
+    type: 'raster'
+    tiles: string[]
+    bounds: [number, number, number, number]
+    tileSize: number
+    minzoom: number
+    maxzoom: number
+    scheme: 'xyz'
+    attribution: string
+}
+export interface SatelliteSelected {
+    date: string | null
+    status: 'READY' | 'UNAVAILABLE'
+    reason: string | null
+    coverage: SatelliteCoverage | null
+    mean_ndvi: number | null
+    mean_ndvi_reason: string | null
+    layers: Partial<Record<SatelliteLayerKey, SatelliteRasterSource>> | null
+    release_id?: string
+    manifest_sha256?: string
+    scenes?: SatelliteScene[]
+    warnings?: SatelliteWarning[]
+    limitations?: string[]
+}
 export interface SatelliteData {
-    available_dates: { date: string; scene_id: string; cloud_cover_percent: number | null }[]
-    // Scene/assets are supplied by A10. The current screen does not render unchecked raster assets.
-    selected: { status: 'READY' | 'UNAVAILABLE' | 'ERROR'; code?: string | null; message?: string | null } | null
+    status: 'READY'
+    reason: null
+    catalog_sha256: string
+    source_index_sha256: string
+    method_version: string
+    mask_version: string
+    legend_version: string
+    available_dates: SatelliteReleaseRef[]
+    releases: SatelliteRelease[]
+    delivery_status: 'READY' | 'UNAVAILABLE'
+    legend: SatelliteLegend
+    selected: SatelliteSelected
 }
 export interface AnalysisStation extends AnalysisPoint {
     id: string; name: string; source: string; dataset_import_id: number; distance_m: number

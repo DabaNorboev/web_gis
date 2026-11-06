@@ -19,8 +19,15 @@ services:
             args:
                 UID: ${LOCAL_UID:-1000}
                 GID: ${LOCAL_GID:-1000}
+        environment:
+            SATELLITE_RUNTIME: /var/www/html/data/satellite/runtime/krasnoyarsk-2024-2026-a10-1-v1
+            SATELLITE_RUNTIME_SHA256: 14c4c26cd9c057cd9e17cdc9182b9f2ae15a5a5881d4bd0e951b6760d750cd6b
+            SATELLITE_DELIVERY: /var/www/html/data/satellite/delivery/krasnoyarsk-2024-2026-a10-2-v3
+            SATELLITE_DELIVERY_SHA256: 922260c3b4771023a9ae6d78cd54b9ab0b402f0a60548f3b8401cd904a105b1d
         volumes:
             - .:/var/www/html
+            - ./data/satellite/runtime/krasnoyarsk-2024-2026-a10-1-v1:/var/www/html/data/satellite/runtime/krasnoyarsk-2024-2026-a10-1-v1:ro
+            - ./data/satellite/delivery/krasnoyarsk-2024-2026-a10-2-v3:/var/www/html/data/satellite/delivery/krasnoyarsk-2024-2026-a10-2-v3:ro
         depends_on:
             db:
                 condition: service_healthy

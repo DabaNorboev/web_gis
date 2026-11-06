@@ -16,6 +16,16 @@ PHP 8.4 / Laravel 13, PostgreSQL 16 / PostGIS 3.4, Vue 3 / TypeScript 6, Vite, M
 
 Базовые четыре сервиса: nginx, php, node, db. Nginx 80, Vite 5173 и БД 54325 опубликованы только на loopback. PHP использует `db:5432`; для IDE — `127.0.0.1:54325`, учётные данные из локального `.env`. Node-зависимости контейнера хранятся в named volume. Единственный Compose-файл — `docker-compose.yml`; Node сам запускает Vite от пользователя node, Nginx ждёт готовности dev-assets.
 
+## Локальные спутники: рабочая активация
+
+06.11.2026 А10.2 + И2 включены на [localhost](http://localhost): PHP читает pinned runtime А10.1 и доставку `krasnoyarsk-2024-2026-a10-2-v3` через read-only submounts; четыре `SATELLITE_*` заданы адресно в Compose, `.env` сохранён. Pins и совместимость шести выпусков/легенды сверены с принятым А10.2. [Правила подготовки и доверия](data/satellite.md#доставка-и-активация-а102).
+
+`public/build` содержит актуальную production-сборку; прежний `public/hot` сохранён вне public, поэтому Laravel выбирает manifest. Vite остаётся запущен: его перезапуск может снова создать hot и переключить assets в dev-режим. Чтобы продолжать проверять production, сохранить вновь созданный hot вне public и проверить HTML на `/build/assets/`. Не отключать Node/БД и не пересоздавать другие сервисы ради активации.
+
+Применение адресного изменения Compose: `docker compose up -d --no-deps --no-build php`, затем `docker compose exec -T php php artisan config:clear`. После замены PHP или Nginx location проверить `docker compose exec -T nginx nginx -t` и выполнить `docker compose exec -T nginx nginx -s reload`. Location satellite сохраняет application Cache-Control/Content-Type и отдаёт единственный no-referrer; access/error logging privacy не ослаблены.
+
+Резервная копия — `data/backups/satellite-local-2026-11-06-01/`, точный возврат — `RETURN.md` внутри неё. Каталог содержит конфиденциальную исходную конфигурацию, не публиковать. Фактический smoke: рабочие Nginx/FPM POST/PNG, 6 дат, круги 200/1000 м, облака/край/null, POI=9 на контрольной публичной точке, безопасные заголовки/логи; браузер 390×844 и 1280×560, реальные слои/легенда/управление/быстрые смены. Контролируемые отказы проверены отдельно в изолированном стенде. Артефакты — `data/satellite/activation/2026-11-06-01/`; это локальная активация, не публичный деплой и не приёмка всего ядра/А13.
+
 ## Первый запуск нового окружения
 
 Нужны Docker и Compose v2. Команды выполнять из корня. Этот раздел относится к новому окружению: существующие `.env`, APP_KEY и volumes не заменять.

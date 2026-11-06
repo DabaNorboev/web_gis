@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, ref, render, watch, type Component } from 'vue'
-import { BusFront, Pill, ShoppingBasket, Trees } from '@lucide/vue'
+import { BusFront, Pill, ShoppingBasket, Trees, TriangleAlert } from '@lucide/vue'
 import {
     Map as MapLibreMap,
     LngLatBounds,
@@ -25,6 +25,7 @@ import {
 } from '@/place-analysis'
 import { addressFeatures, type AddressMapState } from '@/utils/addressMap'
 import type { Feature, FeatureCollection, Polygon, MultiPolygon, Point } from 'geojson'
+import type { SatelliteLayerKey, SatelliteRasterSource } from '@/types/placeAnalysis'
 
 const props = withDefaults(defineProps<{
     addressPreview?: AddressMapState | null
@@ -45,6 +46,7 @@ const props = withDefaults(defineProps<{
     layerOrder: AnalysisLayer[]
     satelliteMode: SatelliteMode
     satelliteOpacity: number
+    satelliteLayers: Partial<Record<SatelliteLayerKey, SatelliteRasterSource>> | null
     categoryFilter: PoiCategory | null
     selectedPoi: string | null
     selectedStation: string | null
@@ -55,7 +57,7 @@ const props = withDefaults(defineProps<{
 
 const stations = computed(() => props.stations)
 
-const emit = defineEmits<{ 'select-point': [point: AnalysisPoint]; 'select-station': [id: string]; 'select-poi': [id: string]; 'cancel-pick': []; 'highlight-address': [id: string | null]; 'select-address': [id: string] }>()
+const emit = defineEmits<{ 'select-point': [point: AnalysisPoint]; 'select-station': [id: string]; 'select-poi': [id: string]; 'cancel-pick': []; 'highlight-address': [id: string | null]; 'select-address': [id: string]; 'retry-satellite': [] }>()
 const { theme } = useMapTheme()
 const categoryIcons: Record<PoiCategory, Component> = {
     grocery: ShoppingBasket, pharmacy: Pill, official_stop: BusFront, park: Trees,
@@ -76,6 +78,13 @@ let statusTimer: ReturnType<typeof setTimeout> | null = null
 let focusedStation: string | null = null
 let markerSyncBusy = false
 let markerSyncQueued = false
+let rasterSourceRef: Partial<Record<SatelliteLayerKey, SatelliteRasterSource>> | null = null
+const rasterError = ref(false)
+const rasterLayers: Record<SatelliteLayerKey, { source: string; layer: string }> = {
+    'true-color': { source: '', layer: 'pa-satellite-true-color-raster' },
+    ndvi: { source: '', layer: 'pa-satellite-ndvi-raster' },
+}
+let rasterGeneration = 0
 
 setWorkerUrl(workerUrl)
 
@@ -96,27 +105,6 @@ function radiusCoordinates(): [number, number][] {
 function analysisFeature(): Feature<Polygon> | FeatureCollection {
     return props.analysisArea
         ? { type: 'Feature', properties: {}, geometry: props.analysisArea } : { type: 'FeatureCollection', features: [] }
-}
-function emptyFeature(): FeatureCollection { return { type: 'FeatureCollection', features: [] } }
-
-function addHatchImage(instance: MapLibreMap) {
-    if (instance.hasImage('pa-unknown-hatch')) return
-    const size = 10
-    const canvas = document.createElement('canvas')
-    canvas.width = size
-    canvas.height = size
-    const context = canvas.getContext('2d')
-    if (!context) return
-    context.strokeStyle = 'rgba(62, 79, 68, .58)'
-    context.lineWidth = 1.2
-    context.beginPath()
-    context.moveTo(-size, size)
-    context.lineTo(size, -size)
-    context.moveTo(0, size * 2)
-    context.lineTo(size * 2, 0)
-    context.stroke()
-    const data = context.getImageData(0, 0, size, size)
-    instance.addImage('pa-unknown-hatch', { width: size, height: size, data: new Uint8Array(data.data) })
 }
 
 function addLayers() {
@@ -148,20 +136,6 @@ function addLayers() {
         source: 'pa-radius',
         paint: { 'line-color': '#245b45', 'line-width': 2, 'line-dasharray': [4, 3] },
     })
-    map.addSource('pa-satellite', { type: 'geojson', data: emptyFeature() })
-    map.addLayer({
-        id: 'pa-satellite-fill',
-        type: 'fill',
-        source: 'pa-satellite',
-        paint: { 'fill-color': '#4d8f52', 'fill-opacity': 0.35 },
-    })
-    map.addSource('pa-unknown', { type: 'geojson', data: emptyFeature() })
-    map.addLayer({
-        id: 'pa-unknown-hatch',
-        type: 'fill',
-        source: 'pa-unknown',
-        paint: { 'fill-pattern': 'pa-unknown-hatch', 'fill-opacity': 1 },
-    })
 }
 
 function setVisibility(id: string, visible: boolean) {
@@ -170,7 +144,7 @@ function setVisibility(id: string, visible: boolean) {
 
 const layerFillGroups: Record<AnalysisLayer, string[]> = {
     objects: ['pa-poi-fill', 'pa-poi-outline'],
-    satellite: ['pa-satellite-fill', 'pa-unknown-hatch'],
+    satellite: ['pa-satellite-true-color-raster', 'pa-satellite-ndvi-raster'],
     stations: [],
     radius: ['pa-radius-fill', 'pa-radius-line'],
 }
@@ -213,24 +187,56 @@ function syncPoiGeometry() {
     setVisibility('pa-poi-outline', props.showObjects)
 }
 
+function removeSatelliteRaster(key: SatelliteLayerKey) {
+    if (!map) return
+    const { source, layer } = rasterLayers[key]
+    if (map.getLayer(layer)) map.removeLayer(layer)
+    if (source && map.getSource(source)) map.removeSource(source)
+    rasterLayers[key].source = ''
+}
+function syncSatelliteRasters() {
+    if (!map || !ready) return
+    if (props.satelliteLayers !== rasterSourceRef) {
+        rasterSourceRef = props.satelliteLayers
+        rasterGeneration++
+        for (const key of Object.keys(rasterLayers) as SatelliteLayerKey[]) removeSatelliteRaster(key)
+        rasterError.value = false
+        for (const key of Object.keys(rasterLayers) as SatelliteLayerKey[]) {
+            const descriptor = props.satelliteLayers?.[key]
+            if (!descriptor) continue
+            const layer = rasterLayers[key].layer
+            const source = `pa-satellite-${key}-${rasterGeneration}`
+            rasterLayers[key].source = source
+            map.addSource(source, {
+                type: 'raster', tiles: descriptor.tiles, bounds: descriptor.bounds, tileSize: descriptor.tileSize,
+                minzoom: descriptor.minzoom, maxzoom: descriptor.maxzoom, scheme: descriptor.scheme,
+                attribution: descriptor.attribution,
+            })
+            map.addLayer({
+                id: layer, type: 'raster', source,
+                paint: { 'raster-opacity': Math.max(0, Math.min(1, props.satelliteOpacity)), 'raster-fade-duration': 0 },
+            })
+        }
+    }
+    const active = props.satelliteMode === 'ndvi' ? 'ndvi' : 'true-color'
+    for (const key of Object.keys(rasterLayers) as SatelliteLayerKey[]) {
+        const { layer } = rasterLayers[key]
+        if (!map.getLayer(layer)) continue
+        setVisibility(layer, props.showSatellite && active === key)
+        map.setPaintProperty(layer, 'raster-opacity', Math.max(0, Math.min(1, props.satelliteOpacity)))
+    }
+    applyLayerOrder()
+}
+
 function syncLayers() {
     if (!map || !ready) return
     const radiusSource = map.getSource('pa-radius') as GeoJSONSource | undefined
-    const satelliteSource = map.getSource('pa-satellite') as GeoJSONSource | undefined
-    const unknownSource = map.getSource('pa-unknown') as GeoJSONSource | undefined
     syncPoiGeometry()
     radiusSource?.setData(analysisFeature())
-    satelliteSource?.setData(emptyFeature())
-    unknownSource?.setData(emptyFeature())
     setVisibility('pa-radius-fill', props.showRadius && !!props.analysisArea)
     setVisibility('pa-radius-line', props.showRadius && !!props.analysisArea)
     if (map.getLayer('pa-radius-line')) map.setPaintProperty('pa-radius-line', 'line-opacity', props.geometryStale ? .4 : 1)
-    setVisibility('pa-satellite-fill', false)
-    setVisibility('pa-unknown-hatch', false)
-    if (map.getLayer('pa-satellite-fill')) {
-        map.setPaintProperty('pa-satellite-fill', 'fill-color', props.satelliteMode === 'ndvi' ? '#2f8f3d' : '#b29a78')
-        map.setPaintProperty('pa-satellite-fill', 'fill-opacity', Math.max(0, Math.min(1, props.satelliteOpacity)))
-    }
+    syncSatelliteRasters()
     map.triggerRepaint()
     applyLayerOrder()
 }
@@ -492,7 +498,6 @@ function initMap() {
         if (statusTimer) { clearTimeout(statusTimer); statusTimer = null }
         mapStatus.value = 'ready'
         applyBasemapTheme(map, baseStyle(), theme.value)
-        addHatchImage(map)
         addLayers()
         syncLayers()
         syncMarkers()
@@ -501,6 +506,13 @@ function initMap() {
         else fitContext()
     })
     map.on('error', event => {
+        const sourceId = String((event as unknown as { sourceId?: string }).sourceId ?? '')
+        const currentSources = new Set(Object.values(rasterLayers).map(value => value.source).filter(Boolean))
+        const satelliteFailure = !!sourceId && currentSources.has(sourceId)
+        if (satelliteFailure) {
+            rasterError.value = true
+            return
+        }
         if (mapStatus.value === 'ready') return
         mapStatus.value = 'error'
         mapStatusText.value = event?.error?.message || 'Подложка карты недоступна.'
@@ -561,7 +573,7 @@ watch(() => props.stationFocusRequest, () => {
 watch(
     () => [
         props.showPlacePin, props.geometryStale, props.tab, props.showObjects, props.showSatellite, props.showStations, props.showRadius,
-        props.satelliteMode, props.satelliteOpacity, props.categoryFilter, props.selectedStation, props.pendingPoint, props.pois, props.poiDistancesKnown, props.analysisArea, props.stations,
+        props.satelliteMode, props.satelliteOpacity, props.satelliteLayers, props.categoryFilter, props.selectedStation, props.pendingPoint, props.pois, props.poiDistancesKnown, props.analysisArea, props.stations,
     ],
     () => {
         syncLayers()
@@ -602,6 +614,11 @@ onBeforeUnmount(() => {
             :aria-label="pickMode ? 'Карта анализа места. Enter выбирает точку в центре, Escape отменяет выбор.' : 'Карта анализа места'"
             @keydown="mapKeydown"
         ></div>
+        <p v-if="rasterError" class="pa-map-alert" role="alert">
+            <TriangleAlert :size="16" aria-hidden="true" />
+            <span>Не удалось загрузить изображение. Аналитика по кругу сохранена.</span>
+            <button type="button" class="pa-outline" @click="emit('retry-satellite')">Повторить</button>
+        </p>
         <p v-if="mapStatus !== 'ready'" class="pa-map-status" role="status">{{ mapStatusText }}</p>
     </div>
 </template>

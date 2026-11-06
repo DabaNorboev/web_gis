@@ -86,3 +86,55 @@ test('grocery-only READY keeps unknown categories distinct from covered zero and
         assert.equal(response.blocks.poi.data.counts_by_category.pharmacy, null)
     }
 })
+
+test('satellite catalog, selected observation, raster descriptors and legend validate without POI or air', async () => {
+    const catalogRequest = { ...input, blocks: ['satellite'] }
+    let api = setup(async () => new Response(JSON.stringify(responseFor(catalogRequest, { satellite: 'READY' }))))
+    let result = await api.fetchPlaceAnalysis(catalogRequest)
+    assert.equal(result.blocks.satellite.data.selected.reason, 'DATE_NOT_SELECTED')
+    assert.equal(result.blocks.satellite.data.available_dates.length, 2)
+    assert.equal(result.blocks.satellite.data.available_dates[0].warnings[0].code, 'EARLY_SPRING_SNOW')
+
+    const selectedRequest = { ...input, date: '2024-05-07', blocks: ['satellite'] }
+    api = setup(async () => new Response(JSON.stringify(responseFor(selectedRequest, { satellite: 'READY' }))))
+    result = await api.fetchPlaceAnalysis(selectedRequest)
+    const data = result.blocks.satellite.data
+    assert.equal(data.selected.status, 'READY'); assert.equal(data.selected.date, '2024-05-07')
+    assert.equal(data.selected.layers.ndvi.maxzoom, 13); assert.equal(data.selected.layers['true-color'].tileSize, 256)
+    assert.equal(data.selected.warnings[0].code, 'EARLY_SPRING_SNOW')
+    assert.match(data.selected.layers.ndvi.tiles[0], /^\/api\/v1\/satellite\/[a-f0-9]{64}\/2024-05-07\/ndvi/)
+    assert.equal(data.legend.version, 'ndvi-fixed-v2'); assert.equal(data.legend.unknown.label, 'Неизвестно / исключено маской')
+
+    const missingRequest = { ...input, date: '2024-02-29', blocks: ['satellite'] }
+    api = setup(async () => new Response(JSON.stringify(responseFor(missingRequest, { satellite: 'READY' }))))
+    result = await api.fetchPlaceAnalysis(missingRequest)
+    assert.equal(result.blocks.satellite.data.selected.reason, 'DATE_NOT_IN_CATALOG')
+    assert.equal(result.blocks.satellite.data.selected.layers, null)
+})
+
+test('malformed satellite descriptors, legend, selected release and coverage fractions are rejected', async () => {
+    const request = { ...input, date: '2024-05-07', blocks: ['satellite'] }
+    const changes = [
+        r => delete r.blocks.satellite.data.legend,
+        r => r.blocks.satellite.data.legend.classes[0].min = -2,
+        r => r.blocks.satellite.data.legend.classes[1].min = 0.1,
+        r => r.blocks.satellite.data.legend_version = 'other-legend',
+        r => r.blocks.satellite.data.selected.layers.ndvi.maxzoom = 14,
+        r => r.blocks.satellite.data.selected.layers.ndvi.tileSize = 512,
+        r => r.blocks.satellite.data.selected.layers.ndvi.tiles[0] = '/api/v1/satellite/short/2024-05-07/ndvi/{z}/{x}/{y}.png',
+        r => r.blocks.satellite.data.selected.coverage.usable_fraction = 1.2,
+        r => r.blocks.satellite.data.selected.coverage.prepared_pixels = 99999,
+        r => r.blocks.satellite.data.selected.mean_ndvi = 2,
+        r => r.blocks.satellite.data.selected.date = '2024-08-15',
+        r => r.blocks.satellite.data.selected.status = 'ERROR',
+        r => r.blocks.satellite.data.selected.warnings[0].code = 'not-a-code',
+        r => r.blocks.satellite.data.available_dates[0].manifest_sha256 = 'short',
+        r => r.blocks.satellite.data.releases[0].coverage = null,
+        r => r.blocks.satellite.data.delivery_status = 'MAYBE',
+    ]
+    for (const change of changes) {
+        const response = responseFor(request, { satellite: 'READY' }); change(response)
+        const api = setup(async () => new Response(JSON.stringify(response)))
+        await assert.rejects(api.fetchPlaceAnalysis(request), e => e.kind === 'invalid_response')
+    }
+})
