@@ -6,6 +6,8 @@ verified: code
 
 # Frontend PlaceLens
 
+Визуальный ориентир UI — [макеты владельца и правила их применения](plans/place-analysis-ui-reference.md).
+
 ## Каталоги и соглашения
 
 Vue/TypeScript отвечает за интерфейс; геометрия отбора и расстояния рассчитываются сервером. `resources/js/app.js` монтирует только `pages/PlaceAnalysisPage.vue`. Клиенты API находятся в `api/`, контракты — в `types/`, lifecycle запросов — в `composables/`, отображение — в `components/place-analysis/`.

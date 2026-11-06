@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-11-04
+updated: 2026-11-05
 verified: not verified
 ---
 
@@ -13,6 +13,7 @@ verified: not verified
 | Что делает проект и что ещё разрабатывается | [Продукт](product.md) |
 | Что делать дальше | [Roadmap](plans/roadmap.md#ближайшая-очередь) |
 | Как запустить | [Локальное окружение](runbook-local.md) |
+| По каким макетам создавать UI | [Визуальный референс владельца](plans/place-analysis-ui-reference.md) |
 | Как устроен код | [Архитектура](architecture.md), [frontend](frontend-structure.md) |
 | Как устроены данные | [Схема](data-schema.md), [подготовка и импорт](data/README.md) |
 | Как работает конкретная функция | [Контракты](features/README.md) |
