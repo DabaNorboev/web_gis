@@ -221,3 +221,29 @@ F03: `python3 -B tests/routing-runtime/test_audit_admissions.py -v` — PHP CLI 
 ### Парки А8
 
 [Проверки и эффекты](data/osm-parks.md#проверки-и-допуск): `ParkPoiTest` — web_gis_test, `A8_PARK_FILE` — реальный вход, `A8_PARK_QA_DIR` — только новый QA. ETL: `test_prepare_osm_parks.py`; runtime: `parks-real-response.test.mjs`; browser: `place-analysis-parks.spec.mjs`. Рабочая активация/public/build не меняются.
+
+
+### Спутниковый HTTP и доставка А10.2
+
+Fixtures (SQLite, временные каталоги; без рабочего импорта):
+
+```bash
+docker compose exec -T php php vendor/bin/phpunit tests/Feature/SatelliteProviderApiTest.php tests/Feature/SatelliteTileTest.php tests/Feature/PlaceAnalysisApiTest.php
+# Python-зависимости/PYTHONPATH — как у подготовки satellite.
+python3 -B tests/etl/test_prepare_satellite_delivery.py -v
+```
+
+Реальные PNG отдельно: `python3 -B tests/Satellite/check_delivery.py --delivery <delivery> --sha256 <delivery-pin> --index data/satellite/krasnoyarsk-2024-2026-city-v1.json --output <новый-файл.json>`. Проверяются все hashes/типы/alpha/палитра, независимые inverse-projected центры z13 и соответствие manifest даты; ETL/радиометрия заново не проверяются.
+
+Реальный HTTP: `php tests/Satellite/check_http_satellite.php` в одноразовом `docker compose run --rm --no-deps -T ... php` с mounts `-v <runtime>:/satellite/runtime:ro -v <delivery>:/satellite/delivery:ro`; явно передать `APP_ENV=testing`, `APP_DEBUG=false`, `DB_CONNECTION=pgsql`, `DB_DATABASE=web_gis_test`, `DB_URL=`, `CACHE_STORE=array`, `SESSION_DRIVER=array`, четыре SATELLITE-переменные из [активации](data/satellite.md#доставка-и-активация-а102). Задать новые `SATELLITE_HTTP_REPORT` и `SATELLITE_HTTP_METRICS` в writable каталоге свидетельств. Harness проверяет существующие PostGIS guards/read-only mounts и запускает PHP HTTP server только на loopback:18765, затем останавливает его. Круги 200/1000 м, облака июня, край и отсутствие данных сверяются с reader, PNG запрашиваются по выданным URL. Отчёты содержат synthetic case labels, ресурсы и coverage, без личных координат/тел запросов. Метрики PHP/RSS/rchar тестовые; Nginx/FPM/UI не проверяются.
+
+Reader А10.1 проверяется отдельно при изменении чтения; HTTP-задача не требует повторения всего набора:
+
+```bash
+php vendor/bin/phpunit tests/Unit/SatelliteCatalogReaderTest.php
+python3 -B tests/etl/test_prepare_satellite_runtime.py RuntimeTest -v
+# В php-контейнере, только существующие guards web_gis_test:
+SATELLITE_RUNTIME_SHA256=<pin> php vendor/bin/phpunit -c phpunit.postgis.xml tests/Satellite/SatelliteCircleProjectionTest.php
+# Python-зависимости А9, новый output; читает releases и пишет свидетельства:
+python3 -B tests/Satellite/check_real_satellite.py --runtime <runtime> --sha256 <pin> --output <новый-каталог>
+```

@@ -42,7 +42,9 @@ class PlaceAnalysisApiTest extends TestCase
             ->assertJsonPath('analysis_area', self::MAP['analysis_area'])->assertJsonPath('analysis_bounds', self::MAP['analysis_bounds']);
         $this->assertSame(['poi', 'satellite', 'air'], array_keys($r->json('blocks')));
         foreach (PlaceAnalysisService::BLOCKS as $key) {
-            $r->assertJsonPath("blocks.$key.status", 'UNAVAILABLE')->assertJsonPath("blocks.$key.code", $key === 'poi' ? 'POI_SNAPSHOTS_UNAVAILABLE' : 'BLOCK_NOT_AVAILABLE')
+            $r->assertJsonPath("blocks.$key.status", 'UNAVAILABLE')->assertJsonPath("blocks.$key.code", match ($key) {
+                'poi' => 'POI_SNAPSHOTS_UNAVAILABLE', 'satellite' => 'SATELLITE_NOT_CONFIGURED', default => 'BLOCK_NOT_AVAILABLE'
+            })
                 ->assertJsonPath("blocks.$key.data", null);
             $this->assertMatchesRegularExpression('/Z$/', $r->json("blocks.$key.calculated_at"));
         }

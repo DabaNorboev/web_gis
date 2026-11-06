@@ -21,6 +21,14 @@
         <server name="PLACE_ANALYSIS_PARKS_ENABLED" value="false" force="true"/>
         <env name="PLACE_ANALYSIS_PARKS_ENABLED" value="false" force="true"/>
         <!-- Local provider activation must not leak into isolated tests. -->
+        <server name="SATELLITE_RUNTIME" value="" force="true"/>
+        <env name="SATELLITE_RUNTIME" value="" force="true"/>
+        <server name="SATELLITE_RUNTIME_SHA256" value="" force="true"/>
+        <env name="SATELLITE_RUNTIME_SHA256" value="" force="true"/>
+        <server name="SATELLITE_DELIVERY" value="" force="true"/>
+        <env name="SATELLITE_DELIVERY" value="" force="true"/>
+        <server name="SATELLITE_DELIVERY_SHA256" value="" force="true"/>
+        <env name="SATELLITE_DELIVERY_SHA256" value="" force="true"/>
         <server name="PLACE_ANALYSIS_OFFICIAL_STOPS_ENABLED" value="false" force="true"/>
         <env name="PLACE_ANALYSIS_OFFICIAL_STOPS_ENABLED" value="false" force="true"/>
         <env name="APP_ENV" value="testing"/>

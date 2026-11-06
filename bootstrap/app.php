@@ -3,8 +3,11 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -19,6 +22,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withExceptions(function (Exceptions $exceptions): void {
         // Exception messages / SQL bindings / stack arguments may contain personal points.
         $exceptions->report(function (Throwable $error) {
+            if (app()->bound('request') && request()->is('api/v1/satellite/*')) {
+                return false;
+            }
             if (app()->bound('request') && request()->is('api/v1/place-analysis')) {
                 Log::error('Place analysis request failed.', ['exception_type' => get_class($error)]);
 
@@ -31,12 +37,16 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
         $exceptions->render(function (Throwable $error, Request $request) {
+            if ($request->is('api/v1/satellite/*')) {
+                return response()->json(['code' => 'SATELLITE_TILE_UNAVAILABLE'], 404)
+                    ->header('Cache-Control', 'no-store')->header('Referrer-Policy', 'no-referrer');
+            }
             if ($request->is('api/v1/place-analysis')) {
-                if ($error instanceof \Illuminate\Http\Exceptions\HttpResponseException) {
+                if ($error instanceof HttpResponseException) {
                     return null; // Fixed validation and address resolver responses.
                 }
-                $status = $error instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $error->getStatusCode() : 503;
-                $status = $error instanceof \Illuminate\Validation\ValidationException ? 422 : $status;
+                $status = $error instanceof HttpExceptionInterface ? $error->getStatusCode() : 503;
+                $status = $error instanceof ValidationException ? 422 : $status;
                 $status = $status >= 500 ? 503 : $status;
                 $code = match ($status) {
                     413 => 'REQUEST_TOO_LARGE', 415 => 'UNSUPPORTED_MEDIA_TYPE', 422 => 'INVALID_REQUEST',
@@ -46,11 +56,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
                 return response()->json(['code' => $code, 'message' => $status >= 500
                     ? 'Анализ места временно недоступен.' : 'Запрос анализа места отклонён.'], $status,
-                    $error instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface ? $error->getHeaders() : []);
+                    $error instanceof HttpExceptionInterface ? $error->getHeaders() : []);
             }
             if ($request->is('trips', 'api/v1/trips/*', 'api/v1/addresses/resolve-point')
-                && ! $error instanceof \Illuminate\Validation\ValidationException
-                && (! $error instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface || $error->getStatusCode() >= 500)) {
+                && ! $error instanceof ValidationException
+                && (! $error instanceof HttpExceptionInterface || $error->getStatusCode() >= 500)) {
                 return response()->json(['message' => $request->is('api/v1/addresses/resolve-point') ? 'Подпись точки временно недоступна.' : 'Расчёт поездок временно недоступен.'], 500)
                     ->header('Cache-Control', 'no-store')->header('Referrer-Policy', 'no-referrer');
             }

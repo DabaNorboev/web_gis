@@ -40,7 +40,7 @@ class PlaceAnalysisService
         $blocks = [];
         foreach ($input['blocks'] ?? self::BLOCKS as $key) {
             try {
-                $blocks[$key] = $this->calculateBlock($key, $point, $radius);
+                $blocks[$key] = $this->calculateBlock($key, $key === 'satellite' ? $point + ['satellite_date' => $input['date'] ?? null] : $point, $radius);
             } catch (Throwable $error) {
                 Log::error('Place analysis block failed.', ['exception_type' => get_class($error), 'block' => $key]);
                 $blocks[$key] = ['status' => 'ERROR', 'code' => 'BLOCK_CALCULATION_FAILED',
@@ -52,10 +52,10 @@ class PlaceAnalysisService
 
         return ['analysis_version' => 1, 'place' => ['kind' => $place['kind'], 'label' => $address['label'] ?? null,
             'address' => $address, 'point' => $point], 'radius_m' => $radius] + $map + [
-            'date' => $input['date'] ?? null,
-            'station_selection' => ['selected_ids' => $input['stations']['selected_ids'] ?? [], 'radius_m' => $input['stations']['radius_m'] ?? 5000],
-            'calculated_at' => CarbonImmutable::now('UTC')->toISOString(), 'blocks' => $blocks,
-        ];
+                'date' => $input['date'] ?? null,
+                'station_selection' => ['selected_ids' => $input['stations']['selected_ids'] ?? [], 'radius_m' => $input['stations']['radius_m'] ?? 5000],
+                'calculated_at' => CarbonImmutable::now('UTC')->toISOString(), 'blocks' => $blocks,
+            ];
     }
 
     protected function calculateBlock(string $key, array $point, int $radius): array
@@ -63,8 +63,10 @@ class PlaceAnalysisService
         if ($key === 'poi') {
             return $this->poi->analyze($point, $radius);
         }
+        if ($key === 'satellite') {
+            return app(SatelliteProvider::class)->analyze($point, $radius, $point['satellite_date'] ?? null);
+        }
         $reason = match ($key) {
-            'satellite' => 'Provider каталога подготовленных спутниковых дат и слоёв ещё не реализован (А9–А10).',
             'air' => 'Provider справочника и наблюдений станций анализа места ещё не реализован (А11–А12).',
         };
 

@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-11-05
+updated: 2026-11-06
 verified: code
 ---
 
@@ -156,25 +156,25 @@ Backend/API А7 реализован: POST `/api/v1/place-analysis`, явный 
 
 ## 6. Блок `satellite`
 
-Отвечает за исходные изображения и NDVI конкретной доступной даты. Не возвращает процент растительности, ежегодную композицию, разность лет или оценку изменения. Без даты — только каталог подготовленных дат.
+NDVI дат без процента растительности и анализа изменений; UI/активация отдельно. Нет runtime/pin — `UNAVAILABLE/SATELLITE_NOT_CONFIGURED`, недоверенный каталог — `UNAVAILABLE/SATELLITE_CATALOG_UNTRUSTED`, неожиданный отказ — `ERROR/SATELLITE_READ_FAILED`. data=null при отказе; coverage/completeness блока всегда null. POI/air независимы; READY допускает [].
 
-`satellite.status` описывает каталог: `READY` — каталог доступен (даже пустой), `UNAVAILABLE` — источник/каталог не подключён, `ERROR` — неожиданный отказ. `coverage`/`completeness` блока — `null`: они относятся к выбранной сцене.
+`data`: method/mask/legend versions, catalog/source-index hashes, legend, delivery_status и:
 
-| Поле `data` | Значение |
+| Поле | Смысл |
 |---|---|
-| `available_dates` | Даты, для которых подготовлены и проверены слои для этого места/радиуса; не все сцены каталога. Пустой список — не ошибка. Элемент: `date`, `scene_id`, `cloud_cover_percent`. |
-| `selected` | `null` или объект выбранной даты; `status: READY|UNAVAILABLE|ERROR`. Ошибка слоя не делает `satellite.status` ошибочным. |
-| `selected.coverage` | `status`, `reason`, `scene_fraction`, `valid_fraction`, `masked_fraction`, `nodata_fraction`. Доли пикселей круга в native-сетке; считаются независимо и не складываются в «процент зелени». |
-| `selected.completeness` | `status`, `reason`; полнота сцены/маски. |
-| `selected.method_version` | Версия NDVI/маски; значение фиксирует А9. |
-| `selected.scene` | `scene_id`, `product` (`sentinel-2-l2a`), `acquired_at` UTC, `tile`, `baseline`, `cloud_cover_percent`, `bounds` EPSG:4326, `crs`, `resolution_m`, `mask_resolution_m`; неизвестное — `null`. |
-| `selected.assets` | `true_color` и `ndvi`: `href` того же origin, `media_type`, `crs`, `bounds` EPSG:4326. NDVI дополнительно `value_min: -1`, `value_max: 1`, `nodata` (число или `null`). Формат/endpoint выбирает А10. |
-| `selected.legend` | `version`, `classes` (`min`, `max`, `label`, `color`). Общая легенда NDVI; не процент растительности. |
+| `available_dates` | Пригодные для круга date/release_id/manifest_sha256/scenes/warnings/limitations. |
+| `releases[]` | Все даты с status/reason/coverage/mean_ndvi/mean_ndvi_reason, теми же provenance и ограничениями. |
+| `scenes[]` | Все составляющие: scene_id/product_uri/tile/platform/baseline/datatake, acquired_at_catalog/acquired_at_granule UTC; общей выдуманной сцены нет. |
+| `selected` | Запрошенная строка releases + `layers`. Нет даты — DATE_NOT_SELECTED; нет её в каталоге — DATE_NOT_IN_CATALOG; coverage/mean_ndvi=null с причиной. Автовыбора нет; неверный формат — 422. |
+| `layers` | MapLibre raster-source descriptors true-color/ndvi; null без подготовленных пикселей или доставки. |
 
-- Для недоступной даты — `selected.status: UNAVAILABLE`, код `SATELLITE_DATE_UNAVAILABLE`; каталог остаётся в `available_dates`.
-- Для отказа слоя — `selected.status: ERROR`, код `SATELLITE_LAYER_FAILED`, остальные поля `null`.
-- `valid_fraction` — доля пикселей с допустимым NDVI после маски; `masked_fraction` — облако/снег/SCL; `nodata_fraction` — nodata/вне сцены; `scene_fraction` — покрытие круга футпринтом.
-- Нет сцены/даты, неизвестная радиометрия или непригодная маска — `UNAVAILABLE`/`ERROR` с причиной, не ноль и не «нет растительности».
+Знаменатель — круг native-центров 10 м EPSG:32646 через PostGIS, не точный geography-контур. `source_footprint_fraction` — объединение футпринтов, `prepared_fraction` — target, `geographic_fraction` — ненулевые исходные данные, `usable_fraction` — допустимый NDVI. Доли независимы от городских. Coverage: *_pixels, circle_pixels, outside_rectangle_pixels, inside_rectangle_outside_target_pixels, reason_counts/source_pixels. Overlap один раз; краевой пиксель неизвестен.
+
+Ноль NDVI допустим. Нет подготовленных/географических/пригодных данных — UNAVAILABLE с NO_PREPARED_DATA/NO_GEOGRAPHIC_DATA/NO_USABLE_NDVI, среднее null. Повреждение блока — SATELLITE_RELEASE_UNTRUSTED, coverage/среднее null; бюджет — READ_BUDGET_EXCEEDED. Остальные даты и статус каталога сохраняются.
+
+`EARLY_SPRING_SNOW` для 07.05.2024: снег запада и ранняя фенология, не летнее состояние; [метаданные](../../config/satellite/catalog-metadata.json) закреплены по hash manifest. ndvi-fixed-v2 общая; отказ доставки сохраняет аналитику. Порча PNG проверяется при чтении.
+
+POST сохраняет no-store/no-referrer и безопасные ошибки/логи. [Reader](../data/satellite.md#серверное-чтение-а101); [same-origin PNG XYZ, бюджеты, pins и отдельная активация](../data/satellite.md#доставка-и-активация-а102).
 
 ## 7. Блок `air`
 
@@ -210,7 +210,7 @@ Backend/API А7 реализован: POST `/api/v1/place-analysis`, явный 
 1. Подтверждение адреса/здания или точки запускает независимые POST к одному endpoint, каждый с `blocks:[один блок]`, своими `loading`/`error`/`retry`, AbortController/epoch/таймаутом. POI показывается по своему ответу, не ждёт air/satellite. Пакетный API сохранён, но один JSON не даёт поэтапной доставки и для независимой загрузки UI не используется.
 2. Ошибка/повтор затрагивают только свой блок. Неожиданный отказ resolver/круга — 503 `SERVICE_UNAVAILABLE` данного запроса; предметные 404/503 адреса сохраняются. Бюджет А7: в транзакции resolver/круга `statement_timeout=2s`, `lock_timeout=500ms`; до трёх предметных SELECT (снимок адресов, объект, круг), без сетевых providers. Настройки локальны транзакции и снимаются при commit/rollback. Nginx: connect 2s, read 15s; read timeout ограничивает ожидание upstream, не гарантирует остановки PHP. Подключение к БД зависит от конфигурации соединения; общего wall-clock deadline PHP этот срез не добавляет. Клиент ждёт каждый блок не более 20s, различает timeout/cancel и не повторяет автоматически. А10/А12 задают бюджеты будущих providers; abort fetch не гарантирует остановки сервера.
 3. Снимки фиксируются один раз на HTTP-запрос; независимые ответы сохраняют свои `dataset_import_id`/`calculated_at`, не общий атомарный snapshot. Изменившиеся координаты resolver того же ID не смешиваются со старым кругом: зависимые результаты неактуальны до явного обновления.
-4. Зависимости: `poi` — место/радиус; `satellite` — место/радиус/дата; `air` — место/радиус/selection. Дата инвалидирует только satellite, selection — только air, сохраняя остальные результаты и pending-запросы. Место/радиус инвалидируют все три; старые показатели не показываются текущими. Экран запускает анализ при подтверждении места и через 350ms после изменения радиуса. До нового ответа остаётся серверный контур прежнего радиуса с явной пометкой «предыдущий»; при смене места он удаляется. Дата/selection требуют отдельного запуска.
+4. Зависимости: `poi` — место/радиус; `satellite` — место/радиус/дата; `air` — место/радиус/selection. Дата инвалидирует только satellite, selection — только air, сохраняя остальные результаты и pending-запросы. Место/радиус инвалидируют все три; старые показатели не показываются текущими. Экран запускает анализ при подтверждении места и через 350ms после изменения радиуса. До нового ответа остаётся серверный контур прежнего радиуса с явной пометкой «предыдущий»; при смене места он удаляется. Дата — только satellite; станции — явно.
 5. Запуск/повтор/инвалидация увеличивает epoch только затронутого блока и отменяет его запрос. Приём ответа требует эха своего запроса (§3), текущего epoch и неизменных зависимостей. А→Б→А не оживляет старый ответ А. `date=D1` у pending POI допустима после выбора D2. После смены места/unmount старые response/error/finally не меняют данные/loading/карту.
 6. Хранение/обмен и восстановление после reload/Back/Forward не реализованы: решение владельца открыто. Новый ввод живёт только в памяти экрана; URL с координатами не создаётся, старые ссылки/records не мигрируются. Сервер результаты не хранит.
 7. Сеть, таймаут, 429, 422, 404/503 адреса и предметные `ERROR`/`UNAVAILABLE` различаются в клиенте. Повтор — только по конкретной причине; автоматического повтора нет.
