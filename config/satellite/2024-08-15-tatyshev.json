@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "method_version": "placelens-s2-date-v1",
+  "scene_id": "S2A_46VDH_20240815_0_L2A",
+  "date": "2024-08-15",
+  "territory": "Татышев и прилегающая городская территория; прямоугольное окно, не весь Красноярск",
+  "window": {
+    "col_off": 9412,
+    "row_off": 8634,
+    "width": 630,
+    "height": 748
+  },
+  "inputs": {
+    "red": {
+      "path": "data/reports/source-feasibility/2026-11-03-a2-01/raw/satellite-2024-red.tif",
+      "sha256": "732a929c632b1f99ceaf1ef36e4083d59c5cdd875b720fa809caffc8ef6117d9",
+      "bytes": 187994545,
+      "source": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/46/V/DH/2024/8/S2A_46VDH_20240815_0_L2A/B04.tif"
+    },
+    "nir": {
+      "path": "data/reports/source-feasibility/2026-11-03-a2-01/raw/satellite-2024-nir.tif",
+      "sha256": "47adb229e7bc59988a1bdb2cdb34a36aaf2761576621af164c1544cd03a20236",
+      "bytes": 248434929,
+      "source": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/46/V/DH/2024/8/S2A_46VDH_20240815_0_L2A/B08.tif"
+    },
+    "scl": {
+      "path": "data/reports/source-feasibility/2026-11-03-a2-01/raw/satellite-2024-scl.tif",
+      "sha256": "a529588d1e67ab29021facc30a1c9ad7cc686bcd4cfca053b6f8b6ecc0035dd7",
+      "bytes": 774099,
+      "source": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/46/V/DH/2024/8/S2A_46VDH_20240815_0_L2A/SCL.tif"
+    },
+    "visual": {
+      "path": "data/reports/source-feasibility/2026-11-03-a2-01/raw/satellite-2024-visual.tif",
+      "sha256": "82b12bc8adeec2471f4c749685431d8adaa34444e330a49c538fa9aab184fded",
+      "bytes": 265295754,
+      "source": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/46/V/DH/2024/8/S2A_46VDH_20240815_0_L2A/TCI.tif"
+    },
+    "scenes": {
+      "path": "data/reports/source-feasibility/2026-11-03-a2-01/selected-scenes.json",
+      "sha256": "b371a272c3b3f5a0d19d1367dfac1cc75ce26ce81d712b7abe835293e95be8f0",
+      "bytes": 73159,
+      "source": "local research evidence; see pinned proof and scene metadata"
+    },
+    "proof": {
+      "path": "data/reports/source-feasibility/2026-11-03-radiometry-01/derived/native-comparison-v2/evidence.json",
+      "sha256": "9840ddd9f83ca25b2fc555b1dc49b0987afee3be2a65f9996ed922fcb937a42b",
+      "bytes": 91605,
+      "source": "local research evidence; see pinned proof and scene metadata"
+    },
+    "product_xml": {
+      "path": "data/reports/source-feasibility/2026-11-03-radiometry-01/raw/2024-original-product.xml",
+      "sha256": "ece5f72cfcd1fa24ef9306d9dd7008f1c0d34def6f082cabd22890fcfc5968a8",
+      "bytes": 54873,
+      "source": "https://sentinel-s2-l2a.s3.amazonaws.com/products/2024/8/15/S2A_MSIL2A_20240815T050651_N0511_R019_T46VDH_20240815T094054/metadata.xml"
+    },
+    "granule_xml": {
+      "path": "data/reports/source-feasibility/2026-11-03-radiometry-01/raw/2024-granule_metadata.xml",
+      "sha256": "92dc6ca65d93b532f7c91f46a3104976e4066dcab99cd39ded69dda74e20c025",
+      "bytes": 548050,
+      "source": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/46/V/DH/2024/8/S2A_46VDH_20240815_0_L2A/granule_metadata.xml"
+    },
+    "red_jp2": {
+      "path": "data/reports/source-feasibility/2026-11-03-radiometry-01/raw/2024-original-B04.jp2",
+      "sha256": "57da012b7bef379c3184bc9152c65300197ff06c31b170b1b7c866d44ec8039e",
+      "bytes": 102850797,
+      "source": "https://sentinel-s2-l2a.s3.amazonaws.com/tiles/46/V/DH/2024/8/15/0/R10m/B04.jp2"
+    },
+    "nir_jp2": {
+      "path": "data/reports/source-feasibility/2026-11-03-radiometry-01/raw/2024-original-B08.jp2",
+      "sha256": "d75baab68fb07d3b8697b0d023c6d781219fb636e439b7fe872ec44aad335eff",
+      "bytes": 135607786,
+      "source": "https://sentinel-s2-l2a.s3.amazonaws.com/tiles/46/V/DH/2024/8/15/0/R10m/B08.jp2"
+    }
+  }
+}

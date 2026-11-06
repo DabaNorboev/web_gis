@@ -1,0 +1,8 @@
+{
+  "schema_version": 3,
+  "observation_date": "2026-09-09",
+  "inputs_manifest": "data/satellite/inputs/2026-09-09-city-a9-5-01/inputs-manifest.json",
+  "inputs_sha256": "23fe9b2513a41a2c0c3aa94b5bc02077cb3018571c53b4cfbdcf9b3d32d7abb5",
+  "block_size": 512,
+  "peak_memory_budget_MiB": 768
+}

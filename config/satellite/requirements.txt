@@ -1,0 +1,4 @@
+# Existing isolated offline runtime; no installation is performed by prepare.
+numpy==2.2.6
+rasterio==1.4.3
+affine==3.0.1
