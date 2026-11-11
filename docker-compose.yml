@@ -8,35 +8,56 @@ services:
             - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
         depends_on:
             php:
-                condition: service_started
+                condition: service_healthy
+                restart: true
             node:
                 condition: service_healthy
 
     php:
         networks: [default, routing]
+        command: ["sh", "docker/php/start.sh"]
+        healthcheck:
+            test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+            interval: 3s
+            timeout: 3s
+            retries: 20
+        environment:
+            FRONTEND_ASSETS_MODE: ${FRONTEND_ASSETS_MODE:-dev}
+            SATELLITE_RUNTIME: ${SATELLITE_RUNTIME_DIR:+/satellite/runtime}
+            SATELLITE_RUNTIME_SHA256: ${SATELLITE_RUNTIME_SHA256:-}
+            SATELLITE_DELIVERY: ${SATELLITE_DELIVERY_DIR:+/satellite/delivery}
+            SATELLITE_DELIVERY_SHA256: ${SATELLITE_DELIVERY_SHA256:-}
         build:
             context: ./docker/php
             args:
                 UID: ${LOCAL_UID:-1000}
                 GID: ${LOCAL_GID:-1000}
-        environment:
-            SATELLITE_RUNTIME: /var/www/html/data/satellite/runtime/krasnoyarsk-2024-2026-a10-1-v1
-            SATELLITE_RUNTIME_SHA256: 14c4c26cd9c057cd9e17cdc9182b9f2ae15a5a5881d4bd0e951b6760d750cd6b
-            SATELLITE_DELIVERY: /var/www/html/data/satellite/delivery/krasnoyarsk-2024-2026-a10-2-v3
-            SATELLITE_DELIVERY_SHA256: 922260c3b4771023a9ae6d78cd54b9ab0b402f0a60548f3b8401cd904a105b1d
         volumes:
             - .:/var/www/html
-            - ./data/satellite/runtime/krasnoyarsk-2024-2026-a10-1-v1:/var/www/html/data/satellite/runtime/krasnoyarsk-2024-2026-a10-1-v1:ro
-            - ./data/satellite/delivery/krasnoyarsk-2024-2026-a10-2-v3:/var/www/html/data/satellite/delivery/krasnoyarsk-2024-2026-a10-2-v3:ro
+            # Empty tracked directory is safe for a checkout without satellite data.
+            - type: bind
+              source: ${SATELLITE_RUNTIME_DIR:-./docker/satellite-disabled}
+              target: /satellite/runtime
+              read_only: true
+              bind:
+                  create_host_path: false
+            - type: bind
+              source: ${SATELLITE_DELIVERY_DIR:-./docker/satellite-disabled}
+              target: /satellite/delivery
+              read_only: true
+              bind:
+                  create_host_path: false
         depends_on:
             db:
                 condition: service_healthy
 
     node:
-        command: ["npm", "run", "dev", "--", "--strictPort"]
+        command: ["sh", "docker/node/start.sh"]
+        environment:
+            FRONTEND_ASSETS_MODE: ${FRONTEND_ASSETS_MODE:-dev}
         init: true
         healthcheck:
-            test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/@vite/client').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+            test: ["CMD", "sh", "docker/node/health.sh"]
             interval: 3s
             timeout: 3s
             retries: 20

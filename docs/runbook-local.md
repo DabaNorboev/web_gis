@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-11-06
+updated: 2026-11-11
 verified: not verified
 ---
 
@@ -14,17 +14,50 @@ verified: not verified
 
 PHP 8.4 / Laravel 13, PostgreSQL 16 / PostGIS 3.4, Vue 3 / TypeScript 6, Vite, MapLibre, Tailwind CSS 4 и shadcn-vue. Python ETL — одноразовая офлайн-подготовка, без постоянного сервиса. Точные зависимости — manifests/lock, версии контейнеров — Compose/Dockerfile; установленный пакет не означает реализованную функцию.
 
-Базовые четыре сервиса: nginx, php, node, db. Nginx 80, Vite 5173 и БД 54325 опубликованы только на loopback. PHP использует `db:5432`; для IDE — `127.0.0.1:54325`, учётные данные из локального `.env`. Node-зависимости контейнера хранятся в named volume. Единственный Compose-файл — `docker-compose.yml`; Node сам запускает Vite от пользователя node, Nginx ждёт готовности dev-assets.
+Базовые четыре сервиса: nginx, php, node, db. Nginx 80, Vite 5173 и БД 54325 опубликованы только на loopback. PHP использует `db:5432`; для IDE — `127.0.0.1:54325`, учётные данные из локального `.env`. Node-зависимости контейнера хранятся в named volume. Единственный Compose — `docker-compose.yml`; Node работает от пользователя node, Nginx ждёт готовности FPM и выбранных assets; Compose перезапускает Nginx после обновления PHP, чтобы применить новый адрес контейнера. Спутниковые данные подключаются отдельно и явно; чистый checkout не требует их наличия.
 
 ## Локальные спутники: рабочая активация
 
-06.11.2026 А10.2 + И2 включены на [localhost](http://localhost): PHP читает pinned runtime А10.1 и доставку `krasnoyarsk-2024-2026-a10-2-v3` через read-only submounts; четыре `SATELLITE_*` заданы адресно в Compose, `.env` сохранён. Pins и совместимость шести выпусков/легенды сверены с принятым А10.2. [Правила подготовки и доверия](data/satellite.md#доставка-и-активация-а102).
+В существующем локальном экземпляре подключены шесть дат TCI/NDVI: 07.05 и 15.08.2024, 23.06 и 22.08.2025, 06.06 и 09.09.2026. Runtime и доставка PNG подключены read-only через локальный `.env`; текущий режим assets — `dev`. Это локальная активация, не публичный деплой и не приёмка ядра/А13. Воздух не реализован. [Подготовка и форматы](data/satellite.md), [контракт спутникового блока](features/place-analysis.md#6-блок-satellite).
 
-`public/build` содержит актуальную production-сборку; прежний `public/hot` сохранён вне public, поэтому Laravel выбирает manifest. Vite остаётся запущен: его перезапуск может снова создать hot и переключить assets в dev-режим. Чтобы продолжать проверять production, сохранить вновь созданный hot вне public и проверить HTML на `/build/assets/`. Не отключать Node/БД и не пересоздавать другие сервисы ради активации.
+Единый `docker-compose.yml` работает без спутниковых данных. При незаданных четырёх переменных ниже приложение получает пустые параметры источника и отвечает `UNAVAILABLE / SATELLITE_NOT_CONFIGURED`; остальные локальные результаты независимы. Вместо отсутствующих данных монтируется пустой tracked `docker/satellite-disabled`, только для чтения. Подготовка данных не входит в запуск приложения.
 
-Применение адресного изменения Compose: `docker compose up -d --no-deps --no-build php`, затем `docker compose exec -T php php artisan config:clear`. После замены PHP или Nginx location проверить `docker compose exec -T nginx nginx -t` и выполнить `docker compose exec -T nginx nginx -s reload`. Location satellite сохраняет application Cache-Control/Content-Type и отдаёт единственный no-referrer; access/error logging privacy не ослаблены.
+Для подключения уже проверенного выпуска адресно добавить в локальный `.env` (ignored, вне Git):
 
-Резервная копия — `data/backups/satellite-local-2026-11-06-01/`, точный возврат — `RETURN.md` внутри неё. Каталог содержит конфиденциальную исходную конфигурацию, не публиковать. Фактический smoke: рабочие Nginx/FPM POST/PNG, 6 дат, круги 200/1000 м, облака/край/null, POI=9 на контрольной публичной точке, безопасные заголовки/логи; браузер 390×844 и 1280×560, реальные слои/легенда/управление/быстрые смены. Контролируемые отказы проверены отдельно в изолированном стенде. Артефакты — `data/satellite/activation/2026-11-06-01/`; это локальная активация, не публичный деплой и не приёмка всего ядра/А13.
+```dotenv
+SATELLITE_RUNTIME_DIR=/absolute/path/to/prepared/runtime
+SATELLITE_RUNTIME_SHA256=<trusted-runtime-catalog-sha256>
+SATELLITE_DELIVERY_DIR=/absolute/path/to/prepared/delivery
+SATELLITE_DELIVERY_SHA256=<trusted-delivery-catalog-sha256>
+```
+
+Pins берутся из принятой проверки выпуска, а не вычисляются автоматически из подключаемого каталога. [Правила подготовки и доверия](data/satellite.md#доставка-и-активация-а102) сохраняются. Оба каталога должны существовать: `create_host_path: false` запрещает создавать пустые директории. В PHP они доступны как `/satellite/runtime` и `/satellite/delivery` только для чтения; hash-проверки приложения не отключаются. Частичная настройка или некорректный формат pin останавливают PHP с понятной ошибкой при старте; `config --quiet` проверяет только Compose, а не полноту активации/существование данных. Отсутствующий явный bind отклоняет Docker при создании контейнера.
+
+```bash
+docker compose config --quiet
+docker compose up -d --wait --wait-timeout 90
+```
+
+Последующие обычные Compose-команды читают те же значения из `.env`: дополнительные `-f`, `--env-file` и override не нужны. Не задавать временные переопределения этих ключей в shell: они имеют приоритет над `.env`. Для отключения удалить только четыре satellite-ключа из `.env` и пересоздать PHP (`docker compose up -d --no-deps php`); данные сохраняются.
+
+Перед изменением существующей активации сохранять локальную конфигурацию, `public/hot`, сведения о контейнерах и порядок возврата в новом приватном каталоге. Для существующей активации порядок возврата хранится в `data/backups/merge-compose-2026-11-11-01/RETURN.md`; каталог приватный, не публиковать. Локальные override-файлы не должны участвовать в автоматическом обнаружении Compose. Существующие backup не перезаписываются.
+
+## Выбор frontend-assets
+
+Постоянный выбор задаётся адресной правкой `FRONTEND_ASSETS_MODE` в локальном `.env`. Значение по умолчанию — `dev`. Ключ уже есть в `.env.example`; в старый `.env` его нужно добавить один раз. Для существующего ключа:
+
+```bash
+# Выбрать dev (для build заменить последнее dev на build).
+sed -i 's/^FRONTEND_ASSETS_MODE=.*/FRONTEND_ASSETS_MODE=dev/' .env
+docker compose up -d --no-deps --wait --wait-timeout 90 php node nginx
+```
+
+- `FRONTEND_ASSETS_MODE=dev`: Node автоматически запускает `npm run dev -- --strictPort`, без `--host`; Laravel использует `public/hot`, Nginx ждёт Vite на 5173.
+- `FRONTEND_ASSETS_MODE=build`: Node не запускает Vite, проверяет существующие `public/build/manifest.json` и assets и остаётся доступным для команд. Laravel выбирает manifest даже при оставшемся `public/hot` и прежнем Laravel config cache. Nginx ждёт проверки build-assets. Отсутствующая сборка — ошибка; автоматической пересборки нет.
+
+Выбранный режим сохраняется после `docker compose up -d` и `docker compose restart node`. Перезапуск Node сам по себе не применяет новую правку `.env`: после выбора режима нужно пересоздание указанной командой. Build не означает публичный деплой или изменение `APP_ENV`.
+
+Если сборки нет или её действительно нужно обновить, сначала сохранить существующий `public/build` в новый backup; затем явно выполнить `docker compose exec --user node node npm run build`. Команда заменяет сборку, но не меняет выбранный режим. Уже готовую сборку повторно не строить ради переключения. Ни build, ни переключение не удаляют `public/hot`.
 
 ## Первый запуск нового окружения
 
@@ -45,19 +78,21 @@ docker compose up -d
 
 Только если APP_KEY пустой — `docker compose exec php php artisan key:generate`. Только для новой БД — `docker compose exec php php artisan migrate`. Автоматических миграций/импортов или переустановки зависимостей при обычном старте нет. После изменения package-lock зависимости обновляются отдельно; сборка production-assets не требуется для dev-режима.
 
+Для первого запуска в `build`-режиме перед `up` требуется готовая сборка: после `npm ci` явно выполнить `docker compose run --rm --no-deps --user node node npm run build`. Для существующего окружения действует [правило сохранения сборки](#выбор-frontend-assets).
+
 Миграции и установка меняют окружение; это не диагностические команды для уже работающего экземпляра. Без локального импорта профиль/поиск не получают выдуманных данных: подготовка наборов описана в [runbooks](data/README.md).
 
 Приложение: [localhost](http://localhost); health endpoint — `/up`. Готовность окружения проверяется по [testing](testing.md), а не только по статусу контейнеров.
 
 ## Разработка и автомобильный пилот
 
-Для подготовленного окружения достаточно одной команды:
+Для подготовленного окружения используется сохранённый в `.env` режим assets:
 
 ```bash
 docker compose up -d
 ```
 
-Vite запускается как основной процесс Node-сервиса, без отдельного терминала и без `--host`. Порт 5173 фиксирован (`--strictPort`), готовность проверяется HTTP-healthcheck. Повторный `up -d` не запускает второй Vite. Логи: `docker compose logs -f node`. Изменения кода доступны через [localhost](http://localhost); `public/build` не перезаписывается.
+В режиме `dev` Vite запускается как основной процесс Node-сервиса, без отдельного терминала и без `--host`. Порт 5173 фиксирован (`--strictPort`), готовность проверяется HTTP-healthcheck. Повторный `up -d` не запускает второй Vite. Логи: `docker compose logs -f node`. Изменения кода доступны через [localhost](http://localhost); `public/build` не перезаписывается.
 
 Основной анализ использует четыре базовых сервиса и не требует routing-графов. Автомобильный OSRM сохранён в том же файле под профилем `routing`:
 
@@ -75,7 +110,7 @@ ORS сохранён в едином файле под профилем `walking
 docker compose --profile routing --profile walking up -d --no-build --wait --wait-timeout 120
 ```
 
-Профили не импортируют и не строят графы автоматически. Неизменяемый ORS snapshot, tmpfs для lock, ограничения ресурсов/сети и отключённое журналирование сохранены. Внешний ORS и ключ не используются. Подготовка и ограничения — [walking-backend](features/walking-backend.md). Дополнительные Compose YAML и override-симлинк больше не нужны; `.env` для выбора режима не изменяется.
+Профили не импортируют и не строят графы автоматически. Неизменяемый ORS snapshot, tmpfs для lock, ограничения ресурсов/сети и отключённое журналирование сохранены. Внешний ORS и ключ не используются. Подготовка и ограничения — [walking-backend](features/walking-backend.md). Дополнительные Compose YAML и override-симлинк не используются; routing/walking включаются профилями независимо от frontend-assets.
 
 ## Проверки
 
