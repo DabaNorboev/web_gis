@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-11-06
+updated: 2026-11-11
 verified: not verified
 ---
 
@@ -74,16 +74,18 @@ API в изолированном окружении; выполненный п�
 
 ### Спутниковая офлайн-подготовка А9.1
 
-В том же изолированном runtime, что [команда выпуска](data/satellite.md):
+CI-job `osm-preparation` запускает **весь** `tests/etl`: OSM/PBF и спутниковые fixtures в одном `docker/etl`-образе. Базовый Python закреплён digest; `docker/etl/requirements.txt` фиксирует все Python-зависимости и hashes колёс CPython 3.12/Linux x86_64, включая numpy/rasterio/affine/shapely/Pillow и их зависимости. Существующие OSM pins не изменяются; ignored `data/reports/.../python-libs` не нужны. Сборка получает пакеты по сети; тестовый контейнер сети не имеет:
 
 ```bash
-PYTHONPATH=data/reports/source-feasibility/2026-11-03-radiometry-01/python-libs \
-python3 -B tests/etl/test_prepare_satellite.py -v
-PYTHONPATH=data/reports/source-feasibility/2026-11-03-radiometry-01/python-libs \
-python3 -B tests/etl/test_satellite_review.py -v
-PYTHONPATH=data/reports/source-feasibility/2026-11-03-radiometry-01/python-libs \
-python3 -B tests/etl/test_satellite_index.py -v
+docker build -t web-gis-osm-etl:ci docker/etl
+docker run --rm --network=none --memory=1g --cpus=2 \
+  --user "$(id -u):$(id -g)" -v "$PWD:/work:ro" \
+  web-gis-osm-etl:ci python -m unittest discover -s tests/etl -v
 ```
+
+CI-job `documentation-and-environment` выполняет `python3 -B scripts/check-docs`, регрессии `python3 -B -m unittest discover -s tests/docs -v` и `python3 -B -m unittest discover -s tests/environment -v`. Последние требуют Docker Compose CLI и POSIX shell, но не Docker daemon/БД/volumes: чистые временные конфигурации проверяют базовый режим без satellite-данных, persisted dev/build, read-only mounts и `create_host_path: false`; настоящий PHP startup-script со stub финального server exec проверяет полноту четырёх параметров и формат pins. Compose config не проверяет существование каталогов: реальный отказ bind отдельно проверяется с daemon. Никакая из этих команд не запускает рабочий стек. Выбор Laravel manifest при существующем hot и устаревшем config проверяет `docker compose exec -T php php vendor/bin/phpunit tests/Feature/FrontendAssetsModeTest.php` (synthetic manifest/hot во временном каталоге, без БД).
+
+При изменении запуска дополнительно проверить изолированный стек без ignored-конфигурации/спутников и рабочих volumes: HTTP `UNAVAILABLE / SATELLITE_NOT_CONFIGURED`, dev/build и restart Node, отказ несуществующего явного bind без создания каталога. Затем в разрешённом локальном экземпляре — HTML и каждый опубликованный asset, спутниковый POST и PNG, сохранность POI и прежней сборки; режимы/команды — в [runbook](runbook-local.md#выбор-frontend-assets). Config-тесты не заменяют эти HTTP-проверки. Не запускать миграции/импорты ради smoke; одноразовая БД стенда изолируется от рабочей.
 
 Синтетические GeoTIFF/XML/proof только во временном каталоге: offset/формула, DN1/nodata/SCL/приоритеты, нечётное смещение nearest 20→10 м, сетки, прозрачность, полигональное покрытие, hashes и отказ перезаписи/изменённых входов. Для native-вырезок проверяются оконный proof/scope/origin, полная JP2-сетка, DN-кодировка и точность XML-времени. Для индекса — чтение записанного рецепта независимо от форматирования входа, обязательные файлы, hashes, версии, общий extent, дубликаты и запрет перезаписи. Дополнительно проверяются все float32-границы легенды и соседние значения, scope оконного покрытия, полные знаменатели кругов внутри/на краю/снаружи, различие scene/prepared/usable, null без пригодных данных и допустимый нулевой NDVI. Это не реальные Sentinel-данные. Реальная проверка — отдельный запуск команды выпуска в **новый** каталог по закреплённым входам: hashes и identity, полное окно JP2/COG и независимая формула NDVI, повторное открытие outputs, время и размер. Нужны ignored-входы; отсутствие — блокер, не замена fixtures. Приложение, сеть, рабочая БД и public/build не используются.
 
@@ -99,7 +101,7 @@ python3 -B tests/etl/test_satellite_index.py -v
 
 После любых правок docs запускать `scripts/check-docs` (эквивалент: `python3 -B scripts/check-docs`). Он проверяет шапки, значения статуса/дат, относительные ссылки и якоря, достижимость документов из индекса и входящие ссылки из tracked Markdown, включая README/AGENTS. Сеть, приложение, БД и runtime не запускаются; файлы не изменяются.
 
-Предел размера — 40 KiB (40 960 байт UTF-8), вычисляется как `len(text.encode('utf-8'))`: превышение в `features/` и `plans/` даёт ошибку и ненулевой exit code; в остальных текущих документах — предупреждение. Для исторических материалов в `history/`, `archive/` и `research/` размер не диагностируется; шапки, индекс и переносимые ссылки по-прежнему проверяются. Ссылки на ignored `data/reports` в исторических документах выводятся как `INFO`, а в `features/`, `plans/` и `data/` — как `WARN`: локальное свидетельство нельзя считать доступным в checkout. Это граница проверки, а не подтверждение сохранности входов. Ошибки обычных ссылок и якорей не понижаются до INFO.
+Предел размера — 40 KiB (40 960 байт UTF-8), вычисляется как `len(text.encode('utf-8'))`: превышение в `features/` и `plans/` даёт ошибку и ненулевой exit code; в остальных текущих документах — предупреждение. Для исторических материалов в `history/`, `archive/` и `research/` размер не диагностируется; шапки, индекс и переносимые ссылки по-прежнему проверяются. Ссылки на ignored `data/reports` в исторических документах выводятся как `INFO`, а в `features/`, `plans/` и `data/` — как `WARN`: локальное свидетельство нельзя считать доступным в checkout. Только для документов со статусом `history`/`superseded` в `history/`, `archive/` или `research/` ссылки на `experiments/<имя>/.runtime/<файл>` также считаются локальными генерируемыми свидетельствами (`INFO`). Активные документы и отсутствующие исходники экспериментов по-прежнему дают ошибку. Это граница проверки, а не подтверждение сохранности входов. Ошибки обычных ссылок и якорей не понижаются до INFO.
 
 Проверяются все Markdown в docs, включая untracked-планы, без исключений. Ошибки защищённых от изменений документов указывать в отчёте, не обходить checker. Исторический статус не означает успешную новую проверку приложения.
 

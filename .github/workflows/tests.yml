@@ -9,6 +9,23 @@ permissions:
   contents: read
 
 jobs:
+  documentation-and-environment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check documentation
+        run: python3 -B scripts/check-docs
+
+      - name: Test documentation checker regressions
+        run: python3 -B -m unittest discover -s tests/docs -v
+
+      - name: Test portable Compose configuration without local data
+        run: python3 -B -m unittest discover -s tests/environment -v
+
   nginx-privacy:
     runs-on: ubuntu-latest
     permissions:
@@ -124,10 +141,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Build the offline preparation image
+      - name: Build the pinned OSM and satellite fixture image
         run: docker build -t web-gis-osm-etl:ci docker/etl
 
-      - name: Test PBF preparation on small fixtures
+      - name: Test all OSM and satellite preparation fixtures without network or data
         run: >-
           docker run --rm --network=none --memory=1g --cpus=2
           --user "$(id -u):$(id -g)" -v "$PWD:/work:ro"

@@ -132,6 +132,12 @@ def check(root, size_limit=40 * 1024, extra_files=(), notices=None):
                 else:
                     notices.append(f'{name}: local generated evidence/input (not checked)')
                 continue
+            parts = pathlib.PurePosixPath(relative).parts
+            if (path in files and fields.get('status') in ('history', 'superseded')
+                    and path.relative_to(root).parts[1] in ('history', 'archive', 'research')
+                    and len(parts) > 3 and parts[0] == 'experiments' and parts[2] == '.runtime'):
+                notices.append(f'{name}: local generated experimental evidence (not checked)')
+                continue
             if not destination.exists():
                 errors.append(f'{name}: missing local target {target}')
                 continue

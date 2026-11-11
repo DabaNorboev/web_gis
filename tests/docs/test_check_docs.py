@@ -146,6 +146,22 @@ class DocumentationChecks(unittest.TestCase):
         errors, _, _ = module.check(self.root)
         self.assertEqual(sum('historical directory requires' in item for item in errors), 2)
 
+    def test_only_historical_experimental_runtime_is_optional_evidence(self):
+        self.write('docs/README.md', '# Index\n[old](research/old.md)\n[new](features/new.md)\n')
+        screenshot = '../../experiments/demo/.runtime/desktop.png'
+        self.write('docs/research/old.md', '# Old\n[image](' + screenshot + ')\n[source](../../experiments/demo/source.py)\n',
+                   HEADER.replace('status: current', 'status: history'))
+        self.write('docs/features/new.md', '# New\n[image](' + screenshot + ')\n')
+        notices = []
+        errors, _, _ = module.check(self.root, notices=notices)
+        self.assertEqual(len(errors), 2)
+        self.assertTrue(any('docs/research/old.md: missing local target' in item and 'source.py' in item for item in errors))
+        self.assertTrue(any('docs/features/new.md: missing local target' in item and 'desktop.png' in item for item in errors))
+        self.assertEqual(notices, ['docs/research/old.md: local generated experimental evidence (not checked)'])
+        self.write('docs/research/old.md', '# Current research\n[image](' + screenshot + ')\n')
+        errors, _, _ = module.check(self.root)
+        self.assertTrue(any('docs/research/old.md: missing local target' in item for item in errors))
+
 
 if __name__ == '__main__':
     unittest.main()
