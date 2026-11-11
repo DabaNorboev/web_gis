@@ -2,7 +2,10 @@
 
 namespace Tests\Integration;
 
+use App\Services\Addresses\AddressResolverService;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Tests\PostgisTestCase;
 
 class PlaceAnalysisTest extends PostgisTestCase
@@ -13,15 +16,15 @@ class PlaceAnalysisTest extends PostgisTestCase
     {
         config(['app.debug' => true]);
         $before = DB::selectOne("SELECT current_setting('statement_timeout') AS timeout");
-        $this->mock(\App\Services\Addresses\AddressResolverService::class, function ($m) {
+        $this->mock(AddressResolverService::class, function ($m) {
             $m->shouldReceive('validateId')->once()->with('osm:node:1')->andReturn([]);
             $m->shouldReceive('snapshots')->once()->with(true)->andReturnUsing(function () {
                 DB::select('SELECT pg_sleep(3) /* synthetic private canary */');
             });
             $m->shouldNotReceive('resolve');
         });
-        \Illuminate\Support\Facades\Log::shouldReceive('error')->once()->with('Place analysis request failed.',
-            ['exception_type' => \Illuminate\Database\QueryException::class]);
+        Log::shouldReceive('error')->once()->with('Place analysis request failed.',
+            ['exception_type' => QueryException::class]);
         $this->postJson('/api/v1/place-analysis', ['place' => ['kind' => 'address', 'address_id' => 'osm:node:1']])
             ->assertStatus(503)->assertJsonPath('code', 'SERVICE_UNAVAILABLE')->assertDontSee('canary')
             ->assertHeader('Cache-Control', 'no-store, private');

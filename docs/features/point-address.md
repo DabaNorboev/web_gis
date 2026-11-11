@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-11-04
+updated: 2026-11-11
 verified: not verified
 ---
 
@@ -11,6 +11,8 @@ verified: not verified
 ## API и пространственная методика
 
 `POST /api/v1/addresses/resolve-point`, JSON `{ "lon": 92.87, "lat": 56.01 }`. Только координаты WGS84 из JSON body, не query. Лимит 1 KiB, до 120 запросов/минуту на IP. Некорректные координаты — 422; неправильный content type — 415; превышение размера — 413. Endpoint доступен без регистрации.
+
+GET к этому endpoint возвращает 405 и не попадает в resolver адресного ID; координаты из query не разрешаются.
 
 Ответ содержит `data.match` (`CONTAINING`, `NEARBY`, `NONE`), `candidates`, `requires_choice`. Кандидат: OSM ID с типом node/way/relation, исходная label, object_type, geometry_type и distance_m. Координаты здания или новая точка анализа не возвращаются. `meta`: источник, dataset_import_id, observed_at, source_updated_at, calculated_at, радиус поиска, coverage и независимые признаки quality.
 

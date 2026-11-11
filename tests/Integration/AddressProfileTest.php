@@ -86,7 +86,8 @@ class AddressProfileTest extends TestCase
         $this->assertGreaterThan(300, $response->json('blocks.railways.data.metrics.nearest_distance.value'));
         $this->getJson('/api/v1/addresses/osm:node:2/profile')->assertOk()->assertJsonPath('point.lon', 92.901);
         $this->withoutVite();
-        $this->get('/address/osm:node:1?radius_m=300')->assertOk()->assertViewIs('welcome');
+        $this->get('/address/osm:node:1?radius_m=300')->assertRedirect('/')
+            ->assertHeader('Cache-Control', 'no-store, private')->assertHeader('Referrer-Policy', 'no-referrer');
     }
 
     public function test_missing_source_is_null_while_other_categories_remain_available(): void

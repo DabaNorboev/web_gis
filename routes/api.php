@@ -19,7 +19,8 @@ Route::post('v1/place-analysis', PlaceAnalysisController::class)
 Route::get('v1/transport/analysis', TransportAnalysisController::class);
 
 Route::get('v1/addresses/search', AddressSearchController::class)->middleware('throttle:120,1');
-Route::get('v1/addresses/{id}', AddressResolverController::class)->middleware('throttle:120,1');
+Route::get('v1/addresses/{id}', AddressResolverController::class)
+    ->where('id', '(?!resolve-point(?:/|$))[^/]+')->middleware('throttle:120,1');
 Route::get('v1/addresses/{id}/profile', AddressProfileController::class)->middleware('throttle:120,1');
 
 Route::post('v1/trips/analyze', TripAnalysisController::class)->middleware([LimitTripRequest::class, 'throttle:30,1,trips']);
