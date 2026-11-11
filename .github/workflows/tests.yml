@@ -91,7 +91,7 @@ jobs:
         run: composer test:postgis
 
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -117,7 +117,8 @@ jobs:
         run: npm run build
 
       - name: Install smoke browser and system dependencies
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 20
+        run: python3 -B scripts/ci-install-chromium.py
 
       - name: Smoke test comparison in Chromium (local fixtures, no database)
         run: npm run test:smoke
