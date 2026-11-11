@@ -12,6 +12,7 @@ import {
 } from '@/utils/satellite'
 
 const props = defineProps<{
+    satelliteScope: 'territory' | 'circle'
     canLoad: boolean
     tab: 'overview' | 'objects' | 'satellite' | 'air'
     blocks: Record<AnalysisBlockKey, AnalysisBlockState>
@@ -25,7 +26,7 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
     open: [key: AnalysisBlockKey]; load: [key: AnalysisBlockKey]; category: [key: PoiCategory | 'all']; poi: [id: string]; station: [id: string]
-    date: [value: string]; 'satellite-mode': [value: SatelliteMode]; 'station-radius': [value: number]; 'station-selection': [value: string[]]
+    date: [value: string]; 'satellite-mode': [value: SatelliteMode]; 'satellite-scope': [value: 'territory' | 'circle']; 'station-radius': [value: number]; 'station-selection': [value: string[]]
 }>()
 const names = { poi: 'Объекты (POI)', satellite: 'Спутниковые снимки', air: 'Станции мониторинга воздуха' }
 const categories: Record<PoiCategory, string> = { grocery: 'Продукты', pharmacy: 'Аптеки', official_stop: 'Остановки', park: 'Парки' }
@@ -173,6 +174,13 @@ function toggleStation(id: string) {
                 <option v-if="date && !selectedDateKnown" :value="date">{{ formatObservationDate(date) }} · нет в каталоге</option>
             </select>
         </label>
+        <label class="pa-field"><span>Область отображения</span>
+            <select class="pa-select" aria-label="Область спутникового слоя" :value="satelliteScope"
+                @change="emit('satellite-scope', ($event.target as HTMLSelectElement).value as 'territory' | 'circle')">
+                <option value="territory">Вся подготовленная территория</option>
+                <option value="circle">Только круг анализа</option>
+            </select>
+        </label>
         <div v-if="blocks.satellite.phase === 'error' || blocks.satellite.phase === 'unavailable'" class="pa-alert pa-alert--error" role="status">
             <TriangleAlert :size="16" aria-hidden="true" />
             <div><strong>{{ blocks.satellite.phase === 'unavailable' ? 'Спутниковый источник недоступен' : 'Не удалось загрузить спутниковые данные' }}</strong>
@@ -203,7 +211,7 @@ function toggleStation(id: string) {
                         </div>
                     </div>
                     <p v-if="(selectedCoverage?.usable_fraction ?? 1) < 1" class="pa-sat-coverage__note">Остальные пиксели круга неизвестны или исключены маской. Это не низкий NDVI.</p>
-                    <p class="pa-sat-coverage__scope" data-satellite-scope>Слой показан на всей подготовленной территории. Показатели рассчитаны для выбранного круга.</p>
+                    <p class="pa-sat-coverage__scope" data-satellite-scope>{{ satelliteScope === 'circle' ? 'Слой показан только в круге анализа.' : 'Слой показан на всей подготовленной территории.' }} Показатели рассчитаны для выбранного круга.</p>
                 </div>
                 <p class="pa-note">NDVI безразмерен и не равен доле растительности. Неизвестные пиксели прозрачны; при сильном увеличении изображение становится крупнее, но новые детали не появляются.</p>
                 <div v-if="satelliteImageUnavailable" class="pa-alert pa-alert--warning" role="status">

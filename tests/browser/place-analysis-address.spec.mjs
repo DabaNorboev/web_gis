@@ -91,13 +91,15 @@ test('initial map has no selected pin; a singleton is a clickable address with o
     await expect(option.locator('.pa-address-number')).toHaveCount(0)
     await expect(page.getByRole('option', { name: unknown.label, exact: true }).locator('small')).toHaveCount(0)
     await expect(page.getByText('Один объект', { exact: true })).toHaveCount(0)
+    for (const tab of await page.getByRole('tab').all()) await expect(tab).toBeDisabled()
     await option.click()
+    for (const tab of await page.getByRole('tab').all()) await expect(tab).toBeEnabled()
     await expect.poll(() => calls.length).toBe(3)
     expect(calls.every(r => r.place.address_id === 'osm:way:15')).toBe(true)
     await expect(page.locator('.pa-map-pin')).toHaveCount(1)
     const gap = await page.locator('.pa-api-actions').evaluate(element => {
         const description = element.querySelector('p').getBoundingClientRect()
-        const button = element.querySelector('button').getBoundingClientRect()
+        const button = element.querySelector('.pa-api-actions__main > .pa-primary').getBoundingClientRect()
         return button.top - description.bottom
     })
     expect(gap).toBeGreaterThanOrEqual(8)

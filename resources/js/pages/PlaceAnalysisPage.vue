@@ -118,11 +118,16 @@ const showSatellite = ref(true)
 const showStations = ref(true)
 const showRadius = ref(true)
 const layersOpen = ref(true)
+const ndviLegendOpen = ref(true)
+const ndviLegendVisible = computed(() => showSatellite.value && satelliteOpacity.value > 0
+    && satelliteMode.value === 'ndvi' && satelliteSelected.value?.status === 'READY'
+    && !!satelliteLayers.value?.ndvi && !!satelliteLegend.value)
 const objectList = ref<HTMLElement | null>(null)
 const mapRef = ref<{ focusMap: () => void } | null>(null)
 const placeButton = ref<HTMLButtonElement | null>(null)
 const analyzeButton = ref<HTMLButtonElement | null>(null)
-const layerOrder = ref<AnalysisLayer[]>(['objects', 'satellite', 'stations', 'radius'])
+const satelliteScope = ref<'territory' | 'circle'>('territory')
+const layerOrder = ref<AnalysisLayer[]>(['objects', 'stations', 'radius', 'satellite'])
 
 const mapPois = realMapPois
 const tabLabels: Record<AnalysisTab, string> = {
@@ -225,6 +230,7 @@ const mapShowStations = computed(() => showStations.value)
 const mapCategoryFilter = computed<PoiCategory | null>(() => activeTab.value === 'objects' && activeCategory.value !== 'all' ? activeCategory.value : null)
 
 function selectTab(tab: AnalysisTab) {
+    if (!hasSelection.value) return
     // Tabs change the analytical content only; layer choices belong to the user
     // and survive tab switches until the page is reloaded.
     activeTab.value = tab
@@ -237,6 +243,7 @@ function openAnalysisTab(key: AnalysisBlockKey) {
 }
 
 function tabKey(event: KeyboardEvent) {
+    if (!hasSelection.value) return
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
     event.preventDefault()
     const index = tabOrder.indexOf(activeTab.value)
@@ -461,7 +468,7 @@ onBeforeUnmount(() => {
                 <div class="pa-api-actions">
                     <p v-if="!referencePoint || pendingPoint" class="pa-note">{{ hasSelection ? place.label : 'Выберите адресный объект или точку карты.' }}<span v-if="hasSelection && place.id && selectedBuildingLabel"> · {{ selectedBuildingLabel }}</span></p>
                     <div class="pa-api-actions__main">
-                    <button class="pa-primary" type="button" :disabled="!analysis.input.value" @click="runAnalysis">Анализировать место</button>
+                    <button class="pa-primary" type="button" :disabled="!analysis.input.value" :aria-describedby="!hasSelection ? 'pa-selection-hint' : undefined" @click="runAnalysis">Анализировать место</button>
                     <PointAddressReference v-if="referencePoint && !pendingPoint" compact :candidates="pointAddress.candidates.value" :status="pointAddress.status.value"
                         :transition-pending="pointAddress.transitionPending.value" :transition-error="pointAddress.transitionError.value"
                         :coverage-reason="pointAddress.result.value?.meta?.coverage?.reason"
@@ -478,6 +485,8 @@ onBeforeUnmount(() => {
                         :class="{ 'is-active': activeTab === tab }"
                         type="button"
                         role="tab"
+                        :disabled="!hasSelection"
+                        :aria-describedby="!hasSelection ? 'pa-selection-hint' : undefined"
                         :aria-selected="activeTab === tab"
                         :aria-controls="`pa-panel-${tab}`"
                         :tabindex="activeTab === tab ? 0 : -1"
@@ -487,11 +496,16 @@ onBeforeUnmount(() => {
                 </nav>
 
                 <div :id="`pa-panel-${activeTab}`" class="pa-panel__scroll" role="tabpanel" :aria-labelledby="`pa-tab-${activeTab}`">
-                    <PlaceAnalysisResults :tab="activeTab" :blocks="analysis.blocks" :selected-poi="selectedPoiId" :category="activeCategory"
-                        :can-load="!!analysis.input.value" :date="realDate" :satellite-mode="satelliteMode" :satellite-catalog="satelliteCatalog"
+                    <div v-if="!hasSelection" id="pa-selection-hint" class="pa-selection-hint">
+                        <MapPin :size="28" aria-hidden="true" />
+                        <h2>Сначала выберите место</h2>
+                        <p>Найдите и выберите адрес в поиске или нажмите «Точка на карте». После выбора станут доступны разделы и анализ места.</p>
+                    </div>
+                    <PlaceAnalysisResults v-else :tab="activeTab" :blocks="analysis.blocks" :selected-poi="selectedPoiId" :category="activeCategory"
+                        :satellite-scope="satelliteScope" :can-load="!!analysis.input.value" :date="realDate" :satellite-mode="satelliteMode" :satellite-catalog="satelliteCatalog"
                         :station-radius="stationRadius" :selected-ids="selectedStationIds"
                         @load="loadBlock" @open="openAnalysisTab" @poi="selectPoi" @category="selectCategory" @station="selectStation"
-                        @date="chooseSatelliteDate" @satellite-mode="satelliteMode = $event"
+                        @date="chooseSatelliteDate" @satellite-mode="satelliteMode = $event" @satellite-scope="satelliteScope = $event"
                         @station-radius="setStationRadius" @station-selection="selectedStationIds = $event" />
                 </div>
             </aside>
@@ -519,6 +533,7 @@ onBeforeUnmount(() => {
                     :show-radius="showRadius"
                     :layer-order="layerOrder"
                     :satellite-mode="mapSatelliteMode"
+                    :satellite-scope="satelliteScope"
                     :satellite-opacity="satelliteOpacity"
                     :satellite-layers="satelliteLayers"
                     :category-filter="mapCategoryFilter"
@@ -602,40 +617,43 @@ onBeforeUnmount(() => {
                                     @click="moveLayer(index, 1)"
                                 ><ChevronDown :size="13" aria-hidden="true" /></button>
                             </div>
+                            <label v-if="key === 'satellite' && showSatellite" class="pa-opacity">
+                                <span>Непрозрачность:</span>
+                                <input v-model.number="satelliteOpacity" type="range" min="0" max="1" step="0.05" aria-label="Непрозрачность спутникового слоя" title="0% — слой невидим, 100% — полностью непрозрачен">
+                                <output>{{ Math.round(satelliteOpacity * 100) }}%</output>
+                            </label>
                         </div>
                         <div class="pa-layer-row pa-layer-row--static">
                             <input type="checkbox" checked disabled>
                             <MapIcon class="pa-layer-icon" :size="15" aria-hidden="true" />
                             <span>Базовая карта</span>
                         </div>
-                        <label v-if="showSatellite" class="pa-opacity">
-                            <span>Непрозрачность:</span>
-                            <input v-model.number="satelliteOpacity" type="range" min="0" max="1" step="0.05" aria-label="Непрозрачность спутникового слоя" title="0% — слой невидим, 100% — полностью непрозрачен">
-                            <output>{{ Math.round(satelliteOpacity * 100) }}%</output>
-                        </label>
 
-                        <div v-if="activeTab === 'air'" class="pa-legend">
-                            <strong class="pa-legend__title">Условные обозначения</strong>
-                            <div class="pa-legend__row"><RadioTower class="pa-legend__icon" :size="14" aria-hidden="true" /> Станция мониторинга</div>
-                            <div class="pa-legend__row"><CircleDashed class="pa-legend__icon" :size="14" aria-hidden="true" /> Радиус анализа ({{ radius }} м)</div>
-                        </div>
-                        <div v-else-if="activeTab === 'satellite'" class="pa-legend">
-                            <strong class="pa-legend__title">Легенда {{ satelliteMode === 'ndvi' ? 'NDVI' : 'снимка' }}</strong>
-                            <template v-if="satelliteMode === 'ndvi' && satelliteLegend">
-                                <div v-for="legendClass in satelliteLegend.classes" :key="legendClass.label" class="pa-legend__row">
+                        <section v-if="ndviLegendVisible" class="pa-legend" aria-label="Легенда NDVI">
+                            <h3 class="pa-legend__heading">
+                                <button class="pa-legend__toggle" type="button" :aria-expanded="ndviLegendOpen"
+                                    aria-controls="pa-ndvi-legend-body" @click="ndviLegendOpen = !ndviLegendOpen">
+                                    <span>Легенда NDVI</span>
+                                    <ChevronDown :size="14" :class="{ 'is-open': ndviLegendOpen }" aria-hidden="true" />
+                                </button>
+                            </h3>
+                            <div v-show="ndviLegendOpen" id="pa-ndvi-legend-body">
+                                <div v-for="legendClass in satelliteLegend!.classes" :key="legendClass.label" class="pa-legend__row">
                                     <span class="pa-legend__swatch" :style="{ background: legendClass.color }" aria-hidden="true" />
                                     {{ legendClass.label }}
                                 </div>
                                 <div class="pa-legend__row">
                                     <span class="pa-legend__swatch pa-legend__swatch--unknown" aria-hidden="true" />
-                                    {{ satelliteLegend.unknown.label }}
+                                    {{ satelliteLegend!.unknown.label }}
                                 </div>
-                                <p class="pa-legend__note">Неизвестное прозрачно и не считается низким NDVI. Легенда общая для всех дат; индекс не равен проценту растительности.</p>
-                            </template>
-                            <p v-else-if="satelliteMode === 'snapshot'" class="pa-legend__note">Исходное цветное изображение Sentinel-2. Это не количественные данные NDVI.</p>
-                            <p v-else class="pa-legend__note">Загрузите каталог и дату, чтобы получить общую легенду NDVI.</p>
+                            </div>
+                        </section>
+                        <div v-if="activeTab === 'air'" class="pa-legend">
+                            <strong class="pa-legend__title">Условные обозначения</strong>
+                            <div class="pa-legend__row"><RadioTower class="pa-legend__icon" :size="14" aria-hidden="true" /> Станция мониторинга</div>
+                            <div class="pa-legend__row"><CircleDashed class="pa-legend__icon" :size="14" aria-hidden="true" /> Радиус анализа ({{ radius }} м)</div>
                         </div>
-                        <div v-else class="pa-legend">
+                        <div v-else-if="activeTab !== 'satellite'" class="pa-legend">
                             <strong class="pa-legend__title">Категории</strong>
                             <div v-for="category in categoryOrder" :key="category" class="pa-legend__row">
                                 <component :is="categoryIcons[category]" class="pa-legend__icon" :size="14" :style="{ color: categoryMeta[category].color }" aria-hidden="true" />

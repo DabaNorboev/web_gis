@@ -23,6 +23,7 @@ import {
     type PoiCategory,
     type SatelliteMode,
 } from '@/place-analysis'
+import { satelliteClipLayers } from '@/utils/satelliteClip'
 import { addressFeatures, type AddressMapState } from '@/utils/addressMap'
 import type { Feature, FeatureCollection, Polygon, MultiPolygon, Point } from 'geojson'
 import type { SatelliteLayerKey, SatelliteRasterSource } from '@/types/placeAnalysis'
@@ -45,6 +46,7 @@ const props = withDefaults(defineProps<{
     showRadius: boolean
     layerOrder: AnalysisLayer[]
     satelliteMode: SatelliteMode
+    satelliteScope: 'territory' | 'circle'
     satelliteOpacity: number
     satelliteLayers: Partial<Record<SatelliteLayerKey, SatelliteRasterSource>> | null
     categoryFilter: PoiCategory | null
@@ -144,7 +146,7 @@ function setVisibility(id: string, visible: boolean) {
 
 const layerFillGroups: Record<AnalysisLayer, string[]> = {
     objects: ['pa-poi-fill', 'pa-poi-outline'],
-    satellite: ['pa-satellite-true-color-raster', 'pa-satellite-ndvi-raster'],
+    satellite: ['pa-satellite-clip-start', 'pa-satellite-true-color-raster', 'pa-satellite-ndvi-raster', 'pa-satellite-clip-end'],
     stations: [],
     radius: ['pa-radius-fill', 'pa-radius-line'],
 }
@@ -499,6 +501,7 @@ function initMap() {
         mapStatus.value = 'ready'
         applyBasemapTheme(map, baseStyle(), theme.value)
         addLayers()
+        for (const layer of satelliteClipLayers(() => ({ enabled: props.satelliteScope === 'circle' && props.showSatellite && !!props.satelliteLayers, area: props.analysisArea }))) map.addLayer(layer)
         syncLayers()
         syncMarkers()
         syncAddressPreview()
@@ -573,7 +576,7 @@ watch(() => props.stationFocusRequest, () => {
 watch(
     () => [
         props.showPlacePin, props.geometryStale, props.tab, props.showObjects, props.showSatellite, props.showStations, props.showRadius,
-        props.satelliteMode, props.satelliteOpacity, props.satelliteLayers, props.categoryFilter, props.selectedStation, props.pendingPoint, props.pois, props.poiDistancesKnown, props.analysisArea, props.stations,
+        props.satelliteMode, props.satelliteScope, props.satelliteOpacity, props.satelliteLayers, props.categoryFilter, props.selectedStation, props.pendingPoint, props.pois, props.poiDistancesKnown, props.analysisArea, props.stations,
     ],
     () => {
         syncLayers()
