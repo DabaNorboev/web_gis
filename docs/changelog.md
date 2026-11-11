@@ -6,6 +6,8 @@ verified: not verified
 
 # Изменения PlaceLens
 
+- 2026-11-11: Frontend CI переведён на официальный Playwright 1.64.1 noble с готовыми браузерами и системными библиотеками, без APT-подготовки; полный smoke и диагностика сохранены. [Браузерный smoke](browser-smoke.md#падения-и-ci).
+
 - 2026-11-11: Исправлено пересечение адресного resolver с POST-only подписью точки: GET `resolve-point` сохраняет 405. [Контракт подписи точки](features/point-address.md#api-и-пространственная-методика).
 
 - 2026-11-11: Единый Compose сохраняет локальные satellite paths/trusted pins и явный dev/build; build игнорирует hot, повторный up/restart Node не меняет режим. [Запуск и выбор assets](runbook-local.md#выбор-frontend-assets).
