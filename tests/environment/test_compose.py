@@ -20,10 +20,28 @@ class ComposeConfigurationTest(unittest.TestCase):
         (self.root / '.env').write_text('DB_DATABASE=fixture\nDB_USERNAME=fixture\nDB_PASSWORD=fixture\n')
         self.env = {key: os.environ[key] for key in ('PATH', 'HOME') if key in os.environ}
 
-    def config(self, variables=None):
+    def config(self, variables=None, compose_file='docker-compose.yml'):
         return subprocess.run(['docker', 'compose', '--project-name', 'placelens-config-test',
-                               '--project-directory', str(self.root), 'config', '--format', 'json'],
+                               '--project-directory', str(self.root), '-f', str(self.root / compose_file),
+                               'config', '--format', 'json'],
                               env=self.env | (variables or {}), capture_output=True, text=True)
+
+    def assert_no_host_path_creation(self, mount):
+        # Compose 2.38 omits false in JSON; newer Compose omits true instead.
+        # Compare with explicit controls from this CLI, never assume an absent
+        # create_host_path means false. Both controls must remain distinguishable.
+        policies = []
+        for create in (False, True):
+            probe = {'services': {'probe': {'image': 'synthetic', 'volumes': [{
+                'type': 'bind', 'source': str(self.root / 'missing-probe'),
+                'target': '/fixture', 'bind': {'create_host_path': create},
+            }]}}}
+            (self.root / 'bind-policy.json').write_text(json.dumps(probe))
+            result = self.config(compose_file='bind-policy.json')
+            self.assertEqual(result.returncode, 0, result.stderr)
+            policies.append(json.loads(result.stdout)['services']['probe']['volumes'][0]['bind'])
+        self.assertNotEqual(policies[0], policies[1])
+        self.assertEqual(mount['bind'], policies[0], mount['target'])
 
     def php_start(self, variables):
         # Stub only the final server exec; run the actual startup validation.
@@ -51,7 +69,7 @@ class ComposeConfigurationTest(unittest.TestCase):
             self.assertEqual(mount['source'], str(self.root / 'docker/satellite-disabled'))
             self.assertTrue(Path(mount['source']).is_dir())
             self.assertTrue(mount['read_only'])
-            self.assertFalse(mount['bind']['create_host_path'])
+            self.assert_no_host_path_creation(mount)
         self.assertEqual(config['services']['nginx']['depends_on']['php']['condition'], 'service_healthy')
         self.assertTrue(config['services']['nginx']['depends_on']['php']['restart'])
         self.assertFalse((self.root / 'data').exists())
@@ -81,8 +99,23 @@ class ComposeConfigurationTest(unittest.TestCase):
             mount = next(v for v in php['volumes'] if v['target'] == target)
             self.assertEqual(mount['source'], variables['SATELLITE_' + key + '_DIR'])
             self.assertTrue(mount['read_only'])
-            self.assertFalse(mount['bind']['create_host_path'])
+            self.assert_no_host_path_creation(mount)
             self.assertFalse(Path(mount['source']).exists())
+
+    def test_satellite_mount_checks_reject_automatic_directory_creation(self):
+        path = self.root / 'docker-compose.yml'
+        original = path.read_text()
+        for target in ('/satellite/runtime', '/satellite/delivery'):
+            before, separator, after = original.partition('target: ' + target)
+            self.assertTrue(separator)
+            self.assertIn('create_host_path: false', after)
+            path.write_text(before + separator + after.replace('create_host_path: false',
+                                                              'create_host_path: true', 1))
+            for check in (self.test_clean_checkout_without_ignored_data,
+                          self.test_explicit_read_only_paths_and_pins_without_directory_creation):
+                with self.subTest(target=target, check=check.__name__):
+                    with self.assertRaisesRegex(AssertionError, target):
+                        check()
 
     def test_invalid_pin_and_mode_rejected(self):
         php = json.loads(self.config(self.variables()).stdout)['services']['php']['environment']
