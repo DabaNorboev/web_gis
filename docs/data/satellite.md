@@ -1,18 +1,39 @@
 ---
 status: current
-updated: 2026-11-11
+updated: 2026-11-13
 verified: run 2026-11-06
 ---
 
 # Офлайн-выпуски спутниковых слоёв А9
 
-Реализованы офлайн-подготовка однотайловых окон schema 2 и городского набора шести дат schema 3, PHP-reader, HTTP-provider и same-origin доставка готовых PNG. Спутниковый UI подключён; состояние локальной активации и команды запуска — в [runbook](../runbook-local.md#локальные-спутники-рабочая-активация). Данные не поставляются чистым checkout и не активируются автоматически. Команда [prepare-satellite.py](../../scripts/prepare-satellite.py) не использует сеть, HTTP приложения или БД. [Закреплённый рецепт](../../config/satellite/2024-08-15-tatyshev.json) содержит относительные локальные пути, размеры, SHA-256 и источники всех входов: COG B04/B08/SCL/TCI (полные или явно закреплённые native-вырезки), исходные B04/B08 JP2, XML продукта/гранулы, STAC selection и свидетельство радиометрии. Они находятся в ignored `data/reports`, не поставляются чистым checkout; отсутствующий/изменённый вход останавливает подготовку до создания выпуска. [Версии зависимостей](../../config/satellite/requirements.txt) соответствуют переиспользованному изолированному runtime, автоматической установки нет.
+Реализованы офлайн-подготовка однотайловых окон schema 2 и городского набора шести дат schema 3, PHP-reader, HTTP-provider и same-origin доставка готовых PNG. Спутниковый UI подключён; состояние локальной активации и команды запуска — в [runbook](../runbook-local.md#локальные-спутники-рабочая-активация). Данные не поставляются чистым checkout и не активируются автоматически. Команда [prepare-satellite.py](../../scripts/prepare-satellite.py) не использует сеть, HTTP приложения или БД. [Закреплённый рецепт](../../config/satellite/2024-08-15-tatyshev.json) содержит относительные локальные пути, размеры, SHA-256 и источники всех входов: COG B04/B08/SCL/TCI (полные или явно закреплённые native-вырезки), исходные B04/B08 JP2, XML продукта/гранулы, STAC selection и свидетельство радиометрии. Они находятся в ignored `data/reports`, не поставляются чистым checkout; отсутствующий/изменённый вход останавливает подготовку до создания выпуска. Рабочее окружение закреплено в [ETL Dockerfile](../../docker/etl/Dockerfile) и полном [requirements с hashes](../../docker/etl/requirements.txt); автоматической установки при расчёте нет.
+
+## Окружение и запуск подготовки
+
+Из корня проекта один раз явно собрать существующий образ (сборка может использовать сеть):
+
+```bash
+docker build -t web-gis-osm-etl:ci docker/etl
+```
+
+[Обёртка satellite-python](../../scripts/satellite-python) запускает одноразовый контейнер с UID/GID вызывающего пользователя и корнем проекта в `/work`, очищает PYTHONPATH, отключает user site и задаёт по одному потоку OpenBLAS/OpenJPEG. По умолчанию сеть отключена; image не скачивается и пакеты не устанавливаются. Образ можно явно выбрать через `SATELLITE_ETL_IMAGE`. Постоянный сервис не нужен. Каталог проекта доступен для записи outputs; существующие выходы команды не перезаписывают. Пути входов вне проекта нужно отдельно подключать в собственном `docker run`.
+
+Все select/prepare/review/index/runtime/delivery-команды используют это окружение. Для **явно запланированной** загрузки/подбора включить сеть только у соответствующего запуска:
+
+```bash
+SATELLITE_ETL_NETWORK=bridge scripts/satellite-python scripts/prepare-satellite-city.py \
+  --stage acquire --run <каталог-с-config.json-и-raw>
+# Подбор: та же обёртка, scripts/select-satellite-city.py --run <каталог> --stage <этап>.
+```
+
+Рабочий [загрузчик](../../scripts/satellite_fetch.py) содержит только Source и RangeBridge, необходимые подбору и acquisition: budgets запросов/времени/байтов/хранилища, запрет redirects и полного fallback для Range, эксклюзивную запись raw и журнал sizes/hashes. Ошибки пишутся по типу без текста сетевого исключения или тела ответа; source URL остаётся частью происхождения входа. При повторном использовании скачанного файла проверяются журнал источника/метода/статуса, размер и SHA-256; `reuse_inputs` сохраняет pins source/size/hash. Неполный или изменённый вход блокирует выпуск, не перезаписывается автоматически.
+
+CLI-аргументы и JSON-рецепты прежние: заменить только `PYTHONPATH=... python3 -B` на `scripts/satellite-python`. Прямой запуск Python также допустим в заранее подготовленном окружении с теми же зависимостями. [Старый список трёх pins](../../config/satellite/requirements.txt) сохранён для совместимости, но не описывает полное городское окружение. Старые experiments, библиотеки в `data/reports`, manifests и результаты остаются на месте; пути к историческим данным в рецептах допустимы. Новые selection manifests фиксируют hash рабочего загрузчика; старые manifests не переписываются. Радиометрия, маски и версии метода не меняются.
 
 Из корня проекта, с сохранёнными входами; для повтора выбрать **новое** имя каталога:
 
 ```bash
-PYTHONPATH=data/reports/source-feasibility/2026-11-03-radiometry-01/python-libs \
-python3 -B scripts/prepare-satellite.py \
+scripts/satellite-python scripts/prepare-satellite.py \
   --config config/satellite/2024-08-15-tatyshev.json \
   --output data/satellite/releases/2024-08-15-tatyshev-replay-01
 ```
@@ -37,11 +58,10 @@ python3 -B scripts/prepare-satellite.py \
 
 При чтении legacy schema 1 поле `coverage.scene_fraction` следует понимать только как нынешнее `geographic_fraction` внутри окна: это прежнее неоднозначное имя, не покрытие исходной сценой. Исходный футпринт сцены сохранён в `scene.json.geometry`, extent подготовки — в `grid`/`native_bounds`; за ним нет подготовленного NDVI, даже когда сцена там есть. Для круга знаменатель — все его native-пиксели, включая неприготовленную часть; outside-prepared, nodata внутри и исключения маски учитываются отдельно. Недоступное численное значение — null, не ноль. Reader А10 рассчитывает доли круга отдельно и не переносит на него оконные доли.
 
-Ограниченный [review-satellite.py](../../scripts/review-satellite.py) читает выпуск и закреплённые входы без изменения, создаёт только новый каталог свидетельств: проверку происхождения/hashes/сеток/численного утверждения JP2, восемь кругов 200/1000 м и PNG совмещённых контрольных окон с легендой. Круги используют центры пикселей и документированную EPSG:32646 для радиуса, футпринт сцены — из STAC; это не проверка качества данных во всей сцене. Диагностическая SCL-палитра не является независимым эталоном, NDVI-слой накладывается на шахматный фон только для просмотра прозрачности. Нужен уже доступный Pillow; пакеты не устанавливаются. Из корня проекта:
+Ограниченный [review-satellite.py](../../scripts/review-satellite.py) читает выпуск и закреплённые входы без изменения, создаёт только новый каталог свидетельств: проверку происхождения/hashes/сеток/численного утверждения JP2, восемь кругов 200/1000 м и PNG совмещённых контрольных окон с легендой. Круги используют центры пикселей и документированную EPSG:32646 для радиуса, футпринт сцены — из STAC; это не проверка качества данных во всей сцене. Диагностическая SCL-палитра не является независимым эталоном, NDVI-слой накладывается на шахматный фон только для просмотра прозрачности. Pillow включён в закреплённый ETL-образ; пакеты во время review не устанавливаются. Из корня проекта:
 
 ```bash
-PYTHONPATH=data/reports/source-feasibility/2026-11-03-radiometry-01/python-libs \
-python3 -B scripts/review-satellite.py \
+scripts/satellite-python scripts/review-satellite.py \
   --release data/satellite/releases/2024-08-15-tatyshev-a9-2-v2 \
   --output data/satellite/reviews/a9-2-replay-01
 ```
@@ -61,13 +81,12 @@ python3 -B scripts/review-satellite.py \
 Офлайн-повтор двух новых дат и индекса из корня проекта; output-имена должны быть новыми. Исправленный августовский выпуск переиспользуется:
 
 ```bash
-export PYTHONPATH=data/reports/source-feasibility/2026-11-03-radiometry-01/python-libs
 for observation_date in 2024-06-28 2024-07-26; do
-  python3 -B scripts/prepare-satellite.py \
+  scripts/satellite-python scripts/prepare-satellite.py \
     --config "config/satellite/${observation_date}-tatyshev.json" \
     --output "data/satellite/releases/${observation_date}-tatyshev-replay-01"
 done
-python3 -B scripts/index-satellite.py \
+scripts/satellite-python scripts/index-satellite.py \
   --manifest data/satellite/releases/2024-06-28-tatyshev-replay-01/manifest.json \
   --manifest data/satellite/releases/2024-07-26-tatyshev-replay-01/manifest.json \
   --manifest data/satellite/releases/2024-08-15-tatyshev-a9-2-v2/manifest.json \
@@ -103,14 +122,12 @@ Schema 3/status=`prepared_offline_city` хранит `scenes[]` вместо ф�
 Офлайн-повтор по сохранённым входам, из корня проекта (новый output обязателен):
 
 ```bash
-OPJ_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
-PYTHONPATH=data/reports/satellite-city/2026-11-05-a9-4-01/python-libs:data/reports/source-feasibility/2026-11-03-radiometry-01/python-libs \
-python3 -B scripts/prepare-satellite-city.py --stage prepare \
+scripts/satellite-python scripts/prepare-satellite-city.py --stage prepare \
   --config config/satellite/2026-06-06-city.json \
   --output data/satellite/releases/2026-06-06-krasnoyarsk-replay-01
 ```
 
-Зависимости — Python 3.10, NumPy/Rasterio/GDAL, изолированный Shapely 2.1.2 из А9.4, Pillow для review/доставки; автоматической установки нет. Входы июня: `data/satellite/inputs/2026-06-06-city-a9-5-01/`; `config.json` закрепляет acquisition, `requests.jsonl` — размеры/hashes и ресурсы. Время загрузки измеряется отдельно от офлайн-подготовки; `/usr/bin/time -v` включает импорты, RSS указывается в Linux KiB.
+Зависимости — CPython 3.12, NumPy/Rasterio/GDAL, Shapely 2.1.2 и Pillow из закреплённого ETL-образа; исследовательский PYTHONPATH не используется. Входы июня: `data/satellite/inputs/2026-06-06-city-a9-5-01/`; `config.json` закрепляет acquisition, `requests.jsonl` — размеры/hashes и ресурсы. Время загрузки измеряется отдельно от офлайн-подготовки; `/usr/bin/time -v` включает импорты, RSS указывается в Linux KiB.
 
 Независимый полный контроль записанных растров — та же команда со `--stage review --release <release> --output <новый-каталог>`; он потоково проверяет все маски, alpha/легенду, исходные каналы, JP2-арифметику, target и назначение стыка, затем считает круги 200/1000 м внутри/на краю/вне/на стыке и создаёт ограниченные обзорные/контрольные PNG. Изображения нужно просмотреть отдельно: автоматическое создание не является визуальной приёмкой. SCL, в том числе snow на яркой поверхности, не становится независимым подтверждением облаков/снега. Форматы и измерения не подтверждают API/UI/сервер.
 
@@ -144,14 +161,14 @@ Selector переиспользует pinned target побайтово; `config.
 
 Бюджет чтения всех шести дат: ≤16 MiB, четыре блока на дату при 1000 м, прирост PHP-памяти ≤32 MiB, проверяемое время ≤2 с. Дедлайн кооперативный между чтениями/строками, не прерывает зависший системный IO; проекция имеет отдельный бюджет. Нет сети, расчёта NDVI, полного хэширования GeoTIFF или Python/GDAL в запросе. Ошибка затронутого блока исключает дату из пригодных, возвращает null; доступные остальные даты сохраняются.
 
-Runtime: `data/satellite/runtime/krasnoyarsk-2024-2026-a10-1-v1/`; pin `14c4c26cd9c057cd9e17cdc9182b9f2ae15a5a5881d4bd0e951b6760d750cd6b`. Подготовка: `python3 -B scripts/prepare-satellite-runtime.py --index data/satellite/krasnoyarsk-2024-2026-city-v1.json --metadata config/satellite/catalog-metadata.json --output <новый-каталог>` в описанных Python-зависимостях. Команды fixture/реальных проверок reader — [testing](../testing.md). Свидетельства А10.1: [verification.json](../../data/satellite/reviews/2026-11-06-a10-1-01/verification.json); не подтверждают HTTP/UI/рабочую активацию.
+Runtime: `data/satellite/runtime/krasnoyarsk-2024-2026-a10-1-v1/`; pin `14c4c26cd9c057cd9e17cdc9182b9f2ae15a5a5881d4bd0e951b6760d750cd6b`. Подготовка: `scripts/satellite-python scripts/prepare-satellite-runtime.py --index data/satellite/krasnoyarsk-2024-2026-city-v1.json --metadata config/satellite/catalog-metadata.json --output <новый-каталог>` в описанных Python-зависимостях. Команды fixture/реальных проверок reader — [testing](../testing.md). Свидетельства А10.1: [verification.json](../../data/satellite/reviews/2026-11-06-a10-1-01/verification.json); не подтверждают HTTP/UI/рабочую активацию.
 ## Доставка и активация А10.2
 
 [prepare-satellite-delivery.py](../../scripts/prepare-satellite-delivery.py) создаёт **новый** каталог PNG XYZ EPSG:3857, 256², z10–13: существующий MapLibre принимает обычный raster source без нового сервиса. Перепроекция nearest выполняется офлайн с tolerance 1e−9 native-пикселя; цвета легенды не интерполируются. Alpha TCI берётся из tci-valid-mask, NDVI — из подготовленного RGBA; маски независимы. Источники/NDVI в HTTP не рассчитываются. Увеличение масштаба выше z13 — overzoom, не дополнительная детализация. Исходные releases и runtime неизменны.
 
 ```bash
-# Те же PYTHONPATH и зависимости, что у городской подготовки выше.
-python3 -B scripts/prepare-satellite-delivery.py \
+# Тот же закреплённый ETL-образ, что у городской подготовки выше.
+scripts/satellite-python scripts/prepare-satellite-delivery.py \
   --runtime data/satellite/runtime/krasnoyarsk-2024-2026-a10-1-v1 \
   --sha256 14c4c26cd9c057cd9e17cdc9182b9f2ae15a5a5881d4bd0e951b6760d750cd6b \
   --index data/satellite/krasnoyarsk-2024-2026-city-v1.json \

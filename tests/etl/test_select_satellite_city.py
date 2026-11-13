@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import tempfile
+import sys
 import unittest
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
@@ -14,6 +15,8 @@ import numpy as np
 import rasterio as rio
 from rasterio.warp import transform_geom
 from shapely.geometry import box, mapping
+
+sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'scripts'))
 
 SPEC=importlib.util.spec_from_file_location('selection',Path(__file__).resolve().parents[2]/'scripts/select-satellite-city.py')
 m=importlib.util.module_from_spec(SPEC);SPEC.loader.exec_module(m)
