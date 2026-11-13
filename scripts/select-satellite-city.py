@@ -20,9 +20,7 @@ from shapely.geometry import shape, mapping
 from shapely.ops import unary_union
 import shapely
 
-# Reuse the existing budgeted, byte-preserving research transport.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'experiments/source-feasibility'))
-from period_fetch import Source, RangeBridge
+from satellite_fetch import Source, RangeBridge
 
 CRS = 'EPSG:32646'
 
@@ -491,9 +489,9 @@ def finish(run, selection='selection-v2'):
                       'network_time_includes_download':True,'archive_extraction_performed':False,'peak_RSS_measured':False},
             'software':{'python':sys.version,'rasterio':rio.__version__,'gdal':rio.__gdal_version__,
                         'numpy':np.__version__,'shapely':shapely.__version__,'geos':shapely.geos_version_string,
-                        'script_sha256':digest(Path(__file__)),'transport_sha256':digest(Path(__file__).resolve().parents[1]/'experiments/source-feasibility/period_fetch.py')},
+                        'script_sha256':digest(Path(__file__)),'transport_sha256':digest(Path(__file__).with_name('satellite_fetch.py'))},
             'artifacts':artifacts,
-            'reproduce_offline':'PYTHONPATH=<isolated-shapely>:<existing-rasterio> python3 -B scripts/select-satellite-city.py --run <this-run> --stage rank --selection replay-01; then --stage assess --selection replay-01 uses retained raw SCL without network',
+            'reproduce_offline':'scripts/satellite-python scripts/select-satellite-city.py --run <this-run> --stage rank --selection replay-01; then --stage assess --selection replay-01 uses retained raw SCL without network',
             'limits':['OSM urban okrug snapshot, not a legal cadastral boundary','Buffer is EPSG:32646 metres, round approximation error <=0.076m',
                       'SCL and TCI are from same Sentinel source; no independent cloud/land-cover validation',
                       'TCI overview 100m cannot establish accuracy of single 20m exclusions','No NDVI, city release, API/UI or activation prepared']}

@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-11-11
+updated: 2026-11-13
 verified: not verified
 ---
 
@@ -89,13 +89,31 @@ CI-job `documentation-and-environment` выполняет `python3 -B scripts/ch
 
 Синтетические GeoTIFF/XML/proof только во временном каталоге: offset/формула, DN1/nodata/SCL/приоритеты, нечётное смещение nearest 20→10 м, сетки, прозрачность, полигональное покрытие, hashes и отказ перезаписи/изменённых входов. Для native-вырезок проверяются оконный proof/scope/origin, полная JP2-сетка, DN-кодировка и точность XML-времени. Для индекса — чтение записанного рецепта независимо от форматирования входа, обязательные файлы, hashes, версии, общий extent, дубликаты и запрет перезаписи. Дополнительно проверяются все float32-границы легенды и соседние значения, scope оконного покрытия, полные знаменатели кругов внутри/на краю/снаружи, различие scene/prepared/usable, null без пригодных данных и допустимый нулевой NDVI. Это не реальные Sentinel-данные. Реальная проверка — отдельный запуск команды выпуска в **новый** каталог по закреплённым входам: hashes и identity, полное окно JP2/COG и независимая формула NDVI, повторное открытие outputs, время и размер. Нужны ignored-входы; отсутствие — блокер, не замена fixtures. Приложение, сеть, рабочая БД и public/build не используются.
 
+### Изоляция спутникового ETL и загрузчик
+
+Окружение и обёртка — в [основных инструкциях подготовки](data/satellite.md#окружение-и-запуск-подготовки). Целевой прогон **только fixtures**, без mounts experiments и data/reports, без исследовательского PYTHONPATH и внешней сети (локальный HTTP-сервер работает на loopback внутри контейнера):
+
+```bash
+docker run --rm --network=none --memory=1g --cpus=2 \
+  --user "$(id -u):$(id -g)" \
+  -v "$PWD/scripts:/work/scripts:ro" \
+  -v "$PWD/tests/etl:/work/tests/etl:ro" \
+  -v "$PWD/config/satellite:/work/config/satellite:ro" \
+  -e PYTHONPATH= -e PYTHONNOUSERSITE=1 -e OPENBLAS_NUM_THREADS=1 \
+  web-gis-osm-etl:ci python -B -m unittest discover -s tests/etl -p '*satellite*.py' -v
+```
+
+`test_satellite_fetch.py` проверяет локальные GET/HEAD/Range, отказ полного fallback, budgets, неполный HTTP-ответ, запрет перезаписи, size/hash и источник повторно используемого raw, повтор acquisition без новых запросов. `test_satellite_city.py` отдельно проверяет pinned `reuse_inputs` source/size/hash. Журнал ошибок не содержит текста сетевого исключения. Остальные спутниковые fixtures проверяют численные значения, маски, подбор, review, индексы, runtime и доставку на синтетических данных. Отсутствие рабочих импортов из experiments проверяется адресно в `scripts/satellite_city.py`, `scripts/satellite_fetch.py` и `scripts/*satellite*.py`; исключение исторических `python-libs` из списка артефактов подбора остаётся допустимым.
+
+Этот прогон не является реальным воспроизведением Sentinel-выпусков и не подтверждает радиометрию шести дат в новом окружении. Реальное воспроизведение требует сохранённых pinned входов и отдельного разрешённого запуска в новые outputs; существующие выпуски и индексы ради fixtures не пересоздаются.
+
 ### Городской спутниковый выпуск А9.5
 
-В изолированном runtime [городского контракта](data/satellite.md#первый-городской-выпуск-а95-schema-3): `python3 -B tests/etl/test_satellite_city.py -v` (synthetic GeoTIFF/XML, временные каталоги) и после изменения dispatch индекса `python3 -B tests/etl/test_satellite_index.py -v` для прежнего формата. Проверяются инвариантность к размеру блока, нечётная привязка SCL, геометрический overlap без выбора по качеству, единое происхождение каналов, target вместо bbox, неизвестная кодировка/смешанный проход/изменённый вход, неполный manifest и круги. Работа с fixtures не подтверждает реальную радиометрию.
+В изолированном runtime [городского контракта](data/satellite.md#первый-городской-выпуск-а95-schema-3): `scripts/satellite-python tests/etl/test_satellite_city.py -v` (synthetic GeoTIFF/XML, временные каталоги) и после изменения dispatch индекса `scripts/satellite-python tests/etl/test_satellite_index.py -v` для прежнего формата. Проверяются инвариантность к размеру блока, нечётная привязка SCL, геометрический overlap без выбора по качеству, единое происхождение каналов, target вместо bbox, неизвестная кодировка/смешанный проход/изменённый вход, неполный manifest и круги. Работа с fixtures не подтверждает реальную радиометрию.
 
 Реальный прогон — новый каталог, собственные JP2/XML каждого продукта и потоковая проверка записанного выпуска через `--stage review`. `/usr/bin/time -f 'elapsed_seconds=%e max_RSS_KiB=%M'` измеряет внешний wall/RSS, внутренние metrics — обработку и Linux `getrusage` после импорта. Круги, стык, облачные исключения и изображения проверяются отдельно. Никакая команда не запускает API/БД и не активирует набор. Успешные неизменённые старые выпуски повторно не готовятся.
 
-А9.6 дополнительно: `python3 -B tests/etl/test_select_satellite_city.py -v` проверяет год/сезонные окна, tileInfo identity старых STAC и отказ частичных HTTP-входов; городской набор проверяет шесть явных manifest и pinned reuse source/size/hash. Сохранённые выпуски 2026 повторно не готовятся; для нового индекса проверяются их assets/hashes и совместимость.
+А9.6 дополнительно: `scripts/satellite-python tests/etl/test_select_satellite_city.py -v` проверяет год/сезонные окна, tileInfo identity старых STAC и отказ частичных HTTP-входов; городской набор проверяет шесть явных manifest и pinned reuse source/size/hash. Сохранённые выпуски 2026 повторно не готовятся; для нового индекса проверяются их assets/hashes и совместимость.
 
 ## Проверка документации
 
@@ -231,11 +249,11 @@ Fixtures (SQLite, временные каталоги; без рабочего �
 
 ```bash
 docker compose exec -T php php vendor/bin/phpunit tests/Feature/SatelliteProviderApiTest.php tests/Feature/SatelliteTileTest.php tests/Feature/PlaceAnalysisApiTest.php
-# Python-зависимости/PYTHONPATH — как у подготовки satellite.
-python3 -B tests/etl/test_prepare_satellite_delivery.py -v
+# Закреплённый ETL-образ — как у подготовки satellite.
+scripts/satellite-python tests/etl/test_prepare_satellite_delivery.py -v
 ```
 
-Реальные PNG отдельно: `python3 -B tests/Satellite/check_delivery.py --delivery <delivery> --sha256 <delivery-pin> --index data/satellite/krasnoyarsk-2024-2026-city-v1.json --output <новый-файл.json>`. Проверяются все hashes/типы/alpha/палитра, независимые inverse-projected центры z13 и соответствие manifest даты; ETL/радиометрия заново не проверяются.
+Реальные PNG отдельно: `scripts/satellite-python tests/Satellite/check_delivery.py --delivery <delivery> --sha256 <delivery-pin> --index data/satellite/krasnoyarsk-2024-2026-city-v1.json --output <новый-файл.json>`. Проверяются все hashes/типы/alpha/палитра, независимые inverse-projected центры z13 и соответствие manifest даты; ETL/радиометрия заново не проверяются.
 
 Реальный HTTP: `php tests/Satellite/check_http_satellite.php` в одноразовом `docker compose run --rm --no-deps -T ... php` с mounts `-v <runtime>:/satellite/runtime:ro -v <delivery>:/satellite/delivery:ro`; явно передать `APP_ENV=testing`, `APP_DEBUG=false`, `DB_CONNECTION=pgsql`, `DB_DATABASE=web_gis_test`, `DB_URL=`, `CACHE_STORE=array`, `SESSION_DRIVER=array`, четыре SATELLITE-переменные из [активации](data/satellite.md#доставка-и-активация-а102). Задать новые `SATELLITE_HTTP_REPORT` и `SATELLITE_HTTP_METRICS` в writable каталоге свидетельств. Harness проверяет существующие PostGIS guards/read-only mounts и запускает PHP HTTP server только на loopback:18765, затем останавливает его. Круги 200/1000 м, облака июня, край и отсутствие данных сверяются с reader, PNG запрашиваются по выданным URL. Отчёты содержат synthetic case labels, ресурсы и coverage, без личных координат/тел запросов. Метрики PHP/RSS/rchar тестовые; Nginx/FPM/UI не проверяются.
 
@@ -243,9 +261,9 @@ Reader А10.1 проверяется отдельно при изменении 
 
 ```bash
 php vendor/bin/phpunit tests/Unit/SatelliteCatalogReaderTest.php
-python3 -B tests/etl/test_prepare_satellite_runtime.py RuntimeTest -v
+scripts/satellite-python tests/etl/test_prepare_satellite_runtime.py RuntimeTest -v
 # В php-контейнере, только существующие guards web_gis_test:
 SATELLITE_RUNTIME_SHA256=<pin> php vendor/bin/phpunit -c phpunit.postgis.xml tests/Satellite/SatelliteCircleProjectionTest.php
 # Python-зависимости А9, новый output; читает releases и пишет свидетельства:
-python3 -B tests/Satellite/check_real_satellite.py --runtime <runtime> --sha256 <pin> --output <новый-каталог>
+scripts/satellite-python tests/Satellite/check_real_satellite.py --runtime <runtime> --sha256 <pin> --output <новый-каталог>
 ```

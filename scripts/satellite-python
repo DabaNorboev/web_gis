@@ -1,0 +1,10 @@
+#!/bin/sh
+# Run from the repository root. Build the pinned image explicitly before use.
+set -eu
+exec docker run --rm --pull=never \
+  --network="${SATELLITE_ETL_NETWORK:-none}" \
+  --user "$(id -u):$(id -g)" \
+  -v "$PWD:/work" -w /work \
+  -e PYTHONPATH= -e PYTHONNOUSERSITE=1 \
+  -e OPENBLAS_NUM_THREADS=1 -e OPJ_NUM_THREADS=1 \
+  "${SATELLITE_ETL_IMAGE:-web-gis-osm-etl:ci}" python -B "$@"

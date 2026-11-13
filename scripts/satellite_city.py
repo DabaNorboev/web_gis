@@ -47,8 +47,7 @@ def xml(path, name):
 
 def acquire(run):
     """Only pinned selected seasonal 2024–2026 dates; source budget and raw log are local."""
-    sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'experiments/source-feasibility'))
-    from period_fetch import Source
+    from satellite_fetch import Source
     cfg=json.loads((run/'config.json').read_text())
     sp=Path(cfg['selection_manifest'])
     require(sha256(sp)==cfg['selection_sha256'],'Selection manifest changed')
@@ -85,6 +84,8 @@ def acquire(run):
                 require(r['status']==200 and r['bytes']==expected,'Unexpected full response')
             logs=[json.loads(l) for l in (run/'requests.jsonl').read_text().splitlines()]
             r=next(r for r in logs if r['name']==name and not r.get('error'))
+            require(r['url']==a['source'] and r['method']=='GET' and r['status']==200,
+                    'Retained download source/method/status differs from selection')
             require(path.stat().st_size==expected and sha256(path)==r['sha256'],'Downloaded input is partial or changed')
             inputs[key]={'path':str(path),'bytes':expected,'sha256':r['sha256'],'source':a['source'],'reused':False}
             print('retained',sid,key,expected,flush=True)
