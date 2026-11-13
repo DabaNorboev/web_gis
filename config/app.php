@@ -15,6 +15,8 @@ return [
 
     'name' => env('APP_NAME', 'Laravel'),
 
+    'frontend_assets_mode' => env('FRONTEND_ASSETS_MODE', 'dev'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment

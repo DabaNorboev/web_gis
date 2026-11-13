@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="referrer" content="no-referrer">
+  <meta name="description" content="PlaceLens G1 — отдельный интерактивный макет на вымышленных данных.">
+  <title>PlaceLens · макет нового интерфейса</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./style.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#content">К результатам и вводу</a>
+  <div class="prototype"><span><b>G1 / Макет</b> · Все адреса, числа и геометрии вымышлены.</span><button data-action="guide">Как попробовать</button></div>
+  <header class="header">
+    <a class="brand" href="#search" aria-label="PlaceLens — поиск"><span class="brand-icon" aria-hidden="true">⌕</span>Place<span>Lens</span></a>
+    <nav aria-label="Основная навигация"><a href="#search" data-nav="search">Поиск места</a><a href="#compare" data-nav="compare">Сравнение А/Б</a><a href="#trips" data-nav="trips">Поездки <span class="pilot">пилот</span></a></nav>
+    <span class="city"><span aria-hidden="true">◎</span> Красноярск</span>
+  </header>
+  <div class="mobile-switch" role="group" aria-label="Представление"><button data-action="view" data-value="results" aria-pressed="true">Результаты</button><button data-action="view" data-value="map" aria-pressed="false">Карта</button></div>
+  <main class="workspace" id="workspace"><section id="content" class="content" tabindex="-1" aria-label="Выбор и результаты"></section><aside id="map-panel" class="map-panel" aria-label="Схематическая карта"></aside></main>
+  <div id="notice" class="sr-only" role="status" aria-live="polite"></div>
+  <dialog id="dialog" aria-labelledby="dialog-title"><div id="dialog-body"></div><form method="dialog"><button class="primary">Понятно, вернуться</button></form></dialog>
+</body>
+</html>

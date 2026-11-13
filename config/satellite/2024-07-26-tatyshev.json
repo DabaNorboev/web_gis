@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "method_version": "placelens-s2-date-v1",
+  "territory": "Татышев и прилегающая городская территория; прямоугольное окно, не весь Красноярск",
+  "window": {
+    "col_off": 9412,
+    "row_off": 8634,
+    "width": 630,
+    "height": 748
+  },
+  "date": "2024-07-26",
+  "scene_id": "S2A_46VDH_20240726_0_L2A",
+  "input_layout": "native_window",
+  "inputs": {
+    "red": {
+      "path": "data/reports/source-feasibility/2026-11-03-one-period-01/raw/2024-07-26-red-window.tif",
+      "sha256": "5379dc53917ea169cf3ab7268674c8d00f48a66e7333a3f4f9c50ee1a51966fc",
+      "bytes": 716885,
+      "source": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/46/V/DH/2024/7/S2A_46VDH_20240726_0_L2A/B04.tif",
+      "storage": "native 630x748 crop of source COG; no band resampling"
+    },
+    "nir": {
+      "path": "data/reports/source-feasibility/2026-11-03-one-period-01/raw/2024-07-26-nir-window.tif",
+      "sha256": "31e3fa63bb03523102a9e0d5735cb2248e4b5ab25fdb8a09291089e3a10efbde",
+      "bytes": 785613,
+      "source": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/46/V/DH/2024/7/S2A_46VDH_20240726_0_L2A/B08.tif",
+      "storage": "native 630x748 crop of source COG; no band resampling"
+    },
+    "visual": {
+      "path": "data/reports/source-feasibility/2026-11-03-one-period-01/raw/2024-07-26-visual-window.tif",
+      "sha256": "9d86cd8acc681924285ee96a073cab2c0ea80aacb744f5ca568ac02f34041a8c",
+      "bytes": 1217080,
+      "source": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/46/V/DH/2024/7/S2A_46VDH_20240726_0_L2A/TCI.tif",
+      "storage": "native 630x748 crop of source COG; no band resampling"
+    },
+    "scl": {
+      "path": "data/reports/source-feasibility/2026-11-03-one-period-01/raw/2024-07-26-scl.tif",
+      "sha256": "2f70cdb0adfbf34348590ab054ed356fa4ca017a62b1fe94982d79b17f1e4114",
+      "bytes": 1434591,
+      "source": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/46/V/DH/2024/7/S2A_46VDH_20240726_0_L2A/SCL.tif"
+    },
+    "scenes": {
+      "path": "data/reports/source-feasibility/2026-11-03-one-period-01/selected-scenes.json",
+      "sha256": "086536db76d943f47f4d95f4a7d6fdcf44395729c5dd526b66956f02e9a3448b",
+      "bytes": 110016,
+      "source": "local research evidence; pinned window proof and scene metadata"
+    },
+    "proof": {
+      "path": "data/reports/source-feasibility/2026-11-03-one-period-01/derived/window-proof-v2/proof.json",
+      "sha256": "89b675baabb721a2fca03369d786a712192deb41dbaae88a61b4d772abf9b03d",
+      "bytes": 6642,
+      "source": "local research evidence; pinned window proof and scene metadata"
+    },
+    "product_xml": {
+      "path": "data/reports/source-feasibility/2026-11-03-one-period-01/raw/2024-07-26-product.xml",
+      "sha256": "f9266622143c976327ea50f523456ca97128f296d5351998d28f2b2fabb5e724",
+      "bytes": 54887,
+      "source": "https://sentinel-s2-l2a.s3.amazonaws.com/products/2024/7/26/S2A_MSIL2A_20240726T050651_N0511_R019_T46VDH_20240726T104749/metadata.xml"
+    },
+    "granule_xml": {
+      "path": "data/reports/source-feasibility/2026-11-03-one-period-01/raw/2024-07-26-granule_metadata.xml",
+      "sha256": "fb4b1ad53e2a11eb588079acda90819546b8421a86c8b7324cac7d60ec920603",
+      "bytes": 548123,
+      "source": "https://sentinel-cogs.s3.us-west-2.amazonaws.com/sentinel-s2-l2a-cogs/46/V/DH/2024/7/S2A_46VDH_20240726_0_L2A/granule_metadata.xml"
+    },
+    "red_jp2": {
+      "path": "data/reports/source-feasibility/2026-11-03-one-period-01/raw/2024-07-26-original-B04.jp2",
+      "sha256": "c7ed51b688f941119682e289d2cc8dd6166331e1d4f7e268faa1e59bb0777391",
+      "bytes": 101231430,
+      "source": "https://sentinel-s2-l2a.s3.amazonaws.com/tiles/46/V/DH/2024/7/26/0/R10m/B04.jp2"
+    },
+    "nir_jp2": {
+      "path": "data/reports/source-feasibility/2026-11-03-one-period-01/raw/2024-07-26-original-B08.jp2",
+      "sha256": "294daf9d6b755369a688b8634311be87a46994916451fc5b3a55bd400075e079",
+      "bytes": 135015327,
+      "source": "https://sentinel-s2-l2a.s3.amazonaws.com/tiles/46/V/DH/2024/7/26/0/R10m/B08.jp2"
+    }
+  }
+}

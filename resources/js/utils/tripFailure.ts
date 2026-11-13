@@ -10,6 +10,7 @@ export interface TripActionNotice { index: number; text: string; action: TripFai
  * proximity guesses or assumptions from the overall result status. */
 export function tripFailureMessages(row: TripResult, targetLabel?: string): TripFailureMessage[] {
     if (row.status === 'AVAILABLE') return []
+    const walking = row.route_scope === 'street_points'
     const issues = row.diagnostics?.version === 1 ? row.diagnostics.issues : []
     const groups = new Map<TripDiagnosticIssue['location'], TripDiagnosticIssue[]>()
     for (const issue of issues) {
@@ -34,19 +35,19 @@ export function tripFailureMessages(row: TripResult, targetLabel?: string): Trip
         }
         if (categories.has('ambiguity')) return {
             title: endpoint ? `Выберите дорожную точку ${subject}` : 'Нужно выбрать дорожную точку',
-            description: 'Маршрут пока не рассчитан: рядом несколько допустимых вариантов привязки. Выберите вариант в списке или на карте.',
+            description: walking ? 'Уличная точка неоднозначна. Выберите другую улицу на карте; исходный объект сохранится.' : 'Маршрут пока не рассчитан: рядом несколько допустимых вариантов привязки. Выберите вариант в списке или на карте.',
             action: 'choice', location, label: 'Выбрать вариант',
         }
         const causes = [
-            categories.has('distance') ? 'В пределах 35 м нет подтверждённой дорожной точки.' : '',
-            categories.has('obstacle') ? 'В модели найдено препятствие; возможность проезда не подтверждена.' : '',
-            categories.has('access') ? 'Недостаточно данных о разрешённом автомобильном доступе.' : '',
+            categories.has('distance') ? `В пределах ${walking ? 20 : 35} м нет подтверждённой дорожной точки.` : '',
+            categories.has('obstacle') ? `В модели найдено препятствие; возможность ${walking ? 'прохода' : 'проезда'} не подтверждена.` : '',
+            categories.has('access') ? `Недостаточно данных о разрешённом ${walking ? 'пешем' : 'автомобильном'} доступе.` : '',
             categories.has('coverage') ? 'Положение выходит за подтверждённую территорию пилота.' : '',
             categories.has('insufficient_data') ? 'Подготовленных сведений недостаточно для проверки пути.' : '',
         ].filter(Boolean).join(' ')
         if (endpoint) return {
             title: location === 'both_endpoints' ? 'Нужно уточнить обе привязки' : `Нужно уточнить ${location === 'start' ? 'старт' : targetLabel ? `цель «${targetLabel}»` : `место ${row.index + 1}`}`,
-            description: `${causes || 'Связь с дорогой не подтверждена.'} Проверьте исходную точку или выберите другой проезд.`,
+            description: `${causes || 'Связь с дорогой не подтверждена.'} ${walking ? 'Выберите другую уличную точку; исходный объект сохранится.' : 'Проверьте исходную точку или выберите другой проезд.'}`,
             action: 'point', location, label,
         }
         return {
@@ -62,6 +63,6 @@ export function tripFailureMessage(row: TripResult): TripFailureMessage {
 export function tripActionNotice(row: TripResult): TripActionNotice | null {
     if (row.status === 'AVAILABLE') return null
     const message = tripFailureMessage(row)
-    const count = Object.values(row.road_choices ?? {}).filter(choice => choice.status === 'CHOOSE').reduce((sum, choice) => sum + choice.candidates.length, 0)
+    const count = Object.values(row.road_choices ?? {}).filter(choice => choice.status === 'CHOOSE').reduce((sum, choice) => sum + (choice.candidates?.length ?? 0), 0)
     return { index: row.index, text: `Место ${row.index + 1}: ${message.title.toLocaleLowerCase('ru')}${message.action === 'choice' && count ? ` — вариантов: ${count}` : ''}`, action: message.action, label: message.label }
 }

@@ -22,10 +22,10 @@ export function parseTripLink(fragment: string): { selection: TripSelection | nu
     try {
         if (values.length !== 1 || values[0]!.length > 2000) throw new Error('Invalid link')
         const input = JSON.parse(values[0]!) as TripSelection
-        if (!input || input.version !== 1 || input.mode !== 'driving' || !selectedPoint(input.start)
+        if (!input || input.version !== 1 || !['driving', 'walking'].includes(input.mode) || !selectedPoint(input.start)
             || !Array.isArray(input.places) || input.places.length < 1 || input.places.length > 3
             || input.places.some(p => !selectedPoint(p) || typeof p.label !== 'string' || p.label.length > 80)) throw new Error('Invalid selection')
-        return { selection: { version: 1, mode: 'driving', start: copyPoint(input.start),
+        return { selection: { version: 1, mode: input.mode, start: copyPoint(input.start),
             places: input.places.map(p => ({ ...copyPoint(p), label: p.label })) }, invalid: false }
     } catch { return { selection: null, invalid: true } }
 }

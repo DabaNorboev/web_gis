@@ -2,14 +2,18 @@ import { test as base, expect } from '@playwright/test'
 import { places, ambiguousPlaces, profile, searchResponse } from './fixtures.mjs'
 
 export const test = base.extend({
-    api: async ({ page, context, baseURL }, use, testInfo) => {
+    api: async ({ page, context, baseURL, browser }, use, testInfo) => {
         const calls = [], unexpected = [], errors = [], consoleMessages = [], gates = new Map()
-        page.on('pageerror', error => errors.push(error.message))
-        page.on('console', message => consoleMessages.push({ type: message.type(), text: message.text() }))
-        page.on('response', response => {
-            if (response.status() >= 400 && !new URL(response.url()).pathname.startsWith('/api/')) unexpected.push(`${response.status()} ${response.url()}`)
-        })
-        await context.route('**/*', async route => {
+        const isolatedContexts = []
+        function observe(observedPage) {
+            observedPage.on('pageerror', error => errors.push(error.message))
+            observedPage.on('console', message => consoleMessages.push({ type: message.type(), text: message.text() }))
+            observedPage.on('response', response => {
+                if (response.status() >= 400 && !new URL(response.url()).pathname.startsWith('/api/')) unexpected.push(`${response.status()} ${response.url()}`)
+            })
+        }
+        observe(page)
+        const handleRoute = async route => {
             const url = new URL(route.request().url())
             if (url.origin !== new URL(baseURL).origin) {
                 unexpected.push(url.href)
@@ -29,9 +33,18 @@ export const test = base.extend({
             const gate = gates.get(id)
             if (gate) { gate.requested(); await gate.wait }
             await route.fulfill({ json: profile(place, Number(url.searchParams.get('radius_m'))) })
-        })
+        }
+        await context.route('**/*', handleRoute)
         const api = {
             calls,
+            async isolatedPage() {
+                const receiver = await browser.newContext({ baseURL, viewport: page.viewportSize(), serviceWorkers: 'block' })
+                isolatedContexts.push(receiver)
+                await receiver.route('**/*', handleRoute)
+                const receivedPage = await receiver.newPage()
+                observe(receivedPage)
+                return receivedPage
+            },
             hold(place) {
                 let release, requested
                 const wait = new Promise(resolve => { release = resolve })
@@ -52,6 +65,7 @@ export const test = base.extend({
                 await testInfo.attach('requests-and-console', { body: JSON.stringify({ calls, unexpected, errors, consoleMessages }, null, 2), contentType: 'application/json' })
                 if (!page.isClosed()) await testInfo.attach('dom', { body: await page.locator('body').innerHTML(), contentType: 'text/html' })
             }
+            for (const receiver of isolatedContexts) await receiver.close()
         }
     },
 })
@@ -97,4 +111,14 @@ export async function expectMapFits(page) {
             return rect && rect.width > 0 && rect.height > 0 && rect.top >= toolbar.bottom - 1 && rect.bottom <= innerHeight + 1 && rect.left >= 0 && rect.right <= innerWidth + 1
         })) && document.querySelector('.comparison-map-return').getBoundingClientRect().bottom <= innerHeight + 1 && document.documentElement.scrollWidth <= innerWidth
     }), { message: 'each visible canvas, zoom, scale, attribution and return fits below the toolbar' }).toBe(true)
+}
+
+// The retained home owners have three separate mobile surfaces.
+export async function homeScreen(page, name) {
+    const tabs = page.getByRole('tablist', { name: 'Рабочая область', exact: true })
+    if (!await tabs.isVisible()) return
+    const tab = tabs.getByRole('tab', { name, exact: true })
+    if (await tab.getAttribute('aria-selected') !== 'true') await tab.press('Enter')
+    await expect(tab).toHaveAttribute('aria-selected', 'true')
+    await expect(page.locator('#' + await tab.getAttribute('aria-controls'))).toBeVisible()
 }

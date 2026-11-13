@@ -24,14 +24,14 @@ class TripPrivacyTest extends TestCase
     public function test_page_declares_no_referrer_before_loading_assets(): void
     {
         $this->withoutVite();
-        $this->get('/trips')->assertOk()->assertSee('<meta name="referrer" content="no-referrer">', false);
+        $this->get('/trips')->assertRedirect('/')->assertHeader('Referrer-Policy', 'no-referrer');
     }
 
     public function test_legacy_query_page_does_not_start_or_persist_a_session(): void
     {
         $this->withoutVite();
         $this->mock(\Illuminate\Session\SessionManager::class, fn ($mock) => $mock->shouldNotReceive('driver'));
-        $this->get('/trips?trip=SYNTHETIC_PRIVATE_CANARY')->assertOk()->assertCookieMissing(config('session.cookie'));
+        $this->get('/trips?trip=SYNTHETIC_PRIVATE_CANARY')->assertRedirect('/')->assertCookieMissing(config('session.cookie'));
         $this->assertFalse(request()->hasSession());
     }
 }

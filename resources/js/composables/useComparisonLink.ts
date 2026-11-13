@@ -35,6 +35,8 @@ export function useComparisonLink(
             void trips.calculate(side)
         }
     }
+    // An explicit mode edit cancels rechecks waiting for profiles from a restored link.
+    watch(trips.mode, () => pendingSides.clear(), { flush: 'sync' })
     for (const side of keys) watch(() => [addresses.sides[side].id, addresses.sides[side].profile?.point.lon, addresses.sides[side].profile?.point.lat], () => {
         if (disposed) return
         const value = addresses.sides[side]

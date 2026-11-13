@@ -45,6 +45,7 @@ class LocalCarRouterProvider
                     $row = array_replace($row, ['status' => 'UNKNOWN', 'reason' => 'Проверить путь по локальным данным не удалось. Повторите расчёт или уточните точки.', 'checks' => ['ROUTE_CHECK_FAILED']]);
                 }
             }
+            TripDiagnostics::validateRow($row);
             $details = $row['diagnostic_issues'] ?? array_map(
                 fn ($code) => TripDiagnostics::issue($code), $row['checks']);
             if (! $details && $row['status'] !== 'AVAILABLE') {

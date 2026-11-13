@@ -41,12 +41,25 @@ try {
     let html = await readFile(join(root, 'resources/views/welcome.blade.php'), 'utf8')
     const directive = "@vite(['resources/css/app.css', 'resources/js/app.js'])"
     if (!html.includes('@fonts') || !html.includes(directive)) throw new Error('Update smoke asset handling for the changed Blade shell.')
-    html = html.replace('@fonts', '').replace(directive, (entry.css ?? []).map(css => `<link rel="stylesheet" href="/${css}">`).join('') + `<script type="module" src="/${entry.file}"></script>`)
+    // Match Laravel's static-import CSS traversal. Shared SFC/MapLibre styles
+    // may be emitted on an imported chunk rather than directly on the entry.
+    const styles = new Set(), visited = new Set()
+    function collectStyles(key) {
+        if (visited.has(key)) return
+        visited.add(key)
+        const chunk = manifest[key]
+        if (!chunk) throw Error(`Missing static smoke chunk: ${key}`)
+        for (const imported of chunk.imports ?? []) collectStyles(imported)
+        for (const css of chunk.css ?? []) styles.add(css)
+    }
+    collectStyles('tests/browser/entry.mjs')
+    html = html.replace('@fonts', '').replace(directive, [...styles].map(css => `<link rel="stylesheet" href="/${css}">`).join('') + `<script type="module" src="/${entry.file}"></script>`)
     const server = createServer(async (req, res) => {
         const pathname = new URL(req.url, 'http://127.0.0.1').pathname
         if (pathname === '/favicon.ico') { res.writeHead(204); res.end(); return }
         if (pathname === '/smoke-background.json') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"type":"FeatureCollection","features":[]}'); return }
-        if (pathname === '/' || pathname === '/compare' || pathname === '/trips' || pathname.startsWith('/address/')) { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(html); return }
+        if (['/analysis', '/search', '/compare', '/trips'].includes(pathname) || pathname.startsWith('/address/')) { res.writeHead(302, { Location: '/', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); res.end(); return }
+        if (pathname === '/') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(html); return }
         if (/^\/smoke-sprite(@2x)?\.(json|png)$/.test(pathname)) {
             const png = pathname.endsWith('.png')
             res.writeHead(200, { 'Content-Type': png ? 'image/png' : 'application/json' })

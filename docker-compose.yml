@@ -7,9 +7,26 @@ services:
             - .:/var/www/html:ro
             - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
         depends_on:
-            - php
+            php:
+                condition: service_healthy
+                restart: true
+            node:
+                condition: service_healthy
 
     php:
+        networks: [default, routing]
+        command: ["sh", "docker/php/start.sh"]
+        healthcheck:
+            test: ["CMD", "php", "-r", "exit(@fsockopen('127.0.0.1', 9000) ? 0 : 1);"]
+            interval: 3s
+            timeout: 3s
+            retries: 20
+        environment:
+            FRONTEND_ASSETS_MODE: ${FRONTEND_ASSETS_MODE:-dev}
+            SATELLITE_RUNTIME: ${SATELLITE_RUNTIME_DIR:+/satellite/runtime}
+            SATELLITE_RUNTIME_SHA256: ${SATELLITE_RUNTIME_SHA256:-}
+            SATELLITE_DELIVERY: ${SATELLITE_DELIVERY_DIR:+/satellite/delivery}
+            SATELLITE_DELIVERY_SHA256: ${SATELLITE_DELIVERY_SHA256:-}
         build:
             context: ./docker/php
             args:
@@ -17,11 +34,34 @@ services:
                 GID: ${LOCAL_GID:-1000}
         volumes:
             - .:/var/www/html
+            # Empty tracked directory is safe for a checkout without satellite data.
+            - type: bind
+              source: ${SATELLITE_RUNTIME_DIR:-./docker/satellite-disabled}
+              target: /satellite/runtime
+              read_only: true
+              bind:
+                  create_host_path: false
+            - type: bind
+              source: ${SATELLITE_DELIVERY_DIR:-./docker/satellite-disabled}
+              target: /satellite/delivery
+              read_only: true
+              bind:
+                  create_host_path: false
         depends_on:
             db:
                 condition: service_healthy
 
     node:
+        command: ["sh", "docker/node/start.sh"]
+        environment:
+            FRONTEND_ASSETS_MODE: ${FRONTEND_ASSETS_MODE:-dev}
+        init: true
+        healthcheck:
+            test: ["CMD", "sh", "docker/node/health.sh"]
+            interval: 3s
+            timeout: 3s
+            retries: 20
+            start_period: 10s
         build:
             context: ./docker/node
             args:
@@ -49,6 +89,60 @@ services:
             timeout: 5s
             retries: 10
 
+    local-router:
+        profiles: ["routing"]
+        image: ghcr.io/project-osrm/osrm-backend@sha256:855614a38f464b0558a2ad6eaa7cb8c139f39887da9b38b485ce453c6e6e6124
+        entrypoint: ["/bin/sh", "/startup.sh"]
+        volumes:
+            - ./data/prepared/local-routing/osrm-car-20261021-v1:/data:ro
+            - ./docker/routing/start.sh:/startup.sh:ro
+        user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+        read_only: true
+        init: true
+        cpus: 2
+        mem_limit: 1g
+        memswap_limit: 1g
+        tmpfs: ["/tmp:size=16m,mode=1777"]
+        cap_drop: [ALL]
+        security_opt: [no-new-privileges:true]
+        networks: [routing]
+        healthcheck:
+            test: ["CMD-SHELL", "grep -q '00000000:1388 .* 0A ' /proc/net/tcp"]
+            interval: 5s
+            timeout: 2s
+            retries: 3
+
+    local-walking:
+        profiles: ["walking"]
+        image: heigit/openrouteservice@sha256:e63d4df17a8df5fa1c0432c27b0c361be33e6f21a7b28496e97b6434b5954ce1
+        entrypoint: ["/bin/sh", "/startup.sh"]
+        volumes:
+            - ./data/prepared/local-routing/ors-foot-20261026-v1:/data:ro
+            - ./docker/walking/start.sh:/startup.sh:ro
+            - ./docker/walking/log4j2.xml:/logging.xml:ro
+        user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+        read_only: true
+        init: true
+        cpus: 2
+        mem_limit: 3g
+        memswap_limit: 3g
+        tmpfs: ["/tmp:size=128m,mode=1777"]
+        cap_drop: [ALL]
+        security_opt: [no-new-privileges:true]
+        logging:
+            driver: none
+        networks: [routing]
+        healthcheck:
+            test: ["CMD-SHELL", "wget -q -T 2 -O - http://127.0.0.1:8082/ors/v2/health | grep -q '\"status\"[[:space:]]*:[[:space:]]*\"ready\"'"]
+            interval: 10s
+            timeout: 2s
+            retries: 12
+            start_period: 30s
+
 volumes:
     postgres_data:
     node_modules:
+
+networks:
+    routing:
+        internal: true

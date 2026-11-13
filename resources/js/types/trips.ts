@@ -3,7 +3,8 @@ import type { Coordinates, TransportMetric } from './transport'
 
 export interface TripPoint extends Coordinates { road?: Coordinates }
 export interface TripPlace extends TripPoint { label: string }
-export interface TripSelection { version: 1; mode: 'driving'; start: TripPoint; places: TripPlace[] }
+export type TripMode = 'driving' | 'walking'
+export interface TripSelection { version: 1; mode: TripMode; start: TripPoint; places: TripPlace[] }
 export interface TripSnap { original: Coordinates; matched: Coordinates; distance_m: number }
 export interface TripRoadCandidate { point: Coordinates; distance_m: number; name?: string | null }
 export interface TripDiagnosticIssue {
@@ -23,7 +24,17 @@ export interface TripRoadChoiceDiagnostics {
     candidate_count: number
     safe_candidate_count: number
 }
-export interface TripRoadChoice { manual?: boolean; checks?: string[]; diagnostics?: TripRoadChoiceDiagnostics; status: 'SELECTED' | 'CHOOSE' | 'NONE'; point: Coordinates | null; candidates: TripRoadCandidate[] }
+export interface TripRoadChoice { manual?: boolean; checks?: string[]; diagnostics?: TripRoadChoiceDiagnostics; status: 'SELECTED' | 'CHOOSE' | 'NONE' | 'NEEDS_REFINEMENT' | 'UNKNOWN' | 'OUTSIDE_PILOT'; point?: Coordinates | null; candidates?: TripRoadCandidate[] }
+export interface TripApproach {
+    status: 'UNKNOWN' | 'NOT_INCLUDED'
+    original: Coordinates
+    selected_street: Coordinates
+    selection_shift_m: number
+    distance_m: null
+    duration_s: null
+    reason: string
+}
+export type TripMetric = Omit<TransportMetric, 'key'> & { key: string; dataset_version: string | null; scope?: 'street_points' | 'objects' }
 export interface TripResult {
     index: number
     label: string
@@ -33,13 +44,19 @@ export interface TripResult {
     reason: string
     checks: string[]
     diagnostics?: TripDiagnostics
-    route: { geometry: LineString; distance_m: number; duration_s: number } | null
+    route_scope?: 'street_points'
+    street_points?: { start: Coordinates; target: Coordinates }
+    selection_kind?: 'INPUT_STREET_POINTS' | 'EXPLICIT_STREET_POINTS' | 'DIFFERENT_STREET_POINTS'
+    approaches?: { start: TripApproach; target: TripApproach }
+    address_metrics?: { distance: TripMetric; duration: TripMetric }
+    route: { geometry: LineString; distance_m: number; duration_s: number; scope?: 'street_points' } | null
     snaps: { start: TripSnap; target: TripSnap } | null
     road_choices?: { start: TripRoadChoice; target: TripRoadChoice } | null
-    metrics: { distance: Omit<TransportMetric, 'key'> & { key: string; dataset_version: string | null }; duration: Omit<TransportMetric, 'key'> & { key: string; dataset_version: string | null } }
+    metrics: { distance: TripMetric; duration: TripMetric }
 }
 export interface TripAnalysis {
-    mode: 'driving'
+    mode: TripMode
+    route_scope?: 'street_points'
     start: Coordinates
     results: TripResult[]
     limitation: string

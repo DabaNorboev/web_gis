@@ -2,12 +2,13 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import * as vue from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { stateModule, personalUtils, ComparisonTrips, ComparisonShare, ComparisonTripData, failure } from './support/comparison-trips-dependencies.mjs'
+import { loadComponent } from './support/vue-component.mjs'
+import { stateModule, personalUtils, failure, candidateUtils, tripUtils } from './support/comparison-trips-dependencies.mjs'
 
 const a = { lon: 92.87, lat: 56.01 }, b = { lon: 92.89, lat: 56.02 }
 const source = { name: 'Synthetic OSM', engine: 'OSRM', dataset_version: 'test-v1', observed_at: null }
 function response(selection, statuses = []) {
-    return { mode: 'driving', start: selection.start, source, limitation: 'Synthetic, no actual traffic or parking.', results: selection.places.map((target, index) => {
+    return { mode: selection.mode ?? 'driving', start: selection.start, source, limitation: 'Synthetic, no actual traffic or parking.', results: selection.places.map((target, index) => {
         const available = !statuses[index]
         const snap = point => ({ original: point, matched: point.road ?? { lon: point.lon + .00001, lat: point.lat }, distance_m: 1 })
         return { index, start: selection.start, target, label: target.label, status: available ? 'AVAILABLE' : 'UNKNOWN', reason: 'Text says start, never used for location', checks: [],
@@ -133,11 +134,11 @@ test('newer failed request and reset/restore with same ID reject all previous re
     } finally { cleanup() }
 })
 test('fragment roundtrip bounds validates duplicates, versions, points, labels, hints and encoded size', () => {
-    const value = { version: 1, places: [{ id: 'work', label: '<Работа & учёба>', point: a }], roads: { left: { work: { target: b } } } }
+    const value = { version: 1, mode: 'driving', places: [{ id: 'work', label: '<Работа & учёба>', point: a }], roads: { left: { work: { target: b } } } }
     const encoded = personalUtils.comparisonTripsFragment(value)
     assert.ok(encoded.startsWith('#places=')); assert.ok(!encoded.includes('?'))
     assert.deepEqual(JSON.parse(JSON.stringify(personalUtils.parseComparisonTrips(encoded).selection)), value)
-    for (const invalid of [{ ...value, version: 2 }, { ...value, places: [] }, { ...value, places: [...value.places, ...value.places] }, { ...value, places: [{ ...value.places[0], point: { lon: 181, lat: 1 } }] }, { ...value, roads: { left: { foreign: { target: b } } } }, { ...value, places: [{ ...value.places[0], label: 'x'.repeat(81) }] }])
+    for (const invalid of [{ ...value, mode: 'cycling' }, { ...value, mode: null }, { ...value, version: 2 }, { ...value, places: [] }, { ...value, places: [...value.places, ...value.places] }, { ...value, places: [{ ...value.places[0], point: { lon: 181, lat: 1 } }] }, { ...value, roads: { left: { foreign: { target: b } } } }, { ...value, places: [{ ...value.places[0], label: 'x'.repeat(81) }] }])
         assert.equal(personalUtils.parseComparisonTrips('#places=' + encodeURIComponent(JSON.stringify(invalid))).invalid, true)
     for (const invalid of ['#places=bad', encoded + '&places={}', '#places=' + 'x'.repeat(16000)]) assert.equal(personalUtils.parseComparisonTrips(invalid).invalid, true)
     assert.deepEqual(personalUtils.parseComparisonTrips('#main-content'), { selection: null, invalid: false })
@@ -153,22 +154,92 @@ test('paired route fact requires accepted compatible sources, respects displayed
     assert.match(personalUtils.pairedTripFact(first, refused), /Недостаточно подтверждённых/)
     assert.match(personalUtils.pairedTripFact(first, { ...first, row: { ...accepted, route: { ...accepted.route, distance_m: -1 } } }), /Недостаточно подтверждённых/)
 })
-test('real component renders a compact pair, escaped labels, null refusals and separate source/privacy panels', async () => {
-    const { state, pending, ids, resolve, cleanup } = setup(1)
+
+test('mode switch aborts all cells without fetching and preserves original IDs points and labels', async () => {
+    const { state, pending, ids, resolve, cleanup } = setup(2)
     try {
-        state.places.value[0].label = '<Работа>'
-        const run = state.calculate(); resolve(pending[0]); resolve(pending[1], ['route']); await run
-        const html = await renderToString(vue.createSSRApp(ComparisonTrips, { model: state, invalidLink: false }))
-        assert.match(html, /А → &lt;Работа&gt;/); assert.match(html, /Б → &lt;Работа&gt;/)
-        assert.equal((html.match(/class="personal-distance"/g) ?? []).length, 1)
-        assert.match(html, /Показать маршрут А/)
-        assert.match(html, /модельное время без пробок/); assert.doesNotMatch(html, /<table|<input|Источник расчёта/)
-        const data = await renderToString(vue.createSSRApp(ComparisonTripData, { model: state }))
-        assert.match(data, /Дата наблюдения: неизвестна/); assert.match(data, /Подход к дороге и парковка не рассчитаны/)
-        assert.equal((data.match(/Источник расчёта/g) ?? []).length, 1)
-        assert.match(data, /Точки и проверка · А → &lt;Работа&gt;/)
-        const share = await renderToString(vue.createSSRApp(ComparisonShare, { addressUrl: 'http://synthetic.invalid/compare?left=a', personalUrl: 'http://synthetic.invalid/compare?left=a#places=example' }))
-        assert.match(share, /Получатель увидит личные точки, подписи и дорожный выбор/)
-        assert.ok(share.indexOf('Получатель увидит') < share.indexOf('Ссылка с личными местами'))
+        state.setRoad('left', ids[0], 'start', a)
+        state.setRoad('right', ids[1], 'target', b)
+        const original = JSON.stringify(state.places.value), starts = JSON.stringify(state.starts)
+        const old = state.calculate()
+        state.cell('right', ids[0]).options.target = [{ point: b, distance_m: 2 }]
+        state.cell('right', ids[1]).error = 'old error'; state.formError.value = 'old form error'
+        const count = pending.length
+        state.setMode('walking')
+        assert.equal(state.mode.value, 'walking'); assert.equal(pending.length, count)
+        assert.equal(state.linkSelection.value.version, 2)
+        assert.ok(pending.every(p => p.signal.aborted))
+        assert.equal(JSON.stringify(state.places.value), original); assert.equal(JSON.stringify(state.starts), starts)
+        for (const side of ['left', 'right']) for (const id of ids) {
+            const value = state.cell(side, id)
+            assert.equal(value.row, null); assert.equal(value.status, 'idle'); assert.equal(value.source, null)
+            assert.deepEqual(JSON.parse(JSON.stringify(value.hints)), {}); assert.equal(value.options.target.length, 0)
+            assert.equal(value.error, ''); assert.equal(value.limitation, '')
+        }
+        assert.equal(state.formError.value, '')
+        pending.forEach(p => resolve(p)); await old
+        assert.ok(ids.every(id => !state.cell('left', id).row && !state.cell('right', id).row))
+        const fresh = state.calculate('left', ids[0]), request = pending.at(-1)
+        assert.equal(request.selection.mode, 'walking'); assert.equal(request.selection.start.road, undefined)
+        request.resolve({ ...response(request.selection), mode: 'driving' }); await fresh
+        assert.equal(state.cell('left', ids[0]).status, 'error')
+        assert.equal(state.cell('left', ids[0]).row, null)
+    } finally { cleanup() }
+})
+test('old comparison links default to driving while new walking links retain mode and per-cell streets', () => {
+    const legacy = { version: 1, places: [{ id: 'work', label: 'Synthetic', point: a }], roads: { left: { work: { target: b } } } }
+    const old = '#places=' + encodeURIComponent(JSON.stringify(legacy))
+    assert.equal(personalUtils.parseComparisonTrips(old).selection.mode, 'driving')
+    const walking = { ...legacy, version: 2, mode: 'walking' }
+    const parsed = personalUtils.parseComparisonTrips(personalUtils.comparisonTripsFragment(walking)).selection
+    assert.deepEqual(JSON.parse(JSON.stringify(parsed)), walking)
+})
+
+test('walking comparison links require v2 so the former v1 reader rejects them instead of using driving', () => {
+    const legacy = { version: 1, places: [{ id: 'work', label: 'Synthetic', point: a }], roads: {} }
+    const rawFragment = value => '#places=' + encodeURIComponent(JSON.stringify(value))
+    // The previous reader accepted only version 1 and always routed it as driving.
+    const previousReader = hash => {
+        const input = JSON.parse(new URLSearchParams(hash.slice(1)).get('places'))
+        return input.version === 1 ? { mode: 'driving' } : null
+    }
+    const driving = personalUtils.parseComparisonTrips(rawFragment(legacy)).selection
+    assert.equal(driving.version, 1); assert.equal(driving.mode, 'driving')
+    const drivingEncoded = personalUtils.comparisonTripsFragment(driving)
+    assert.deepEqual(previousReader(drivingEncoded), { mode: 'driving' })
+    const walking = { ...legacy, version: 2, mode: 'walking' }
+    const encoded = personalUtils.comparisonTripsFragment(walking)
+    assert.equal(personalUtils.parseComparisonTrips(encoded).selection.version, 2)
+    assert.equal(previousReader(encoded), null)
+    assert.equal(personalUtils.comparisonTripsFragment({ ...walking, version: 1 }), encoded)
+    for (const invalid of [{ ...walking, version: 1 }, { ...legacy, version: 2 }, { ...legacy, version: 2, mode: 'driving' }, { ...walking, mode: 'cycling' }, { ...walking, mode: null }]) {
+        assert.deepEqual(personalUtils.parseComparisonTrips(rawFragment(invalid)), { selection: null, invalid: true })
+    }
+})
+
+test('walking candidate responses from an old input cannot restore lists after a street edit or mode change', async () => {
+    const { state, pending, ids, cleanup } = setup(1)
+    const candidateResponse = request => {
+        const value = response(request.selection, ['start'])
+        value.results[0].road_choices = { start: { status: 'CHOOSE', candidates: [{ point: b, distance_m: 5 }] } }
+        return value
+    }
+    try {
+        state.setMode('walking')
+        const old = state.calculate('left', ids[0])
+        state.setRoad('left', ids[0], 'start', a)
+        pending[0].resolve(candidateResponse(pending[0])); await old
+        assert.equal(state.cell('left', ids[0]).options.start.length, 0)
+        assert.equal(state.cell('left', ids[0]).row, null)
+        const fresh = state.calculate('left', ids[0])
+        pending[1].resolve(candidateResponse(pending[1])); await fresh
+        assert.equal(state.cell('left', ids[0]).options.start.length, 1)
+        const newest = state.calculate('left', ids[0])
+        assert.equal(state.cell('left', ids[0]).options.start.length, 0)
+        state.setMode('driving')
+        pending[2].resolve(candidateResponse(pending[2])); await newest
+        assert.equal(state.cell('left', ids[0]).options.start.length, 0)
+        assert.equal(state.cell('left', ids[0]).hints.start, undefined)
+        assert.equal(state.cell('left', ids[0]).row, null)
     } finally { cleanup() }
 })

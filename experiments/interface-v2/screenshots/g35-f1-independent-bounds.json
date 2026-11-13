@@ -1,0 +1,310 @@
+[
+  {
+    "project": "phone-320",
+    "status": "passed",
+    "independent-bounds": {
+      "viewport": {
+        "width": 320,
+        "height": 740
+      },
+      "map": {
+        "x": 0,
+        "y": 290.5,
+        "width": 320,
+        "height": 449.5,
+        "right": 320,
+        "bottom": 740
+      },
+      "message": {
+        "x": 0,
+        "y": 394.5,
+        "width": 320,
+        "height": 37.6875,
+        "right": 320,
+        "bottom": 432.1875
+      },
+      "text": "Подложка загружена не полностью. Анализ сохранён.",
+      "lines": [
+        {
+          "x": 8,
+          "y": 398.5,
+          "width": 190.78125,
+          "height": 14,
+          "right": 198.78125,
+          "bottom": 412.5
+        },
+        {
+          "x": 8,
+          "y": 413.34375,
+          "width": 94.765625,
+          "height": 14,
+          "right": 102.765625,
+          "bottom": 427.34375
+        }
+      ],
+      "button": {
+        "x": 243.765625,
+        "y": 399.34375,
+        "width": 68.234375,
+        "height": 28,
+        "right": 312,
+        "bottom": 427.34375
+      },
+      "clientWidth": 320,
+      "scrollWidth": 320,
+      "clientHeight": 38,
+      "scrollHeight": 38,
+      "scrollLeft": 0,
+      "scrollTop": 0,
+      "translate": "0px"
+    },
+    "retry-preservation": {
+      "background": [
+        "failed",
+        "success"
+      ],
+      "posts": 2,
+      "profileCount": 2,
+      "cameraBefore": {
+        "center": [
+          92.90702127659574,
+          56.02142989468027
+        ],
+        "zoom": 12.105335637059017
+      },
+      "cameraAfter": {
+        "center": [
+          92.90702127659574,
+          56.02142989468027
+        ],
+        "zoom": 12.105335637059017
+      },
+      "routeFeatures": 7
+    }
+  },
+  {
+    "project": "phone-390",
+    "status": "passed",
+    "independent-bounds": {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "map": {
+        "x": 0,
+        "y": 207,
+        "width": 390,
+        "height": 637,
+        "right": 390,
+        "bottom": 844
+      },
+      "message": {
+        "x": 0,
+        "y": 311,
+        "width": 390,
+        "height": 36,
+        "right": 390,
+        "bottom": 347
+      },
+      "text": "Подложка загружена не полностью. Анализ сохранён.",
+      "lines": [
+        {
+          "x": 8,
+          "y": 321.578125,
+          "width": 288.828125,
+          "height": 14,
+          "right": 296.828125,
+          "bottom": 335.578125
+        }
+      ],
+      "button": {
+        "x": 313.765625,
+        "y": 315,
+        "width": 68.234375,
+        "height": 28,
+        "right": 382,
+        "bottom": 343
+      },
+      "clientWidth": 390,
+      "scrollWidth": 390,
+      "clientHeight": 36,
+      "scrollHeight": 36,
+      "scrollLeft": 0,
+      "scrollTop": 0,
+      "translate": "0px"
+    },
+    "retry-preservation": {
+      "background": [
+        "failed",
+        "success"
+      ],
+      "posts": 2,
+      "profileCount": 2,
+      "cameraBefore": {
+        "center": [
+          92.90555555555557,
+          56.021754917343856
+        ],
+        "zoom": 12.627562382432211
+      },
+      "cameraAfter": {
+        "center": [
+          92.90555555555557,
+          56.021754917343856
+        ],
+        "zoom": 12.627562382432211
+      },
+      "routeFeatures": 7
+    }
+  },
+  {
+    "project": "short-desktop",
+    "status": "passed",
+    "independent-bounds": {
+      "viewport": {
+        "width": 1280,
+        "height": 720
+      },
+      "map": {
+        "x": 300,
+        "y": 67,
+        "width": 980,
+        "height": 378.75,
+        "right": 1280,
+        "bottom": 445.75
+      },
+      "message": {
+        "x": 300,
+        "y": 175,
+        "width": 980,
+        "height": 36,
+        "right": 1280,
+        "bottom": 211
+      },
+      "text": "Подложка загружена не полностью. Анализ сохранён.",
+      "lines": [
+        {
+          "x": 308,
+          "y": 185.578125,
+          "width": 288.828125,
+          "height": 14,
+          "right": 596.828125,
+          "bottom": 199.578125
+        }
+      ],
+      "button": {
+        "x": 1203.765625,
+        "y": 179,
+        "width": 68.234375,
+        "height": 28,
+        "right": 1272,
+        "bottom": 207
+      },
+      "clientWidth": 980,
+      "scrollWidth": 980,
+      "clientHeight": 36,
+      "scrollHeight": 36,
+      "scrollLeft": 0,
+      "scrollTop": 0,
+      "translate": "0px"
+    },
+    "retry-preservation": {
+      "background": [
+        "failed",
+        "success"
+      ],
+      "posts": 2,
+      "profileCount": 2,
+      "cameraBefore": {
+        "center": [
+          92.90429026354855,
+          56.02194654265887
+        ],
+        "zoom": 13.398825109108387
+      },
+      "cameraAfter": {
+        "center": [
+          92.90429026354855,
+          56.02194654265887
+        ],
+        "zoom": 13.398825109108387
+      },
+      "routeFeatures": 7
+    }
+  },
+  {
+    "project": "very-short-desktop",
+    "status": "passed",
+    "independent-bounds": {
+      "viewport": {
+        "width": 1280,
+        "height": 560
+      },
+      "map": {
+        "x": 300,
+        "y": 67,
+        "width": 980,
+        "height": 285.953125,
+        "right": 1280,
+        "bottom": 352.953125
+      },
+      "message": {
+        "x": 300,
+        "y": 175,
+        "width": 980,
+        "height": 36,
+        "right": 1280,
+        "bottom": 211
+      },
+      "text": "Подложка загружена не полностью. Анализ сохранён.",
+      "lines": [
+        {
+          "x": 308,
+          "y": 185.578125,
+          "width": 288.828125,
+          "height": 14,
+          "right": 596.828125,
+          "bottom": 199.578125
+        }
+      ],
+      "button": {
+        "x": 1203.765625,
+        "y": 179,
+        "width": 68.234375,
+        "height": 28,
+        "right": 1272,
+        "bottom": 207
+      },
+      "clientWidth": 980,
+      "scrollWidth": 980,
+      "clientHeight": 36,
+      "scrollHeight": 36,
+      "scrollLeft": 0,
+      "scrollTop": 0,
+      "translate": "0px"
+    },
+    "retry-preservation": {
+      "background": [
+        "failed",
+        "success"
+      ],
+      "posts": 2,
+      "profileCount": 2,
+      "cameraBefore": {
+        "center": [
+          92.90580774686373,
+          56.021590979319456
+        ],
+        "zoom": 12.513148262759815
+      },
+      "cameraAfter": {
+        "center": [
+          92.90580774686373,
+          56.021590979319456
+        ],
+        "zoom": 12.513148262759815
+      },
+      "routeFeatures": 7
+    }
+  }
+]

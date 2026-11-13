@@ -54,4 +54,4 @@ export function applyBasemapTheme(map: Pick<Map, 'getLayer' | 'setPaintProperty'
     }
 }
 
-export const placeColors = { default: '#2d6450', А: '#283e62', Б: '#8b3f57' } as const
+export const placeColors = { default: '#7058a5', А: '#7058a5', Б: '#386da6' } as const

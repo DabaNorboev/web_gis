@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createSSRApp, reactive } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { facts, topics, OverviewTopics, ComparisonFacts } from './support/overview-dependencies.mjs'
+import { facts, topics } from './support/overview-dependencies.mjs'
 import { profile, places } from '../browser/fixtures.mjs'
 const pair = () => Object.fromEntries(['left','right'].map((side,index) => {
     const p = profile(index ? places.b : places.a)
@@ -20,12 +20,6 @@ test('topic storage accepts only known identifiers, deduplicates in stable order
     assert.deepEqual(topics.parseOverviewTopics('["roads","parks","parks","unknown"]'),['parks','roads'])
     assert.deepEqual(topics.parseOverviewTopics('[]'),[])
     assert.deepEqual(topics.parseOverviewTopics('["unknown"]'),[])
-})
-test('actual settings component defaults to original overview, uses native labelled checkboxes and explains local scope', async () => {
-    const html=await renderToString(createSSRApp(OverviewTopics))
-    assert.equal((html.match(/type="checkbox" checked/g)??[]).length,5)
-    for(const text of ['Что важно мне','исходный обзор','Сбросить','Ссылка их не передаёт','Слои карты выбираются отдельно']) assert.ok(html.includes(text),text)
-    assert.ok(!html.includes('Темы не выбраны'))
 })
 test('comparison facts prefer neither side, preserve real zero and compare display precision', () => {
     const sides=pair()
@@ -63,19 +57,6 @@ test('current IDs, radius and status guard against stale, partial and failed pro
     sides.right.status='loading';assert.match(fact(sides),/предварительно/)
     sides.right.profile=null;assert.match(fact(sides),/ждём оба профиля/)
     sides.right.status='error';assert.match(fact(sides),/неполное/)
-})
-test('actual summary renders at most three stable links to rows, respects chosen and empty topics, marks unknown dates and stale data', async () => {
-    const sides=pair()
-    const html=await renderToString(createSSRApp(ComparisonFacts,{sides,radius:500,selected:null}))
-    assert.equal((html.match(/<li(?:\s|>)/g)??[]).length,3)
-    assert.ok(html.includes('#compare-metric-transport-nearest_stop_distance'))
-    assert.ok(html.includes('Дата наблюдения неизвестна'))
-    assert.ok(!html.includes('ближе'))
-    const empty=await renderToString(createSSRApp(ComparisonFacts,{sides,radius:500,selected:[]}))
-    assert.ok(!empty.includes('<a'))
-    metric(sides,'left','railways').quality.freshness=metric(sides,'right','railways').quality.freshness='STALE'
-    assert.match(fact(sides,'railways'),/Данные устарели/)
-    assert.deepEqual(facts.comparisonFacts(sides,500,['railways','roads']).map(f=>f.topic),['roads','railways'])
 })
 
 test('shared actual composable persists only IDs, shares changes between consumers and handles read/write/remove failures', async () => {

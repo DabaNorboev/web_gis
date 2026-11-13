@@ -33,3 +33,6 @@ __pycache__/
 
 /test-results/
 /playwright-report/
+
+# Explicit machine-local satellite activation (see docs/runbook-local.md).
+/docker-compose.override.yml

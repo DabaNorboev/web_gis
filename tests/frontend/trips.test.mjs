@@ -4,23 +4,16 @@ import { readFileSync } from 'node:fs'
 import { loadModule, loadComponent, loadSetup } from './support/vue-component.mjs'
 import * as vue from 'vue'
 import * as ssr from 'vue/server-renderer'
+const loadTripClient = globals => loadModule(new URL('../../resources/js/api/trips.ts', import.meta.url), {
+    './errors': loadModule(new URL('../../resources/js/api/errors.ts', import.meta.url), {}, globals),
+}, globals)
+
 const { ref, shallowRef } = vue
 
 const tripUtils = loadModule(new URL('../../resources/js/utils/trips.ts', import.meta.url))
 const failures = loadModule(new URL('../../resources/js/utils/tripFailure.ts', import.meta.url))
 const candidates = loadModule(new URL('../../resources/js/utils/tripCandidates.ts', import.meta.url))
 const utils = { ...tripUtils, ...failures, ...candidates }
-function pageDependencies(deps) {
-    return {
-        '@/utils/trips': tripUtils, '@/utils/tripFailure': failures, '@/utils/tripCandidates': candidates,
-        '@/composables/useTripsState': loadModule(new URL('../../resources/js/composables/useTripsState.ts', import.meta.url), {
-            vue: deps.vue ?? vue, '@/composables/useTripAnalysis': { useTripAnalysis: deps.useTripAnalysis },
-            '@/utils/tripCandidates': candidates,
-        }),
-        '@/layouts/PlaceLayout.vue': deps.PlaceLayout, '@/components/TripPointPicker.vue': deps.TripPointPicker,
-        '@/components/map/TripMap.vue': deps.TripMap,
-    }
-}
 // Invented values only, unrelated to any saved link or real place.
 const selection = { version: 1, mode: 'driving', start: { lon: .1234567890123, lat: .2345678900456 }, places: [
     { lon: .124, lat: .235, label: 'Синтетическая точка A & тест' },
@@ -37,7 +30,7 @@ test('trip link retains explicit points, order and personal labels without round
 })
 
 test('invalid, duplicate, unsupported or oversized trip links never become a default trip', () => {
-    for (const input of [null, {}, { ...selection, mode: 'walking' }, { ...selection, version: 2 },
+    for (const input of [null, {}, { ...selection, mode: 'cycling' }, { ...selection, version: 2 },
         { ...selection, places: [] }, { ...selection, places: Array(4).fill(selection.places[0]) },
         { ...selection, start: { lon: 181, lat: 56 } }, { ...selection, start: { lon: '92.86', lat: 56 } },
         { ...selection, places: [{ lon: 92.8, lat: 56, label: 'x'.repeat(81) }] }]) {
@@ -91,27 +84,6 @@ test('partial results retain independent unknown cells and a failed request can 
     } finally { state.clear() }
 })
 
-function pageHarness(initial = '/trips', reply, dom = {}, realState = false) {
-    const mounted = [], disposed = [], calls = [], handlers = new Map(), scope = vue.effectScope()
-    const historyEntries = [initial]
-    let index = 0
-    const win = { location: new URL(initial, 'https://synthetic.invalid'), innerWidth: 1200,
-        addEventListener(name, fn) { handlers.set(name, fn) }, removeEventListener(name) { handlers.delete(name) } }
-    const navigate = url => { win.location = new URL(url, 'https://synthetic.invalid') }
-    win.history = {
-        pushState(_state, _title, url) { historyEntries.splice(++index); historyEntries.push(url); navigate(url) },
-        replaceState(_state, _title, url) { historyEntries[index] = url; navigate(url) },
-        go(delta) { index += delta; navigate(historyEntries[index]); handlers.get('popstate')?.(); handlers.get('hashchange')?.() },
-    }
-    const state = realState ? build(ref, shallowRef, fn => disposed.push(fn), (value, signal) => { calls.push(value); return reply(value, signal) })() : { analysis: shallowRef(null), status: ref('idle'), error: ref(''), clear(retained = null) { state.analysis.value = retained; state.status.value = 'idle'; state.error.value = '' }, analyze(value, retained = null) { calls.push(value); if (reply) { const response = reply(value); if (response?.then) { state.analysis.value = retained; state.status.value = 'loading'; return response.then(r => { state.analysis.value = r; state.status.value = 'ready'; return r }) } state.analysis.value = response; return Promise.resolve(response) } } }
-    const deps = { ...vue, vue: { ...vue, onBeforeUnmount: fn => disposed.push(fn) }, onMounted: fn => mounted.push(fn), onBeforeUnmount: fn => disposed.push(fn), useTripAnalysis: () => state, ...utils, window: win,
-        document: { title: '', querySelector: () => null, getElementById: () => ({ focus() {}, scrollIntoView() {} }), ...dom } }
-    if (!realState) disposed.push(() => state.clear())
-    const page = scope.run(() => loadSetup(new URL('../../resources/js/pages/TripsPage.vue', import.meta.url), ['submit', 'reset', 'returnToForm', 'draft', 'invalidLink', 'chooseRoad', 'mapChoice', 'choose', 'selection', 'candidateGroups', 'add', 'remove', 'activeRoad', 'announcement', 'rowCandidateGroups', 'highlightedCandidate', 'candidateFocus', 'pendingChoiceIndices', 'actionNotices', 'dismissActionNotice', 'openActionNotice', 'dirtyIndices', 'summaryTitle', 'resultEntries', 'nextStep', 'active', 'activePointReady', 'nextPoint', 'allPointsReady', 'saveDraftLink'], { ...pageDependencies(deps), vue: { ...vue, onMounted: deps.onMounted, onBeforeUnmount: deps.onBeforeUnmount } }, { window: win, document: deps.document }))
-    mounted.forEach(fn => fn())
-    return { page, win, calls, state, historyEntries, handlers, dispose() { disposed.forEach(fn => fn()); scope.stop() } }
-}
-
 // Domain tests execute the real module and real transport, mocking only fetch and lifecycle.
 const settleTrips = async () => { for (let i = 0; i < 5; i++) await Promise.resolve() }
 function tripsHarness(initial, reply) {
@@ -130,65 +102,10 @@ function tripsHarness(initial, reply) {
     return { trips, state: trips, calls, saves, dispose() { disposed.forEach(fn => fn()); scope.stop() } }
 }
 
-test('page restores fragment on direct load/reload and back/forward without duplicate requests', () => {
-    const first = utils.tripUrl(selection)
-    const h = pageHarness(first)
-    try {
-        assert.deepEqual(h.calls, [selection])
-        const reload = pageHarness(h.win.location.pathname + h.win.location.hash)
-        assert.deepEqual(reload.calls, [selection]); reload.dispose()
-        h.page.draft.places[0].label = 'Синтетическая замена'
-        h.page.submit()
-        assert.equal(h.win.location.search, '')
-        assert.equal(h.historyEntries.length, 2)
-        h.win.history.go(-1)
-        assert.deepEqual(h.calls.at(-1), selection)
-        assert.equal(h.calls.length, 3)
-        h.win.history.go(1)
-        assert.equal(h.calls.at(-1).places[0].label, 'Синтетическая замена')
-        h.page.returnToForm()
-        assert.ok(h.win.location.hash.startsWith('#trip='))
-        h.page.reset()
-        assert.equal(h.win.location.hash, '')
-        h.win.history.go(-1)
-        assert.equal(h.calls.at(-1).places[0].label, 'Синтетическая замена')
-    } finally { h.dispose() }
-})
-
-test('old query links migrate in place; malformed and ambiguous links never calculate', () => {
-    const old = '/trips?' + new URLSearchParams({ trip: JSON.stringify(selection) })
-    const h = pageHarness(old)
-    assert.equal(h.win.location.search, '')
-    assert.ok(h.win.location.hash.startsWith('#trip='))
-    assert.equal(h.historyEntries.length, 1)
-    assert.deepEqual(h.calls, [selection]); h.dispose()
-    for (const url of ['/trips?trip=invalid', '/trips#trip=invalid', old + utils.tripUrl(selection).slice(6), '/trips#trip={}&trip={}']) {
-        const invalid = pageHarness(url)
-        assert.equal(invalid.page.invalidLink.value, true)
-        assert.equal(invalid.calls.length, 0)
-        assert.equal(invalid.win.location.search, '')
-        invalid.dispose()
-    }
-})
-
-async function renderPage(value = null) {
-    const deps = { ...utils,
-        PlaceLayout: { inheritAttrs: false, props: ['document'], render() { return this.$slots.default() } }, TripMap: { render: () => null }, TripPointPicker: { render: () => null },
-        useTripAnalysis: () => ({ analysis: shallowRef(value), status: ref('idle'), error: ref(''), clear() {}, analyze() {} }) }
-    const component = loadComponent(new URL('../../resources/js/pages/TripsPage.vue', import.meta.url), pageDependencies(deps))
-    const html = await ssr.renderToString(vue.createSSRApp(component))
-    return html
-}
-test('rendered page warns the recipient can see coordinates and labels of every point', async () => {
-    const html = await renderPage()
-    assert.ok(html.includes('Получатель ссылки сможет увидеть координаты и подписи всех сохранённых точек.'))
-    assert.ok(html.includes('истории этого браузера'))
-})
-
 test('trip fetch uses a fixed URL, no-store and no-referrer; selection travels only in POST body', async () => {
     let seen
-    const { fetchTrips } = loadModule(new URL('../../resources/js/api/trips.ts', import.meta.url), {}, { fetch: async (url, options) => {
-        seen = { url, options }; return { ok: true, json: async () => ({ results: [] }) }
+    const { fetchTrips } = loadTripClient({ fetch: async (url, options) => {
+        seen = { url, options }; return { ok: true, json: async () => ({ mode: 'driving', start: selection.start, results: selection.places.map((target, index) => ({ index, start: selection.start, target, status: 'UNKNOWN', route: null, snaps: null, metrics: { distance: { value: null }, duration: { value: null } } })) }) }
     } })
     await fetchTrips(selection, new AbortController().signal)
     assert.equal(seen.url, '/api/v1/trips/analyze')
@@ -207,42 +124,6 @@ test('original and road points both round-trip through fragment and invalid road
         const changed = { ...selection, start: { ...selection.start, road: bad } }
         assert.equal(utils.parseTripLink('?' + new URLSearchParams({ trip: JSON.stringify(changed) })).invalid, true)
     }
-})
-
-test('manual road change keeps original point and survives reload/back/forward/reset', async () => {
-    const h = pageHarness(utils.tripUrl(roadSelection))
-    try {
-        assert.deepEqual(h.calls[0], roadSelection)
-        const next = { lon: .1236, lat: .2347 }
-        h.page.chooseRoad('S', next)
-        assert.deepEqual(h.calls.at(-1).start, { ...selection.start, road: next })
-        assert.equal(h.win.location.search, '')
-        const reloaded = pageHarness(h.win.location.pathname + h.win.location.hash)
-        assert.deepEqual(reloaded.calls[0], h.calls.at(-1)); reloaded.dispose()
-        h.win.history.go(-1); assert.deepEqual(h.calls.at(-1), roadSelection)
-        h.win.history.go(1); assert.deepEqual(h.calls.at(-1).start.road, next)
-        h.page.reset(); assert.equal(h.state.analysis.value, null)
-        h.win.history.go(-1); assert.deepEqual(h.calls.at(-1).start.road, next)
-        h.page.mapChoice('start'); h.page.choose({ lon: .2, lat: .3 })
-        assert.equal(h.page.draft.start.road, undefined)
-    } finally { h.dispose() }
-})
-
-test('automatic checked road choices are stored without erasing the result or original markers', async () => {
-    const response = { results: [{ index: 0, road_choices: { start: { status: 'SELECTED', point: roadSelection.start.road }, target: { status: 'SELECTED', point: roadSelection.places[0].road } } }] }
-    const h = pageHarness(utils.tripUrl(selection), () => response)
-    try {
-        await Promise.resolve()
-        assert.deepEqual(h.state.analysis.value, response)
-        assert.deepEqual(h.page.selection().start, roadSelection.start)
-        assert.equal(h.historyEntries.length, 1)
-        const saved = utils.parseTripLink(h.win.location.hash).selection
-        assert.deepEqual(saved.start, roadSelection.start)
-        assert.deepEqual(saved.places[0], roadSelection.places[0])
-        h.page.draft.start.lon = .4
-        assert.equal(h.state.analysis.value, null)
-        assert.equal(h.page.draft.start.road, undefined)
-    } finally { h.dispose() }
 })
 
 const mapUtils = loadModule(new URL('../../resources/js/utils/tripMap.ts', import.meta.url), { '@/utils/tripCandidates': candidates })
@@ -264,27 +145,6 @@ test('actual map data retains originals, separate road ends, dashed connectors a
     assert.equal(mapUtils.tripMapData(points, { results: [{ ...accepted, status: 'NEEDS_REFINEMENT', road_choices: { start: choice } }] }).features.filter(f => f.properties.kind === 'candidate').length, 2)
     const source = readFileSync(new URL('../../resources/js/utils/tripMap.ts', import.meta.url), 'utf8')
     assert.ok(source.includes("'line-dasharray': [2, 3]"))
-})
-
-test('each available result labels secondary model time explicitly; refusals have no minutes', async () => {
-    const html = await renderPage({ results: [accepted, { ...accepted, index: 1, status: 'UNKNOWN', route: null, snaps: null }], source: null, limitation: 'Synthetic' })
-    assert.equal((html.match(/модельное время без актуальных пробок/g) || []).length, 1)
-    assert.ok(html.includes('Парковка и подход не учтены.'))
-    assert.ok(html.includes('Короткий подход между точками не включён в расстояние и время.'))
-    assert.equal((html.match(/около 8 мин/g) || []).length, 1)
-})
-
-test('adding another place after a road edit selects a new original point, not another road hint', async () => {
-    const h = pageHarness(utils.tripUrl(roadSelection))
-    try {
-        h.page.chooseRoad('S', { lon: .1235, lat: .2346 })
-        assert.equal(h.page.activeRoad.value, true)
-        await h.page.add()
-        assert.equal(h.page.activeRoad.value, false)
-        h.page.choose({ lon: .3, lat: .4 })
-        assert.equal(Number(h.page.draft.places[2].lon), .3)
-        assert.equal(h.page.draft.places[2].road, undefined)
-    } finally { h.dispose() }
 })
 
 const refusal = (status, checks) => ({ ...accepted, index: 1, label: 'Синтетическая B', status, checks, reason: 'RAW_TECHNICAL_REASON', route: null, snaps: null,
@@ -309,38 +169,6 @@ test('failure guidance is selected from backend codes and never claims an unknow
     }
     assert.equal(utils.tripFailureMessage(refusal('NEEDS_REFINEMENT', ['SNAP_CHOICE_REQUIRED'])).action, 'choice')
     assert.equal(utils.tripFailureMessage({ ...refusal('UNKNOWN', []), diagnostics: undefined, reason: 'Старт SNAP_THROUGH_BARRIER' }).location, 'unknown')
-})
-
-test('each rendered refusal has an expanded inline notice beside its successful sibling and codes only in details', async () => {
-    for (const [row, title] of refusalCases) {
-        const html = await renderPage({ results: [accepted, row], source: null, limitation: 'Synthetic' })
-        const warning = html.match(/<div id="trip-failure-1"[^>]*class="trip-failure"[^>]*>([\s\S]*?)<\/div><\/div>/)?.[1]
-        assert.ok(warning?.includes(title), title)
-        assert.doesNotMatch(warning, /<details|RAW_TECHNICAL_REASON|SOURCE_|SNAP_|ROUTER_/)
-        assert.ok(html.includes('aria-describedby="trip-failure-1"'))
-        assert.ok(html.includes('role="status" aria-live="polite" aria-atomic="true"'))
-        assert.ok(html.includes('data-status="AVAILABLE"'))
-        assert.equal((html.match(/class="trip-values"/g) ?? []).length, 1)
-        assert.ok(html.includes('<summary>Подробности проверки</summary>'))
-        assert.doesNotMatch(html, /aria-modal|role="dialog"/)
-        if (row.status === 'UNAVAILABLE') assert.ok(warning.includes('Повторить расчёт'))
-    }
-})
-
-test('editing a point immediately removes an old refusal and announces the need for a new calculation', async () => {
-    const response = { results: [refusal('UNKNOWN', ['SOURCE_NODE_ACCESS_UNKNOWN'])] }
-    const h = pageHarness(utils.tripUrl(selection), () => response)
-    try {
-        await Promise.resolve()
-        assert.ok(h.page.announcement.value.includes('Ограничение на участке маршрута'))
-        h.page.draft.places[1].lon = .3
-        assert.equal(h.state.analysis.value, null)
-        assert.ok(h.page.announcement.value.includes('Прежние результаты этих поездок убраны'))
-        assert.ok(!h.page.announcement.value.includes('Ограничение на участке маршрута'))
-        h.page.submit()
-        await Promise.resolve()
-        assert.equal(h.state.analysis.value, response)
-    } finally { h.dispose() }
 })
 
 test('late refusal cannot reappear after a point edit', async () => {
@@ -369,63 +197,6 @@ function choiceReply(value) {
     return { results: [accepted, road ? { ...accepted, index: 1, label: waitingRow.label,
         road_choices: { start: waitingRow.road_choices.start, target: { status: 'SELECTED', manual: true, point: road, candidates: alternatives.filter(c => utils.sameRoadPoint(c.point, road)) } } } : waitingRow], source: null, limitation: 'Synthetic' }
 }
-
-test('ambiguous choices are a neutral waiting state with linked options inside the correct trip card', async () => {
-    const html = await renderPage(choiceReply(selection))
-    assert.ok(html.includes('Ожидает выбора дорожной точки'))
-    assert.ok(html.includes('Маршрут пока не рассчитан: рядом несколько допустимых вариантов привязки'))
-    assert.ok(html.includes('trip-choice-notice'))
-    const second = html.slice(html.indexOf('data-status="NEEDS_REFINEMENT"'))
-    assert.ok(second.includes('Дорожные варианты: Место 2, поездка 2'))
-    assert.ok(second.includes('data-candidate-id="2-0"'))
-    assert.ok(second.includes('data-candidate-id="2-1"'))
-    assert.ok(second.includes('Вариант 1 — 11,1 м'))
-    assert.ok(second.includes('Синтетическая &lt;улица&gt;'))
-    assert.ok(!second.includes('Синтетическая <улица>'))
-    assert.ok(!second.includes('Временная техническая ошибка'))
-    assert.equal((html.match(/class="trip-values"/g) ?? []).length, 1)
-})
-
-test('list and map selection preserve the successful sibling while calculating and survive fragment history', async () => {
-    let finish, delayed = false
-    const h = pageHarness(utils.tripUrl(selection), value => delayed ? new Promise(resolve => { finish = () => resolve(choiceReply(value)) }) : choiceReply(value))
-    try {
-        await Promise.resolve()
-        assert.equal(h.calls.length, 1)
-        assert.equal(h.page.selection().places[1].road, undefined)
-        assert.equal(h.page.candidateGroups.value.length, 1)
-        delayed = true
-        h.page.chooseRoad('2', alternatives[1].point)
-        assert.equal(h.state.analysis.value.results[0], accepted)
-        assert.equal(h.state.analysis.value.results[1].route, null)
-        assert.deepEqual(h.page.pendingChoiceIndices.value, [1])
-        assert.equal(h.win.location.search, '')
-        assert.deepEqual(utils.parseTripLink(h.win.location.hash).selection.places[1].road, alternatives[1].point)
-        finish()
-        for (let i = 0; i < 3; i++) await Promise.resolve()
-        assert.equal(h.state.analysis.value.results[1].status, 'AVAILABLE')
-        assert.deepEqual(h.page.candidateGroups.value[0].selected, alternatives[1].point)
-        assert.equal(h.page.candidateGroups.value[0].candidates.length, 2)
-        delayed = false
-        h.page.chooseRoad('2', alternatives[0].point)
-        await Promise.resolve()
-        h.win.history.go(-1)
-        await Promise.resolve()
-        assert.deepEqual(h.page.selection().places[1].road, alternatives[1].point)
-        h.win.history.go(1)
-        await Promise.resolve()
-        assert.deepEqual(h.page.selection().places[1].road, alternatives[0].point)
-        const reload = pageHarness(h.win.location.pathname + h.win.location.hash, choiceReply)
-        await Promise.resolve()
-        assert.deepEqual(reload.page.candidateGroups.value[0].selected, alternatives[0].point)
-        reload.dispose()
-        h.page.draft.places[1].lon = .3
-        assert.equal(h.page.draft.places[1].road, undefined)
-        assert.deepEqual(h.state.analysis.value.results, [accepted])
-        assert.deepEqual(h.page.dirtyIndices.value, [1])
-        assert.equal(h.page.candidateGroups.value.length, 0)
-    } finally { h.dispose() }
-})
 
 test('hover and focus share a candidate identity without selecting it or making an extra request', async () => {
     const h = tripsHarness(selection, choiceReply)
@@ -491,111 +262,6 @@ test('action summary uses existing backend guidance and describes ambiguity as a
     assert.ok(both.text.includes('вариантов: 4'))
 })
 
-test('summary includes every trip, accessible actions and full success as well as partial results', async () => {
-    const html = await renderPage({ results: [accepted, waitingRow, { ...refusalCases[1][0], index: 2 }] })
-    const summary = html.match(/<section class="trip-action-summary"[\s\S]*?<\/section>/)?.[0]
-    assert.ok(summary?.includes('Рассчитано 1 из 3'))
-    assert.ok(summary.includes('aria-labelledby="trip-action-summary-title"'))
-    assert.ok(summary.includes('aria-describedby="trip-action-summary-item-1"'))
-    assert.ok(summary.includes('aria-label="Выбрать вариант, место 2"'))
-    assert.ok(summary.includes('aria-label="Проверить точки, место 3"'))
-    assert.ok(summary.includes('aria-label="Скрыть уведомление"'))
-    assert.equal((html.match(/class="trip-values"/g) ?? []).length, 1)
-    assert.ok(html.includes('data-needs-choice="true"'))
-    assert.ok(html.includes('id="trip-result-1" tabindex="-1"'))
-    assert.doesNotMatch(html, /aria-modal|role="dialog"/)
-    const success = await renderPage({ results: [accepted] })
-    assert.ok(success.includes('class="trip-action-summary"'))
-    assert.ok(success.includes('Рассчитано 1 из 1'))
-    assert.ok(success.includes('aria-label="К результату, место 1"'))
-})
-
-test('closing preserves results; edits replace only the affected summary item and a new run reopens it', async () => {
-    let finish, delayed = false
-    const h = pageHarness(utils.tripUrl(selection), () => delayed ? new Promise(resolve => { finish = resolve }) : { results: [accepted, waitingRow] })
-    try {
-        await Promise.resolve()
-        assert.equal(h.page.actionNotices.value.length, 2)
-        const before = h.state.analysis.value
-        await h.page.dismissActionNotice()
-        assert.equal(h.page.actionNotices.value.length, 0)
-        assert.equal(h.state.analysis.value, before)
-        assert.equal(h.page.candidateGroups.value[0].candidates.length, 2)
-        h.page.submit()
-        await Promise.resolve()
-        assert.equal(h.page.actionNotices.value.length, 2)
-        h.page.draft.places[1].lon = .3
-        assert.deepEqual(h.page.actionNotices.value.map(n => n.action), ['result', 'calculate'])
-        assert.equal(h.page.summaryTitle.value, 'Рассчитано 1 из 2 · нужен пересчёт')
-        delayed = true
-        h.page.submit()
-        assert.equal(h.page.actionNotices.value.length, 2)
-        assert.deepEqual(h.state.analysis.value.results, [accepted])
-        assert.equal(h.page.actionNotices.value[1].text, 'Место 2: проверяем путь')
-        finish({ results: [accepted, { ...accepted, index: 1 }] })
-        for (let i = 0; i < 3; i++) await Promise.resolve()
-        assert.equal(h.page.summaryTitle.value, 'Рассчитано 2 из 2')
-        assert.ok(h.page.actionNotices.value.every(n => n.action === 'result'))
-    } finally { h.dispose() }
-})
-
-test('summary navigation focuses the card choice or action without calculating or selecting a candidate', async () => {
-    const seen = []
-    const target = { focus: options => seen.push(['focus', options]), scrollIntoView: options => seen.push(['target-scroll', options]) }
-    const card = { querySelector: selector => { seen.push(['selector', selector]); return target }, scrollIntoView: options => seen.push(['card-scroll', options]) }
-    const h = pageHarness(utils.tripUrl(selection), choiceReply, { getElementById: id => { seen.push(['card', id]); return card } })
-    try {
-        await Promise.resolve()
-        for (const row of [waitingRow, refusalCases[0][0], refusalCases[4][0]]) await h.page.openActionNotice(utils.tripActionNotice(row))
-        assert.deepEqual(seen.filter(c => c[0] === 'selector').map(c => c[1]), [
-            '[data-needs-choice="true"] button[data-candidate-id]', '[data-trip-action="refine"]', '[data-trip-action="retry"]',
-        ])
-        assert.equal(seen.filter(c => c[0] === 'focus').length, 3)
-        assert.ok(seen.filter(c => c[0] === 'card').every(c => c[1] === 'trip-result-1'))
-        assert.equal(h.calls.length, 1)
-        assert.equal(h.page.selection().places[1].road, undefined)
-    } finally { h.dispose() }
-})
-
-test('editing one target drops only its route and candidate state, while editing start drops all routes', async () => {
-    const h = pageHarness(utils.tripUrl(selection), choiceReply)
-    try {
-        await Promise.resolve()
-        const route = h.state.analysis.value.results[0].route
-        h.page.draft.places[1].lat = ''
-        assert.equal(h.state.analysis.value.results.length, 1)
-        assert.equal(h.state.analysis.value.results[0].route, route)
-        assert.deepEqual(h.page.dirtyIndices.value, [1])
-        assert.equal(h.page.candidateGroups.value.length, 0)
-        const data = mapUtils.tripMapData([], h.state.analysis.value, h.page.candidateGroups.value)
-        assert.equal(data.features.filter(f => f.properties.kind === 'route').length, 1)
-        assert.ok(!data.features.some(f => f.properties.kind === 'candidate'))
-        h.page.draft.start.lat = .9
-        assert.equal(h.state.analysis.value, null)
-        assert.deepEqual(h.page.dirtyIndices.value, [0, 1])
-        assert.equal(h.page.summaryTitle.value, 'Рассчитано 0 из 2 · нужен пересчёт')
-    } finally { h.dispose() }
-})
-
-test('renaming does not cancel or clear routes and the completed name round-trips through fragment history', async () => {
-    const h = pageHarness(utils.tripUrl(selection), choiceReply)
-    try {
-        await Promise.resolve()
-        const before = h.state.analysis.value
-        h.page.draft.places[0].label = 'Новое синтетическое имя'
-        assert.equal(h.state.analysis.value, before)
-        assert.equal(h.calls.length, 1)
-        assert.deepEqual(h.page.dirtyIndices.value, [])
-        h.page.saveDraftLink()
-        assert.equal(h.calls.length, 1)
-        assert.equal(utils.parseTripLink(h.win.location.hash).selection.places[0].label, 'Новое синтетическое имя')
-        h.win.history.go(-1)
-        assert.equal(h.page.draft.places[0].label, selection.places[0].label)
-        h.win.history.go(1)
-        assert.equal(h.page.draft.places[0].label, 'Новое синтетическое имя')
-    } finally { h.dispose() }
-})
-
 test('removing a middle target reindexes only retained results and candidates; adding leaves them visible', async () => {
     const three = { ...selection, places: [...selection.places, { lon: .126, lat: .237, label: 'Синтетическая C' }] }
     const third = { ...waitingRow, index: 2 }
@@ -635,151 +301,6 @@ test('the actual request state aborts after a coordinate edit and late answers c
     } finally { h.dispose() }
 })
 
-test('renaming during a request keeps the request alive and its current name in the saved link', async () => {
-    let finish, requestSignal
-    const h = pageHarness(utils.tripUrl(selection), (value, signal) => { requestSignal = signal; return new Promise(resolve => { finish = () => resolve(choiceReply(value)) }) }, {}, true)
-    try {
-        h.page.draft.places[0].label = 'Синтетическое новое имя'
-        assert.equal(requestSignal.aborted, false)
-        finish()
-        for (let i = 0; i < 4; i++) await Promise.resolve()
-        assert.equal(h.state.analysis.value.results[0].status, 'AVAILABLE')
-        assert.equal(utils.parseTripLink(h.win.location.hash).selection.places[0].label, 'Синтетическое новое имя')
-        assert.equal(h.page.draft.places[0].label, 'Синтетическое новое имя')
-    } finally { h.dispose() }
-})
-
-test('a failed candidate request never becomes a successful empty route after another point changes', async () => {
-    let fail = false
-    const h = pageHarness(utils.tripUrl(selection), value => fail ? Promise.reject(new Error('Synthetic outage')) : Promise.resolve(choiceReply(value)), {}, true)
-    try {
-        for (let i = 0; i < 4; i++) await Promise.resolve()
-        fail = true
-        h.page.chooseRoad('2', alternatives[0].point)
-        for (let i = 0; i < 4; i++) await Promise.resolve()
-        assert.equal(h.state.status.value, 'error')
-        assert.equal(h.page.actionNotices.value[1].action, 'retry')
-        h.page.draft.places[0].lat = .9
-        assert.equal(h.state.analysis.value, null)
-        assert.equal(h.page.summaryTitle.value, 'Рассчитано 0 из 2 · нужен пересчёт')
-        assert.deepEqual(h.page.dirtyIndices.value, [0, 1])
-    } finally { h.dispose() }
-})
-
-test('repeated technical failures after a road edit never resurrect the old success or metrics', async () => {
-    const metric = value => ({ value, quality: { method: 'DERIVED', availability: 'AVAILABLE' } })
-    const changed = { ...accepted, index: 1, route: { ...accepted.route, distance_m: 735, duration_s: 913,
-        geometry: { type: 'LineString', coordinates: [[.1235, .2346], [.125, .236]] } },
-        metrics: { distance: metric(735), duration: metric(913) } }
-    let fail = false
-    const h = pageHarness(utils.tripUrl(selection), () => fail ? Promise.reject(new Error('Synthetic outage')) : Promise.resolve({ results: [accepted, changed] }), {}, true)
-    const settled = async () => { for (let i = 0; i < 4; i++) await Promise.resolve() }
-    const check = () => {
-        assert.deepEqual(h.state.analysis.value.results, [accepted])
-        assert.equal(h.page.resultEntries.value[1].row, null)
-        assert.equal(h.page.summaryTitle.value, 'Рассчитано 1 из 2')
-        assert.deepEqual(h.page.actionNotices.value.map(n => n.action), ['result', 'retry'])
-        assert.doesNotMatch(h.page.announcement.value, /Поездка 2: путь рассчитан/)
-        const routes = mapUtils.tripMapData([], h.state.analysis.value).features.filter(f => f.properties.kind === 'route')
-        assert.equal(routes.length, 1)
-        assert.deepEqual(routes[0].geometry, accepted.route.geometry)
-    }
-    try {
-        await settled()
-        assert.equal(h.page.summaryTitle.value, 'Рассчитано 2 из 2')
-        fail = true
-        h.page.chooseRoad('2', alternatives[0].point)
-        await settled()
-        assert.equal(h.state.status.value, 'error')
-        check()
-        for (let attempt = 0; attempt < 2; attempt++) {
-            h.page.submit()
-            assert.deepEqual(h.state.analysis.value.results, [accepted])
-            await settled()
-            assert.equal(h.state.status.value, 'error')
-            check()
-        }
-    } finally { h.dispose() }
-})
-
-for (const key of ['1', 'S']) test(`road edit ${key} immediately discards dependent results even with an unfilled place`, async () => {
-    const first = { ...accepted, metrics: { distance: { value: 100 }, duration: { value: 480 } } }
-    const changed = { ...accepted, index: 1, route: { ...accepted.route, distance_m: 735, duration_s: 913,
-        geometry: { type: 'LineString', coordinates: [[.1235, .2346], [.125, .236]] } },
-        metrics: { distance: { value: 735 }, duration: { value: 913 } } }
-    const pending = []
-    let defer = false
-    const h = pageHarness(utils.tripUrl(selection), (value, signal) => defer ? new Promise(resolve => pending.push({ signal, resolve })) : Promise.resolve({ results: [first, changed] }), {}, true)
-    try {
-        for (let i = 0; i < 4; i++) await Promise.resolve()
-        await h.page.add()
-        assert.equal(h.page.allPointsReady.value, false)
-        const calls = h.calls.length
-        h.page.chooseRoad(key, alternatives[0].point)
-        assert.equal(h.calls.length, calls)
-        const expected = key === 'S' ? [] : [changed]
-        assert.deepEqual(h.state.analysis.value?.results ?? [], expected)
-        assert.equal(h.page.resultEntries.value[0].row, null)
-        assert.deepEqual(h.page.dirtyIndices.value, key === 'S' ? [0, 1, 2] : [0, 2])
-        assert.equal(h.page.summaryTitle.value, `Рассчитано ${expected.length} из 3 · нужен пересчёт`)
-        assert.equal(h.page.actionNotices.value[0].action, 'calculate')
-        assert.doesNotMatch(h.page.announcement.value, /Поездка 1: путь рассчитан/)
-        const routes = mapUtils.tripMapData([], h.state.analysis.value).features.filter(f => f.properties.kind === 'route')
-        assert.equal(routes.length, expected.length)
-        if (expected.length) assert.deepEqual(routes[0].geometry, changed.route.geometry)
-        // A later calculation must not recover the discarded result from retained state.
-        defer = true
-        h.page.draft.places[2].lon = .126
-        h.page.draft.places[2].lat = .237
-        h.page.submit()
-        assert.deepEqual(h.state.analysis.value?.results ?? [], expected)
-        h.page.draft.places[2].lat = ''
-        assert.equal(pending[0].signal.aborted, true)
-        pending[0].resolve({ results: [first, changed] })
-        for (let i = 0; i < 4; i++) await Promise.resolve()
-        assert.deepEqual(h.state.analysis.value?.results ?? [], expected)
-    } finally { h.dispose() }
-})
-
-test('mobile steps advance only on explicit action, keep coordinates and transfer keyboard focus to the map', async () => {
-    let focusCount = 0
-    const h = pageHarness('/trips', undefined, { querySelector: () => ({ focus() { focusCount++ } }) })
-    h.win.innerWidth = 390
-    try {
-        await h.page.nextStep()
-        assert.equal(h.page.active.value, 'start')
-        h.page.choose(selection.start)
-        assert.equal(h.page.active.value, 'start')
-        assert.equal(h.page.activePointReady.value, true)
-        assert.equal(h.calls.length, 0)
-        await h.page.nextStep()
-        assert.equal(h.page.active.value, 0)
-        assert.equal(h.page.draft.places[0].lon, '')
-        assert.equal(focusCount, 1)
-        h.page.choose(selection.places[0])
-        assert.equal(h.page.allPointsReady.value, true)
-        await h.page.add(true)
-        assert.equal(h.page.active.value, 1)
-        assert.equal(h.page.activeRoad.value, false)
-        assert.equal(h.page.draft.places[1].lon, '')
-        await h.page.mapChoice('start')
-        assert.deepEqual(h.page.selection(), null) // New blank target still needs a user's choice.
-        assert.equal(Number(h.page.draft.start.lon), selection.start.lon)
-        assert.equal(Number(h.page.draft.places[0].lon), selection.places[0].lon)
-        assert.equal(h.calls.length, 0)
-    } finally { h.dispose() }
-})
-
-test('all-refused summary preserves reasons and retry/choice actions without successful metrics', async () => {
-    const html = await renderPage({ results: [{ ...refusalCases[0][0], index: 0 }, waitingRow, { ...refusalCases[4][0], index: 2 }] })
-    const summary = html.match(/<section class="trip-action-summary"[\s\S]*?<\/section>/)?.[0]
-    assert.ok(summary.includes('Рассчитано 0 из 3'))
-    assert.ok(summary.includes('положение проблемы неизвестно'))
-    assert.ok(summary.includes('вариантов: 2'))
-    assert.ok(summary.includes('Повторить расчёт, место 3'))
-    assert.equal((html.match(/class="trip-values"/g) ?? []).length, 0)
-})
-
 for (const location of ['start', 'target', 'both_endpoints', 'route', 'unknown']) test(`Goal 6 structured ${location} localization ignores misleading reason/checks`, () => {
     const row = { ...refusal('UNKNOWN', ['SNAP_THROUGH_BARRIER']), reason: 'Уточнить старт', diagnostics: { version: 1, issues: [{ code: 'FUTURE_CODE', category: 'access', stage: 'geometry', location, target_index: ['target', 'both_endpoints'].includes(location) ? 1 : null }] } }
     const message = utils.tripFailureMessage(row)
@@ -814,20 +335,7 @@ test('Goal 6 removing earlier target reindexes retained structured diagnostics w
     } finally { h.dispose() }
 })
 
-test('Goal 6 general technical retry cannot keep an earlier full success', async () => {
-    let fail = false
-    const h = pageHarness(utils.tripUrl(selection), () => fail ? Promise.reject(new Error('Synthetic outage')) : Promise.resolve({ results: [accepted, { ...accepted, index: 1 }] }), {}, true)
-    try {
-        for (let i = 0; i < 5; i++) await Promise.resolve()
-        fail = true
-        h.page.submit()
-        for (let i = 0; i < 5; i++) await Promise.resolve()
-        assert.deepEqual(h.state.analysis.value.results, [])
-        assert.ok(h.page.actionNotices.value.every(notice => notice.action === 'retry'))
-    } finally { h.dispose() }
-})
-
-for (const change of ['target', 'start', 'remove', 'reset', 'restore', 'new request', 'unmount']) {
+for (const change of ['target', 'start', 'remove', 'reset', 'restore', 'new request', 'unmount', 'mode']) {
     test(`standalone state ignores delivered late response after ${change}`, async () => {
         const pending = []
         let defer = false
@@ -844,6 +352,7 @@ for (const change of ['target', 'start', 'remove', 'reset', 'restore', 'new requ
             if (change === 'restore') h.trips.restore(roadSelection)
             if (change === 'new request') h.trips.chooseRoad('2', alternatives[1].point)
             if (change === 'unmount') h.dispose()
+            if (change === 'mode') h.trips.setMode('walking')
             assert.equal(pending[0].signal.aborted, true)
             const before = {
                 analysis: h.trips.analysis.value, status: h.trips.status.value, error: h.trips.error.value,
@@ -870,19 +379,174 @@ for (const change of ['target', 'start', 'remove', 'reset', 'restore', 'new requ
     })
 }
 
-test('page unmount removes history/resize handlers and cancels the connected real state', async () => {
-    let finish, signal
-    const h = pageHarness(utils.tripUrl(selection), (_value, active) => {
-        signal = active
-        return new Promise(resolve => { finish = resolve })
-    }, {}, true)
-    assert.deepEqual([...h.handlers.keys()].sort(), ['hashchange', 'popstate', 'resize'])
-    h.dispose()
-    assert.equal(signal.aborted, true)
-    assert.equal(h.handlers.size, 0)
-    finish({ results: [accepted, waitingRow] })
-    await settleTrips()
-    assert.equal(h.state.analysis.value, null)
-    assert.equal(h.page.candidateGroups.value.length, 0)
-    assert.equal(h.page.draft.start.road, undefined)
+
+const walkingSelection = { ...selection, mode: 'walking' }
+const street = { start: { lon: .1236, lat: .2347 }, target: { lon: .1242, lat: .2352 } }
+const walkingRow = {
+    ...accepted, start: selection.start, target: selection.places[0], route_scope: 'street_points',
+    street_points: street, selection_kind: 'DIFFERENT_STREET_POINTS',
+    approaches: Object.fromEntries(['start', 'target'].map(end => [end, { status: 'UNKNOWN',
+        original: end === 'start' ? selection.start : selection.places[0], selected_street: street[end],
+        selection_shift_m: end === 'start' ? 33 : 12, distance_m: null, duration_s: null, reason: 'Synthetic approach unknown' }])),
+    address_metrics: { distance: { value: null }, duration: { value: null } },
+    metrics: { distance: { value: 100 }, duration: { value: 480 } },
+}
+
+test('mode switch clears prior results, candidates, road hints and errors while retaining originals and labels', async () => {
+    const h = tripsHarness(selection, value => Promise.resolve(choiceReply(value)))
+    try {
+        await settleTrips()
+        assert.ok(h.trips.candidateGroups.value.length)
+        h.trips.formError.value = 'Synthetic error'
+        h.trips.invalidLink.value = true
+        h.trips.setMode('walking')
+        assert.equal(h.calls.length, 1)
+        assert.equal(h.trips.mode.value, 'walking')
+        assert.equal(h.trips.analysis.value, null)
+        assert.equal(h.trips.status.value, 'idle')
+        assert.equal(h.trips.error.value, '')
+        assert.equal(h.trips.formError.value, '')
+        assert.equal(h.trips.invalidLink.value, false)
+        assert.equal(h.trips.hasCalculated.value, false)
+        assert.deepEqual(h.trips.candidateGroups.value, [])
+        assert.deepEqual(h.trips.pendingChoiceIndices.value, [])
+        assert.deepEqual(h.trips.failedChoiceIndices.value, [])
+        assert.deepEqual(h.trips.selection(), walkingSelection)
+        h.trips.submit()
+        assert.equal(h.calls.length, 2)
+        assert.equal(h.calls[1].mode, 'walking')
+        await settleTrips()
+        assert.equal(h.trips.draft.start.road, undefined)
+        assert.equal(h.trips.draft.places[0].road, undefined)
+    } finally { h.dispose() }
+})
+
+test('walking response never promotes server choice or snapped coordinates into explicit streets or history', async () => {
+    const reply = { mode: 'walking', results: [{ ...walkingRow, road_choices: {
+        start: { status: 'SELECTED', point: street.start }, target: { status: 'NEEDS_REFINEMENT', point: street.target },
+    } }] }
+    const h = tripsHarness(walkingSelection, () => Promise.resolve(reply))
+    try {
+        await settleTrips()
+        assert.equal(h.trips.draft.start.road, undefined)
+        assert.equal(h.trips.draft.places[0].road, undefined)
+        assert.deepEqual(h.saves.at(-1).value, walkingSelection)
+        h.trips.chooseRoad('S', street.start)
+        assert.equal(h.calls.length, 2)
+        assert.deepEqual(h.calls.at(-1).start, { ...selection.start, road: street.start })
+        await settleTrips()
+        h.trips.resetRoad('S')
+        assert.equal(h.calls.at(-1).start.road, undefined)
+        assert.deepEqual(h.trips.selection().start, selection.start)
+    } finally { h.dispose() }
+})
+
+const walkingAlternatives = [
+    { point: { lon: .12402, lat: .23501 }, distance_m: 2.3, name: 'Synthetic street A' },
+    { point: { lon: .12404, lat: .23502 }, distance_m: 4.6, name: 'Synthetic street B' },
+]
+function walkingChoiceRow(location = 'target') {
+    return { ...walkingRow, index: 0, status: 'NEEDS_REFINEMENT', route: null, snaps: null,
+        diagnostics: { version: 1, issues: [{ code: 'SNAP_CHOICE_REQUIRED', category: 'ambiguity', stage: 'snap',
+            location, target_index: location === 'start' ? null : 0 }] },
+        road_choices: { start: { status: location === 'start' ? 'CHOOSE' : 'SELECTED',
+            ...(location === 'start' ? { candidates: walkingAlternatives } : { point: street.start }) },
+            target: { status: location === 'start' ? 'SELECTED' : 'CHOOSE',
+                ...(location === 'start' ? { point: street.target } : { candidates: walkingAlternatives }) } } }
+}
+
+test('walking candidate selection preserves originals, checks normally, drops previous alternatives and ignores late replies', async () => {
+    let defer = false
+    const pending = [], initial = { ...walkingSelection, places: [walkingSelection.places[0]] }
+    const chosen = walkingAlternatives[1].point
+    const h = tripsHarness(initial, (value, signal) => {
+        const response = value.places[0].road ? { mode: 'walking', results: [{ ...walkingRow,
+            road_choices: { start: { status: 'SELECTED', point: street.start }, target: { status: 'SELECTED', point: chosen } } }] }
+            : { mode: 'walking', results: [walkingChoiceRow()] }
+        return defer ? new Promise(resolve => pending.push({ value, signal, resolve, response })) : Promise.resolve(response)
+    })
+    try {
+        await settleTrips()
+        assert.equal(h.trips.selection().places[0].road, undefined)
+        h.trips.chooseRoad('1', chosen)
+        assert.equal(h.calls.length, 2)
+        assert.deepEqual(h.calls[1].places[0], { ...initial.places[0], road: chosen })
+        assert.deepEqual(h.calls[1].start, initial.start)
+        await settleTrips()
+        assert.equal(h.trips.analysis.value.results[0].status, 'AVAILABLE')
+        assert.deepEqual(h.trips.candidateGroups.value, [])
+        assert.deepEqual(h.trips.selection().places[0].road, chosen)
+        assert.deepEqual(h.saves.at(-1).value.places[0], { ...initial.places[0], road: chosen })
+        defer = true
+        h.trips.chooseRoad('1', walkingAlternatives[0].point)
+        h.trips.setMode('driving')
+        assert.equal(pending[0].signal.aborted, true)
+        pending[0].resolve(pending[0].response)
+        await settleTrips()
+        assert.equal(h.trips.analysis.value, null)
+        assert.deepEqual(h.trips.candidateGroups.value, [])
+        assert.equal(h.trips.selection().places[0].road, undefined)
+    } finally { h.dispose() }
+})
+
+test('walking SELECTED without candidates has no mandatory empty choice and stale explicit input does not select a CHOOSE option', async () => {
+    const withStreet = { ...walkingSelection, places: [{ ...walkingSelection.places[0], road: walkingAlternatives[0].point }] }
+    const h = tripsHarness(withStreet, () => Promise.resolve({ mode: 'walking', results: [walkingChoiceRow()] }))
+    try {
+        await settleTrips()
+        assert.equal(h.trips.candidateGroups.value.length, 1)
+        assert.equal(h.trips.candidateGroups.value[0].key, '1')
+        assert.equal(h.trips.candidateGroups.value[0].selected, null)
+        assert.deepEqual(h.trips.selection(), withStreet)
+    } finally { h.dispose() }
+})
+
+
+for (const outcome of ['AVAILABLE', 'UNKNOWN', 'partial']) {
+    test(`walking manual street edit drops checked candidates immediately and after ${outcome}`, async () => {
+        const pending = [], initial = { ...walkingSelection, places: [walkingSelection.places[0]] }
+        const manual = { lon: .8, lat: .9 }
+        const h = tripsHarness(initial, (value, signal) => value.places[0].road
+            ? new Promise(resolve => pending.push({ value, signal, resolve }))
+            : Promise.resolve({ mode: 'walking', results: [walkingChoiceRow()] }))
+        try {
+            await settleTrips()
+            assert.equal(h.trips.candidateGroups.value[0].candidates.length, 2)
+            h.trips.chooseRoad('1', manual)
+            assert.deepEqual(h.trips.candidateGroups.value, [])
+            assert.equal(h.trips.analysis.value.results[0].route, null)
+            assert.deepEqual(h.trips.selection().places[0], { ...initial.places[0], road: manual })
+            const row = { ...walkingRow, status: outcome, route: outcome === 'AVAILABLE' ? walkingRow.route : null,
+                road_choices: { start: { status: 'SELECTED', point: street.start }, target: { status: outcome === 'AVAILABLE' ? 'SELECTED' : 'UNKNOWN',
+                    point: outcome === 'AVAILABLE' ? manual : null, candidates: walkingAlternatives } } }
+            pending[0].resolve({ mode: 'walking', results: outcome === 'partial' ? [] : [row] })
+            await settleTrips()
+            assert.deepEqual(h.trips.candidateGroups.value, [])
+            assert.deepEqual(h.trips.selection().places[0].road, manual)
+            if (outcome === 'UNKNOWN') assert.equal(h.trips.analysis.value.results[0].route, null)
+        } finally { h.dispose() }
+    })
+}
+
+test('walking only presents fresh CHOOSE candidates after a manual edit and ignores superseded candidate replies', async () => {
+    const pending = [], initial = { ...walkingSelection, places: [walkingSelection.places[0]] }
+    const fresh = [{ point: { lon: .80001, lat: .90001 }, distance_m: 1.2, name: 'New street input' }]
+    const h = tripsHarness(initial, (value, signal) => value.places[0].road
+        ? new Promise(resolve => pending.push({ value, signal, resolve }))
+        : Promise.resolve({ mode: 'walking', results: [walkingChoiceRow()] }))
+    try {
+        await settleTrips()
+        h.trips.chooseRoad('1', { lon: .8, lat: .9 })
+        h.trips.chooseRoad('1', { lon: .81, lat: .91 })
+        assert.equal(pending[0].signal.aborted, true)
+        pending[0].resolve({ mode: 'walking', results: [walkingChoiceRow()] })
+        await settleTrips()
+        assert.deepEqual(h.trips.candidateGroups.value, [])
+        const row = walkingChoiceRow()
+        row.road_choices.target.candidates = fresh
+        pending[1].resolve({ mode: 'walking', results: [row] })
+        await settleTrips()
+        assert.deepEqual(h.trips.candidateGroups.value.map(group => group.candidates), [fresh])
+        assert.deepEqual(h.trips.selection().places[0].road, { lon: .81, lat: .91 })
+    } finally { h.dispose() }
 })

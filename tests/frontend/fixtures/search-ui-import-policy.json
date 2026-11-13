@@ -1,0 +1,8 @@
+{
+  "uiRoot": "resources/js/search-ui",
+  "styles": ["resources/css/search-ui.css"],
+  "uiExternalFiles": [],
+  "coreRoots": ["resources/js/search/task.ts", "resources/js/search/document.ts", "resources/js/search/types.ts", "resources/js/search/storage.ts", "resources/js/search/persistence.ts"],
+  "coreExternalFiles": ["resources/js/types/transport.ts", "resources/js/types/trips.ts"],
+  "packages": ["vue", "reka-ui", "class-variance-authority", "clsx", "tailwind-merge", "tailwindcss", "geojson"]
+}

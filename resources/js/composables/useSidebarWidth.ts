@@ -14,7 +14,7 @@ export function useSidebarWidth(container: Ref<HTMLElement | null>, page: 'home'
     const dragging = ref(false)
     const bounds = computed(() => sidebarWidthBounds(size.value))
     const enabled = computed(() => desktop.value && size.value >= 700)
-    const defaultWidth = computed(() => page === 'profile' ? 480 : size.value >= 1440 ? 400 : 360)
+    const defaultWidth = computed(() => page === 'profile' ? 480 : 440)
     const width = computed(() => Math.round(Math.max(bounds.value.min, Math.min(bounds.value.max, preferred.value ?? defaultWidth.value))))
     const style = computed(() => enabled.value ? { '--sidebar-width': `${width.value}px` } : {})
     const storageKey = `placelens:sidebar:${page}:v1`

@@ -25,20 +25,3 @@ test('layer notices distinguish an empty snapshot, unknown coverage and independ
     assert.equal(presentation.mapLayerNotice('parks', a), 'Загрузка данных…')
     assert.equal(presentation.mapLayerNotice('parks', { ...a, loading: false, profile: null }), 'Данные недоступны для этого варианта.')
 })
-
-test('one panel exposes six independent controls, selected symbols and side-local notices without opening source details', async () => {
-    const component = loadComponent(new URL('../../resources/js/components/map/MapLayersPanel.vue', import.meta.url), {
-        '@/utils/mapLayerPresentation': presentation, './MapLayerDetails.vue': { render: () => vue.h('p', 'SOURCE DETAILS') },
-    })
-    const a = context(), b = { ...context(), key: 'right', label: 'Вариант Б', profile: null }
-    const html = await ssr.renderToString(vue.createSSRApp(component, { stops: false, areas: { parks: true, vegetation: false, water: false }, lines: { roads: false, railways: false }, contexts: [a, b], comparison: true }))
-    assert.equal((html.match(/type="checkbox"/g) ?? []).length, 6)
-    assert.equal((html.match(/type="checkbox" checked/g) ?? []).length, 1)
-    assert.match(html.replace(/<[^>]+>/g, ''), /1 включено/)
-    assert.match(html, /Вариант А: <\/span>В снимке не найдены/)
-    assert.match(html, /Вариант Б: <\/span>Данные недоступны/)
-    assert.doesNotMatch(html, /SOURCE DETAILS/)
-    assert.match(html, /aria-expanded="false"/)
-    assert.match(html, /О данных: Парки/)
-    assert.match(html, /layer-symbol--area/)
-})

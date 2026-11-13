@@ -1,93 +1,127 @@
-"""Synthetic privacy regression in a separate /tmp Nginx process, no Laravel/DB.
-
-Uses the existing nginx container, a private PID/config/port, and a closed upstream.
-Never reads or truncates the live logs; never reloads/stops the live Nginx process.
-"""
-import base64
+"""Run the real Nginx privacy probe in a disposable, networkless container."""
+import argparse
 import pathlib
-import secrets
+import re
+import signal
+import shutil
 import subprocess
+import time
 import unittest
+import uuid
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
+PROBE = pathlib.Path(__file__).with_name('trip_nginx_probe.sh')
+
+
+def nginx_image():
+    # Read the literal project image without Compose interpolation or loading .env.
+    compose = (ROOT / 'docker-compose.yml').read_text()
+    match = re.search(r'^    nginx:\n        image: ([a-zA-Z0-9./:_-]+)\s*$', compose, re.M)
+    if not match:
+        raise AssertionError('image selection: expected a literal Nginx image in Compose')
+    return match[1]
+
+
+def docker_failure(stderr):
+    """Classify errors without disclosing Docker output, paths or registry URLs."""
+    for fragment, reason in (
+        ('permission denied', 'Docker permission denied'),
+        ('cannot connect', 'Docker daemon unavailable'),
+        ('failed to connect', 'Docker daemon unavailable'),
+        ('no such file or directory', 'Docker executable or input unavailable'),
+        ('pull access denied', 'image unavailable or registry access denied'),
+        ('manifest unknown', 'image unavailable'),
+        ('network', 'Docker network or image retrieval failure'),
+    ):
+        if fragment in stderr.lower():
+            return reason
+    return 'Docker command failed (details suppressed for privacy)'
+
+
+class ProbeInterrupted(Exception):
+    """Signal cancellation that subprocess must not retry as an interrupted syscall."""
+
+
+def run_probe(config, timeout):
+    config = config.resolve(strict=True)
+    image = nginx_image()
+    if shutil.which('docker') is None:
+        raise AssertionError('container creation: Docker executable unavailable')
+    name = 'placelens-nginx-privacy-' + uuid.uuid4().hex
+    deadline = time.monotonic() + timeout
+    stage = 'container creation / image retrieval'
+    # Only fixed labels from our probe can reach failure diagnostics.
+    safe_stages = set(re.findall(r"^stage='([^']+)'$", PROBE.read_text(), re.M))
+
+    def interrupted(signum, frame):
+        raise ProbeInterrupted
+
+    previous = {sig: signal.signal(sig, interrupted) for sig in (signal.SIGTERM, signal.SIGINT)}
+    attempted = False
+    try:
+        attempted = True
+        result = subprocess.run([
+            'docker', 'create', '--name', name, '--network=none', '--read-only',
+            '--tmpfs', '/tmp:rw,noexec,nosuid,size=16m',
+            '--mount', f'type=bind,src={config},dst=/privacy/nginx.conf,readonly',
+            '--mount', f'type=bind,src={PROBE},dst=/privacy/probe.sh,readonly',
+            '--entrypoint', '/bin/sh', image, '/privacy/probe.sh',
+        ], capture_output=True, text=True, timeout=max(.001, deadline - time.monotonic()))
+        if result.returncode:
+            raise AssertionError(f'{stage}: {docker_failure(result.stderr)} (exit {result.returncode})')
+        stage = 'Nginx privacy probe'
+        result = subprocess.run(['docker', 'start', '--attach', name], capture_output=True,
+                                text=True, timeout=max(.001, deadline - time.monotonic()))
+        if result.returncode:
+            reason = docker_failure(result.stderr)
+            for line in result.stdout.splitlines():
+                match = re.fullmatch(r'FAIL: (.+) \(exit ([0-9]+)\)', line)
+                if match and match[1] in safe_stages:
+                    reason = f'{match[1]} (probe exit {match[2]})'
+            raise AssertionError(f'{stage}: {reason} (exit {result.returncode})')
+        if 'PASS: safe access format, no-referrer, 502, 413, no request spool; isolated PID exited' not in result.stdout.splitlines():
+            raise AssertionError(f'{stage}: missing completion marker')
+    except subprocess.TimeoutExpired:
+        raise AssertionError(f'{stage}: timeout after {timeout:g}s') from None
+    except ProbeInterrupted:
+        raise AssertionError(f'{stage}: interrupted; removing owned container') from None
+    except OSError:
+        raise AssertionError(f'{stage}: Docker executable or input unavailable') from None
+    finally:
+        # SIGTERM (including CI cancellation) must not interrupt owned-container cleanup.
+        for sig in previous:
+            signal.signal(sig, signal.SIG_IGN)
+        try:
+            if attempted:
+                try:
+                    cleanup = subprocess.run(['docker', 'rm', '--force', name],
+                                             capture_output=True, text=True, timeout=15)
+                    if cleanup.returncode and 'No such container' not in cleanup.stderr:
+                        raise AssertionError('container cleanup: ' + docker_failure(cleanup.stderr))
+                except (OSError, subprocess.TimeoutExpired):
+                    raise AssertionError('container cleanup: Docker unavailable or cleanup timeout') from None
+        finally:
+            for sig, handler in previous.items():
+                signal.signal(sig, handler)
 
 
 class TripNginxPrivacyTest(unittest.TestCase):
+    config = ROOT / 'docker/nginx/nginx.conf'
+    timeout = 120.0
+
     def test_synthetic_uri_referer_and_body_are_absent_from_server_logs(self):
-        source = (ROOT / 'docker/nginx/nginx.conf').read_text()
-        config = base64.b64encode(source.encode()).decode()
-        port = 20000 + secrets.randbelow(30000)
-        script = r'''
-set -eu
-audit_dir=$(mktemp -d /tmp/placelens-nginx-privacy.XXXXXX)
-chmod 755 "$audit_dir"
-trap 'if [ -f "$audit_dir/nginx.pid" ]; then nginx -p "$audit_dir/" -c "$audit_dir/main.conf" -s quit >/dev/null 2>&1; fi' EXIT
-mkdir "$audit_dir/www" "$audit_dir/body" "$audit_dir/fastcgi"
-printf 'synthetic page' > "$audit_dir/www/trips"
-printf '%s' '__CONFIG__' | base64 -d | sed \
- -e 's/listen 80;/listen 127.0.0.1:__PORT__;/' \
- -e "s@root /var/www/html/public;@root $audit_dir/www;@" \
- -e "s@/var/log/nginx/access.log@$audit_dir/access.log@" \
- -e 's@include fastcgi_params;@include /etc/nginx/fastcgi_params;@g' \
- -e 's/fastcgi_pass php:9000;/fastcgi_pass 127.0.0.1:9;/g' > "$audit_dir/server.conf"
-cat > "$audit_dir/main.conf" <<EOF
-pid $audit_dir/nginx.pid;
-error_log $audit_dir/global.log notice;
-worker_processes 1;
-events { worker_connections 32; }
-http {
- client_body_temp_path $audit_dir/body;
- fastcgi_temp_path $audit_dir/fastcgi;
- include /etc/nginx/mime.types;
- include $audit_dir/server.conf;
-}
-EOF
-nginx -p "$audit_dir/" -c "$audit_dir/main.conf" -t > "$audit_dir/config-check.txt" 2>&1
-printf 'STAGE: config validated\n'
-nginx -p "$audit_dir/" -c "$audit_dir/main.conf"
-printf 'STAGE: isolated process started\n'
-# A synthetic old query and a full synthetic Referer must both be discarded.
-wget -S -O /dev/null --header='Referer: http://synthetic.invalid/?trip=SYNTHETIC_PRIVATE_CANARY' \
- 'http://127.0.0.1:__PORT__/trips?trip=SYNTHETIC_PRIVATE_CANARY' > "$audit_dir/client.txt" 2>&1
-grep -qi 'Referrer-Policy: no-referrer' "$audit_dir/client.txt"
-printf 'STAGE: synthetic GET and header checked\n'
-# Exercise upstream failure and body handling, without invoking PHP or OSRM.
-wget -S -O /dev/null --header='Content-Type: application/json' \
- --post-data='{"mode":"driving","start":{"lon":0,"lat":0},"places":[{"lon":0.001,"lat":0.001,"label":"SYNTHETIC_PRIVATE_CANARY"}]}' \
- 'http://127.0.0.1:__PORT__/api/v1/trips/analyze?trip=SYNTHETIC_PRIVATE_CANARY' > "$audit_dir/upstream-client.txt" 2>&1 || true
-grep -q '502' "$audit_dir/upstream-client.txt"
-printf 'STAGE: synthetic upstream failure checked\n'
-payload=$(head -c 9000 /dev/zero | tr '\0' x)
-wget -S -O /dev/null --post-data="$payload" 'http://127.0.0.1:__PORT__/api/v1/trips/analyze' > "$audit_dir/large-client.txt" 2>&1 || true
-grep -q '413' "$audit_dir/large-client.txt"
-printf 'STAGE: synthetic oversized body checked\n'
-# Point labels use the same privacy boundary with a smaller in-memory body.
-point_body='{"lon":0,"lat":0,"label":"SYNTHETIC_PRIVATE_CANARY"}'
-{ printf 'POST /api/v1/addresses/resolve-point?point=SYNTHETIC_PRIVATE_CANARY HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nReferer: http://synthetic.invalid/?point=SYNTHETIC_PRIVATE_CANARY\r\nContent-Length: %s\r\nConnection: close\r\n\r\n%s' "${#point_body}" "$point_body"; sleep .2; } | nc -w 2 127.0.0.1 __PORT__ > "$audit_dir/point-client.txt"
-grep -q '502' "$audit_dir/point-client.txt"
-grep -qi 'Cache-Control: no-store' "$audit_dir/point-client.txt"
-grep -qi 'Referrer-Policy: no-referrer' "$audit_dir/point-client.txt"
-payload=$(head -c 1100 /dev/zero | tr '\0' x)
-{ printf 'POST /api/v1/addresses/resolve-point HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1100\r\nConnection: close\r\n\r\n%s' "$payload"; sleep .2; } | nc -w 2 127.0.0.1 __PORT__ > "$audit_dir/point-large.txt"
-grep -q '413' "$audit_dir/point-large.txt"
-grep -qi 'Cache-Control: no-store' "$audit_dir/point-large.txt"
-printf 'STAGE: point label privacy, no-store and size limit checked\n'
-nginx -p "$audit_dir/" -c "$audit_dir/main.conf" -s quit > /dev/null 2>&1
-for audit_attempt in 1 2 3 4 5; do [ ! -f "$audit_dir/nginx.pid" ] && break; sleep .1; done
-test ! -f "$audit_dir/nginx.pid"
-grep -q 'GET trips HTTP' "$audit_dir/access.log"
-grep -q 'POST point_address HTTP' "$audit_dir/access.log"
-if grep -Eq 'SYNTHETIC_PRIVATE_CANARY|synthetic.invalid|[?&]|"lon"|"places"' "$audit_dir/access.log" "$audit_dir/global.log"; then exit 41; fi
-test -z "$(ls -A "$audit_dir/body")"
-printf 'PASS: safe access format, no-referrer, 502, 413, no request spool; isolated PID exited\n'
-'''.replace('__CONFIG__', config).replace('__PORT__', str(port))
-        result = subprocess.run(['docker', 'compose', 'exec', '-T', 'nginx', 'sh'],
-                                input=script, text=True, capture_output=True, cwd=ROOT, timeout=20)
-        # Do not echo client output, Nginx logs, URLs or request bodies even on failure.
-        stages = [line for line in result.stdout.splitlines() if line.startswith('STAGE:')]
-        self.assertEqual(result.returncode, 0, 'Isolated Nginx privacy regression failed; ' + '; '.join(stages))
-        self.assertIn('PASS:', result.stdout)
+        run_probe(self.config, self.timeout)
 
 
 if __name__ == '__main__':
-    unittest.main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--config', type=pathlib.Path, default=TripNginxPrivacyTest.config,
+                        help='temporary config copy for negative controls; default: production config')
+    parser.add_argument('--timeout', type=float, default=TripNginxPrivacyTest.timeout,
+                        help='total Docker create/start budget in seconds (default: 120; cleanup: +15)')
+    args, remaining = parser.parse_known_args()
+    if not 0 < args.timeout <= 240:
+        parser.error('--timeout must be greater than 0 and at most 240 seconds')
+    TripNginxPrivacyTest.config = args.config
+    TripNginxPrivacyTest.timeout = args.timeout
+    unittest.main(argv=[__file__, *remaining])

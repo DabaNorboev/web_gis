@@ -1,0 +1,53 @@
+{
+  "version": "ndvi-fixed-v2",
+  "units": "dimensionless",
+  "intervals": "[min,max), final max inclusive; boundaries rounded to stored float32",
+  "unknown": {
+    "color": "#00000000",
+    "label": "Неизвестно / исключено маской"
+  },
+  "classes": [
+    {
+      "min": -1,
+      "max": -0.2,
+      "color": "#234682",
+      "label": "NDVI -1 … -0.2"
+    },
+    {
+      "min": -0.2,
+      "max": 0,
+      "color": "#508cb9",
+      "label": "NDVI -0.2 … 0"
+    },
+    {
+      "min": 0,
+      "max": 0.2,
+      "color": "#b9af9b",
+      "label": "NDVI 0 … 0.2"
+    },
+    {
+      "min": 0.2,
+      "max": 0.4,
+      "color": "#cda55f",
+      "label": "NDVI 0.2 … 0.4"
+    },
+    {
+      "min": 0.4,
+      "max": 0.6,
+      "color": "#d7dc8c",
+      "label": "NDVI 0.4 … 0.6"
+    },
+    {
+      "min": 0.6,
+      "max": 0.8,
+      "color": "#73af5a",
+      "label": "NDVI 0.6 … 0.8"
+    },
+    {
+      "min": 0.8,
+      "max": 1,
+      "color": "#237337",
+      "label": "NDVI 0.8 … 1"
+    }
+  ]
+}
