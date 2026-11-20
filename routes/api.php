@@ -3,11 +3,13 @@
 use App\Http\Controllers\Api\V1\AddressProfileController;
 use App\Http\Controllers\Api\V1\AddressResolverController;
 use App\Http\Controllers\Api\V1\AddressSearchController;
+use App\Http\Controllers\Api\V1\GeocodingController;
 use App\Http\Controllers\Api\V1\PlaceAnalysisController;
 use App\Http\Controllers\Api\V1\PointAddressController;
 use App\Http\Controllers\Api\V1\SatelliteTileController;
 use App\Http\Controllers\Api\V1\TransportAnalysisController;
 use App\Http\Controllers\Api\V1\TripAnalysisController;
+use App\Http\Middleware\LimitGeocodingRequest;
 use App\Http\Middleware\LimitPlaceAnalysisRequest;
 use App\Http\Middleware\LimitPointAddressRequest;
 use App\Http\Middleware\LimitTripRequest;
@@ -30,3 +32,7 @@ Route::post('v1/addresses/resolve-point', PointAddressController::class)
 
 Route::get('v1/satellite/{pin}/{date}/{layer}/{z}/{x}/{y}.png', SatelliteTileController::class)
     ->where(['pin' => '[a-f0-9]{64}', 'date' => '[0-9]{4}-[0-9]{2}-[0-9]{2}', 'layer' => 'true-color|ndvi', 'z' => '[0-9]{1,2}', 'x' => '[0-9]{1,5}', 'y' => '[0-9]{1,5}']);
+
+Route::post('v1/geocoding/{operation}', GeocodingController::class)
+    ->where('operation', 'search|reverse|confirm|reconfirm')
+    ->middleware(LimitGeocodingRequest::class);

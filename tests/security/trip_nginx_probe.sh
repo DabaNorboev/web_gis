@@ -98,6 +98,31 @@ for length in 8192 8193; do
   if grep -q 'SYNTHETIC_PRIVATE_CANARY' "$audit_dir/place-client.txt"; then exit 43; fi
  done
 done
+stage='geocoding body limits and safe errors'
+for operation in search reverse confirm reconfirm; do
+ for length in 8192 8193; do
+  payload=$(head -c "$length" /dev/zero | tr '\0' x)
+  for framing in length chunked; do
+   {
+    printf 'POST /api/v1/geocoding/%s?private=SYNTHETIC_PRIVATE_CANARY HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nReferer: http://synthetic.invalid/SYNTHETIC_PRIVATE_CANARY\r\nConnection: close\r\n' "$operation"
+    if [ "$framing" = length ]; then
+     printf 'Content-Length: %s\r\n\r\n%s' "$length" "$payload"
+    else
+     printf 'Transfer-Encoding: chunked\r\n\r\n%x\r\n%s\r\n0\r\n\r\n' "$length" "$payload"
+    fi
+    sleep .1
+   } | nc -w 2 127.0.0.1 28080 > "$audit_dir/geocoding-client.txt"
+   expected=502; code=GEOCODING_UNAVAILABLE
+   if [ "$length" -gt 8192 ]; then expected=413; code=REQUEST_TOO_LARGE; fi
+   grep -Eq "HTTP/[0-9.]+ $expected( |\r|$)" "$audit_dir/geocoding-client.txt"
+   test "$(grep -ci '^Cache-Control: no-store' "$audit_dir/geocoding-client.txt")" -eq 1
+   test "$(grep -ci '^Referrer-Policy: no-referrer' "$audit_dir/geocoding-client.txt")" -eq 1
+   grep -q "\"code\":\"$code\"" "$audit_dir/geocoding-client.txt"
+   grep -q '"request_id":null,"retry_after_s":null' "$audit_dir/geocoding-client.txt"
+   if grep -q 'SYNTHETIC_PRIVATE_CANARY' "$audit_dir/geocoding-client.txt"; then exit 43; fi
+  done
+ done
+done
 stage='place analysis upstream timeout'
 # A local TCP listener accepts FastCGI and deliberately never returns headers.
 # Only the disposable config shortens the wait; production keeps its 15s budget.
@@ -123,12 +148,13 @@ stage='fixed access route classes'
 grep -q 'GET trips HTTP' "$audit_dir/access.log"
 grep -q 'POST trip_analysis HTTP' "$audit_dir/access.log"
 grep -q 'POST place_analysis HTTP' "$audit_dir/access.log"
+grep -q 'POST geocoding HTTP' "$audit_dir/access.log"
 grep -q 'POST point_address HTTP' "$audit_dir/access.log"
 stage='server log privacy'
 if grep -Eq 'SYNTHETIC_PRIVATE_CANARY|synthetic.invalid|[?&]|"lon"|"places"' "$audit_dir/access.log" "$audit_dir/global.log" "$audit_dir/startup.txt" "$audit_dir/config-check.txt"; then exit 41; else test "$?" -eq 1; fi
 stage='fixed access route classes'
 # Every access record must use a fixed route class, not just the checked rows.
-if grep -Ev '^[0-9.]+ \[[^]]+\] "(GET|POST) (other|trips|trip_analysis|point_address|place_analysis|health) HTTP/[0-9.]+" [0-9]{3} [0-9]+$' "$audit_dir/access.log" > /dev/null; then exit 42; else test "$?" -eq 1; fi
+if grep -Ev '^[0-9.]+ \[[^]]+\] "(GET|POST) (other|trips|trip_analysis|point_address|place_analysis|geocoding|health) HTTP/[0-9.]+" [0-9]{3} [0-9]+$' "$audit_dir/access.log" > /dev/null; then exit 42; else test "$?" -eq 1; fi
 stage='request body spool'
 test -z "$(ls -A "$audit_dir/body")"
 printf 'PASS: safe access format, no-referrer, 502, 413, no request spool; isolated PID exited\n'

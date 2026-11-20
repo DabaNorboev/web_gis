@@ -1,0 +1,20 @@
+# Opt-in runtime; the default Compose build remains unchanged until activation.
+# Official PHP 8.4.27 / Alpine 3.24.4, packaged libcurl with c-ares.
+FROM php:8.4.27-fpm-alpine3.24@sha256:511af6fa3ef55c4ea0c68bb47096ba4b81771ab4949bde7813807bf177efda11
+
+ARG UID=1000
+ARG GID=1000
+
+RUN apk add --no-cache icu-libs icu-data-full libpq libzip git unzip \
+    && apk add --no-cache --virtual .build-deps $PHPIZE_DEPS icu-dev libpq-dev libzip-dev \
+    && docker-php-ext-install -j$(nproc) intl zip pgsql pdo_pgsql opcache \
+    && apk del .build-deps \
+    && php -r '$v = curl_version(); if (empty($v["ares"]) || !($v["features"] & CURL_VERSION_ASYNCHDNS)) { exit(1); }'
+
+COPY --from=composer:2@sha256:ca11f643d7791ebdd90a34fc20caf11380d434007ae539a9ea75cd9212e13dca /usr/bin/composer /usr/local/bin/composer
+
+RUN addgroup -g ${GID} www \
+    && adduser -D -u ${UID} -G www -s /bin/sh www
+
+WORKDIR /var/www/html
+USER www
