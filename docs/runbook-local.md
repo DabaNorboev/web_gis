@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-11-11
+updated: 2026-11-15
 verified: not verified
 ---
 
@@ -16,9 +16,64 @@ PHP 8.4 / Laravel 13, PostgreSQL 16 / PostGIS 3.4, Vue 3 / TypeScript 6, Vite, M
 
 Базовые четыре сервиса: nginx, php, node, db. Nginx 80, Vite 5173 и БД 54325 опубликованы только на loopback. PHP использует `db:5432`; для IDE — `127.0.0.1:54325`, учётные данные из локального `.env`. Node-зависимости контейнера хранятся в named volume. Единственный Compose — `docker-compose.yml`; Node работает от пользователя node, Nginx ждёт готовности FPM и выбранных assets; Compose перезапускает Nginx после обновления PHP, чтобы применить новый адрес контейнера. Спутниковые данные подключаются отдельно и явно; чистый checkout не требует их наличия.
 
+## PHP runtime с c-ares
+
+`docker/php/Dockerfile.cares` — отдельный кандидат для внешнего геокодирования; штатный `Dockerfile` и Compose пока используют прежний runtime. Основа — официальный PHP 8.4.27 FPM / Alpine 3.24.4, закреплённый digest; пакетный libcurl 8.23.0 / c-ares 1.34.9, без собственной сборки curl. Composer также закреплён digest. Переход glibc → musl требует [проверок runtime](testing.md#внешний-поиск-г3); набор расширений сохраняется, полные ICU-данные установлены явно. DNS/transfer-бюджеты и runtime guard приложения не меняются.
+
+Подготовка без замены используемого образа и контейнеров:
+
+```bash
+docker build -f docker/php/Dockerfile.cares \
+  --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" \
+  -t placelens-php:cares-g3-20261115-verified docker/php
+python3 -B tests/environment/check_geocoding_runtime.py --image placelens-php:cares-g3-20261115-verified
+```
+
+Приёмка 2026-11-15: отдельная сборка с использованием Docker cache дала `sha256:cb05e153e4987a356a4a5f90b279ade9580671dbad440251093cf4735351005d` (`linux/amd64`). PHP `curl_version()` подтвердил libcurl 8.23.0 / c-ares 1.34.9 / OpenSSL 3.5.9; PHP 8.4.27. CLI/backend/state/FPM прошли; результаты и границы — [testing](testing.md#внешний-поиск-г3). Локальная активация выполнена через явный override: [Г5](#локальное-геокодирование-г5); основной Compose сохраняет прежний default runtime.
+
+Повторную сборку делать с новым тегом, сохраняя принятый image ID. APK-репозитории обновляются: digest фиксирует основу, но не все будущие пакеты `apk add`; manifest стенда фиксирует фактический состав. Для использования ровно проверенного runtime сохранять готовый образ по его ID (`docker image save` при переносе), а новую сборку принимать заново. Не заменять версии PHP/curl/c-ares или digest без проверки PHP `curl_version()` и стенда.
+
+**Последующая рабочая активация — отдельное действие.** После разрешения и успешного стенда адресно добавить в `services.php` единственного `docker-compose.yml`:
+
+```yaml
+image: placelens-php:cares-g3-20261115-verified
+build:
+    context: ./docker/php
+    dockerfile: Dockerfile.cares
+    # Существующие args UID/GID сохранить.
+```
+
+Убедиться, что tag указывает на принятый image ID, сохранить локальную конфигурацию/сведения о текущем образе по правилам существующей активации ниже, затем:
+
+```bash
+docker compose config --quiet
+docker compose up -d --no-deps --no-build --wait --wait-timeout 90 php nginx
+docker compose exec php php -r 'echo PHP_VERSION,"\n"; $v=curl_version(); echo $v["version"]," / c-ares ",$v["ares"],"\n"; exit(empty($v["ares"]) || !($v["features"] & CURL_VERSION_ASYNCHDNS));'
+```
+
+`--no-build` активирует именно принятый образ; Compose сохраняет текущие environment/mounts/command/healthcheck, Nginx пересоздаётся при замене PHP, чтобы обновить адрес FPM. Перед этим отдельно проверить и согласовать текущее содержимое `docker/nginx/nginx.conf`: пересоздание прочитает в том числе подготовленные правки Г3. Проверить `/up` и независимый анализ точки в текущем окружении. Переключение runtime не настраивает ключ/`GEOCODING_ENABLED`, не применяет миграции и не разрешает реальный Geoapify; эти шаги остаются отдельной активацией внешнего поиска.
+
+## Локальное геокодирование Г5
+
+Локальная активация 2026-11-15: http://localhost/analysis, Geoapify Free, image `sha256:cb05e153e4987a356a4a5f90b279ade9580671dbad440251093cf4735351005d`, PHP 8.4.27 / libcurl 8.23.0 / c-ares 1.34.9 через рабочий FPM, www UID/GID 1000. Применена только миграция `2026_11_15_000001_create_geocoding_state` к установленной рабочей БД `db`; Nginx использует privacy-конфигурацию. Assets — manifest/build, Vite не используется, `public/hot` сохранён. Основной Compose и `.env` не менялись.
+
+Выделенный приватный helper `data/local/geocoding-g5/compose.py` читает только `GEOAPIFY_API_KEY` из разрешённого владельцем файла, передаёт значение окружению Compose и PHP и применяет только явно заданный override `data/local/geocoding-g5/compose.yml`. Другие ключи не загружаются; ключ не записан в override, сборку или свидетельства. Приватный каталог не переносится с Git checkout. Для сохранения этой активации использовать:
+
+```bash
+python3 data/local/geocoding-g5/compose.py up -d --no-deps --no-build --wait --wait-timeout 90 php node nginx
+```
+
+Обычный `docker compose up` не включает этот override и вернёт defaults основного Compose; после изменения активации сверять runtime/assets. Не запускать вывод полного Compose config или environment с ключом. Helper требует доступ к исходному приватному файлу при следующем пересоздании; обычный restart контейнера сохраняет уже переданное окружение. Docker environment доступен администратору Docker, поэтому его не включают в диагностические дампы.
+
+Владелец подтвердил тариф Free и разрешил до 20 внешних обращений на эту приёмку. [Официальные тарифы](https://www.geoapify.com/pricing/) допускают 3000 credits/сутки и 5 requests/s; [условия](https://www.geoapify.com/terms-and-conditions/) и [геокодирование](https://www.geoapify.com/geocoding-api/) допускают хранение результатов с требуемой атрибуцией. Внутренние 2000 попыток/сутки и интервал стартов 500 мс сохранены; остаток общего бюджета аккаунта отдельно не подтверждён. UI показывает Geoapify и OpenStreetMap attribution; наблюдение/точность не выдумываются.
+
+Резервная копия перед активацией: `data/backups/geocoding-g5-2026-11-15-01/`; конкретный возврат — её `RETURN.md` и `rollback.compose.yml`. Сохранены конфигурация/`.env`, прежняя `public/build`, `public/hot`, исходный diff/untracked и полный pg_dump; SHA-256 и читаемость архивов/оглавления дампа проверены, восстановление не репетировалось. Не применять полный архив поверх checkout или полный дамп поверх живой БД. При возврате только PHP/node/nginx переключаются на прежний runtime/dev; геокодирование отключается, новые таблицы сохраняются, остальные данные и исходники не откатываются. Спутниковые mounts/pins и количества POI проверены неизменными.
+
+Рабочие проверки и ограничения — [Г5 testing](testing.md#локальная-проверка-г5). Локальная активация не закрывает владельческую приёмку Г5, А13 или ядра.
+
 ## Локальные спутники: рабочая активация
 
-В существующем локальном экземпляре подключены шесть дат TCI/NDVI: 07.05 и 15.08.2024, 23.06 и 22.08.2025, 06.06 и 09.09.2026. Runtime и доставка PNG подключены read-only через локальный `.env`; текущий режим assets — `dev`. Это локальная активация, не публичный деплой и не приёмка ядра/А13. Воздух не реализован. [Подготовка и форматы](data/satellite.md), [контракт спутникового блока](features/place-analysis.md#6-блок-satellite).
+В существующем локальном экземпляре подключены шесть дат TCI/NDVI: 07.05 и 15.08.2024, 23.06 и 22.08.2025, 06.06 и 09.09.2026. Runtime и доставка PNG подключены read-only через локальный `.env`; текущий режим assets — `build` через [локальную конфигурацию Г5](#локальное-геокодирование-г5). Это локальная активация, не публичный деплой и не приёмка ядра/А13. Воздух не реализован. [Подготовка и форматы](data/satellite.md), [контракт спутникового блока](features/place-analysis.md#6-блок-satellite).
 
 Единый `docker-compose.yml` работает без спутниковых данных. При незаданных четырёх переменных ниже приложение получает пустые параметры источника и отвечает `UNAVAILABLE / SATELLITE_NOT_CONFIGURED`; остальные локальные результаты независимы. Вместо отсутствующих данных монтируется пустой tracked `docker/satellite-disabled`, только для чтения. Подготовка данных не входит в запуск приложения.
 
