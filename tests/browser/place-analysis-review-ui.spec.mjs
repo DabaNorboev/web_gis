@@ -9,14 +9,13 @@ async function setup(page,partial=false){
  await pick(page);await page.getByRole('button',{name:'Анализировать',exact:true}).click();await expect(page.locator('[data-analysis-block="poi"] [role="status"]')).toHaveText('Готово');return calls
 }
 async function pick(page){await page.getByRole('button',{name:'Точка на карте',exact:true}).focus();await page.keyboard.press('Enter');await page.keyboard.press('Enter');await expect(page.getByRole('dialog',{name:'Выбранная точка'})).toBeVisible()}
-test('pending card stays above markers; selected marker stays at its geographic screen anchor; reference belongs to analysis actions',async({page})=>{
+test('pending card stays above markers; selected marker stays at its geographic screen anchor; explicit reverse belongs to search',async({page})=>{
  await setup(page)
- await expect(page.locator('.pa-api-actions .pa-point-reference')).toBeVisible()
+ await expect(page.getByRole('button',{name:'Найти адрес поблизости',exact:true})).toBeVisible()
  await expect(page.locator('.pa-header__controls .pa-place-button')).toHaveCount(0)
  await expect(page.locator('.pa-map-pick')).toBeVisible()
- const primary=await page.locator('.pa-api-actions__main > .pa-primary').boundingBox(),reference=await page.locator('.pa-api-actions .pa-point-reference').boundingBox()
- expect(Math.abs(primary.x-reference.x)).toBeLessThan(1);expect(reference.y).toBeGreaterThanOrEqual(primary.y+primary.height+10)
- await expect(page.locator('.pa-panel__scroll .pa-point-reference')).toHaveCount(0)
+ await expect(page.locator('[data-geocoding] button').filter({hasText:'Найти адрес поблизости'})).toHaveCount(1)
+ await expect(page.locator('.pa-point-reference')).toHaveCount(0)
  await page.getByRole('tab',{name:'Объекты',exact:true}).click();await page.getByRole('button',{name:'Аптеки (1)',exact:true}).click()
  const marker=page.locator('.pa-map-marker[data-poi-id="osm:node:1"]')
  const center=()=>marker.evaluate(el=>{const r=el.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})

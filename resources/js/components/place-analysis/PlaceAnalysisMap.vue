@@ -53,9 +53,10 @@ const props = withDefaults(defineProps<{
     selectedPoi: string | null
     selectedStation: string | null
     stationFocusRequest: number
+    pendingDraggable?: boolean
     pendingPoint: AnalysisPoint | null
     pickMode: boolean
-}>(), { satelliteOpacity: .75, showPlacePin: true, geometryStale: false, analysisArea: null, analysisBounds: null, stations: () => [], addressPreview: null })
+}>(), { satelliteOpacity: .75, showPlacePin: true, geometryStale: false, analysisArea: null, analysisBounds: null, stations: () => [], addressPreview: null, pendingDraggable: false })
 
 const stations = computed(() => props.stations)
 
@@ -375,8 +376,11 @@ function syncMarkersNow() {
     if (props.pendingPoint) {
         const pendingElement = document.createElement('div')
         pendingElement.className = 'pa-map-pending'
-        pendingMarker = new Marker({ element: pendingElement, anchor: 'center' })
+        pendingMarker = new Marker({ element: pendingElement, anchor: 'center', draggable: props.pendingDraggable })
             .setLngLat([props.pendingPoint.lon, props.pendingPoint.lat]).addTo(instance)
+        if (props.pendingDraggable) pendingMarker.on('dragend', () => {
+            const p = pendingMarker?.getLngLat(); if (p) emit('select-point', { lon: p.lng, lat: p.lat })
+        })
     }
 
     if (props.showRadius && !!props.analysisArea) {
@@ -544,6 +548,10 @@ watch(() => [props.center.lon, props.center.lat], () => {
     fitContext()
 })
 
+watch(() => props.pendingPoint, p => {
+    if (p && props.pendingDraggable && map) map.easeTo({ center: [p.lon, p.lat], duration: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 } })
+})
+
 watch(() => props.radius, () => {
     focusedStation = null
     syncLayers()
@@ -576,7 +584,7 @@ watch(() => props.stationFocusRequest, () => {
 watch(
     () => [
         props.showPlacePin, props.geometryStale, props.tab, props.showObjects, props.showSatellite, props.showStations, props.showRadius,
-        props.satelliteMode, props.satelliteScope, props.satelliteOpacity, props.satelliteLayers, props.categoryFilter, props.selectedStation, props.pendingPoint, props.pois, props.poiDistancesKnown, props.analysisArea, props.stations,
+        props.satelliteMode, props.satelliteScope, props.satelliteOpacity, props.satelliteLayers, props.categoryFilter, props.selectedStation, props.pendingPoint, props.pendingDraggable, props.pois, props.poiDistancesKnown, props.analysisArea, props.stations,
     ],
     () => {
         syncLayers()

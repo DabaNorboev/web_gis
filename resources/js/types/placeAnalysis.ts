@@ -1,11 +1,14 @@
+import type { GeocodedPlace } from './geocoding'
 import type { Point, Polygon, MultiPolygon } from 'geojson'
 
 export type AnalysisBlockKey = 'poi' | 'satellite' | 'air'
 export type PoiCategory = 'grocery' | 'pharmacy' | 'official_stop' | 'park'
 export interface AnalysisPoint { lon: number; lat: number }
-export type AnalysisPlace = { kind: 'address'; address_id: string } | ({ kind: 'point' } & AnalysisPoint)
+export type AnalysisPlace = { kind: 'address'; address_id: string } | ({ kind: 'point' } & AnalysisPoint) | { kind: 'address'; selection_token: string }
 export interface StationSelection { selected_ids: string[]; radius_m: number }
 export interface PlaceAnalysisInput {
+    analysis_version?: 2
+    expected_place?: GeocodedPlace
     place: AnalysisPlace
     radius_m?: number
     date?: string
@@ -13,6 +16,8 @@ export interface PlaceAnalysisInput {
     blocks?: AnalysisBlockKey[]
 }
 export interface AnalysisRequest {
+    analysis_version?: 2
+    expected_place?: GeocodedPlace
     place: AnalysisPlace
     radius_m: number
     date: string | null
@@ -127,8 +132,8 @@ export type AnalysisBlock<K extends AnalysisBlockKey = AnalysisBlockKey> = {
 } & ({ status: 'READY'; code: null; message: string | null; data: BlockData[K] }
     | { status: 'UNAVAILABLE' | 'ERROR'; code: string; message: string; data: null })
 export interface PlaceAnalysisResponse {
-    analysis_version: 1
-    place: { kind: 'address' | 'point'; label: string | null; address: AnalysisAddress | null; point: AnalysisPoint }
+    analysis_version: 1 | 2
+    place: { kind: 'address' | 'point'; label: string | null; address: AnalysisAddress | null; point: AnalysisPoint } | GeocodedPlace
     radius_m: number; date: string | null; station_selection: StationSelection
     analysis_area: Polygon; analysis_bounds: [number, number, number, number]; calculated_at: string
     blocks: Partial<{ [K in AnalysisBlockKey]: AnalysisBlock<K> }>

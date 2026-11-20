@@ -10,7 +10,7 @@ export interface AnalysisBlockState {
 }
 const empty = (): AnalysisBlockState => ({ phase: 'idle', response: null, error: null })
 function dependencies(input: AnalysisRequest, key: AnalysisBlockKey): string {
-    return JSON.stringify([input.place, input.radius_m, key === 'satellite' ? input.date : null,
+    return JSON.stringify([input.analysis_version ?? 1, input.expected_place ?? input.place, input.radius_m, key === 'satellite' ? input.date : null,
         key === 'air' ? [input.stations.radius_m, [...input.stations.selected_ids].sort()] : null])
 }
 export function usePlaceAnalysis(options: { timeoutMs?: number } = {}) {
@@ -33,9 +33,10 @@ export function usePlaceAnalysis(options: { timeoutMs?: number } = {}) {
         const next = value === null ? null : normalizeAnalysisInput(value)
         const previous = input.value
         for (const key of analysisBlockKeys) {
-            if (!previous || !next || dependencies(previous, key) !== dependencies(next, key)) invalidate(key)
+            if (!previous || !next || dependencies(previous, key) !== dependencies(next, key)
+                || previous.analysis_version === 2 && next.analysis_version === 2 && JSON.stringify(previous.place) !== JSON.stringify(next.place) && controllers[key]) invalidate(key)
         }
-        if (!previous || !next || JSON.stringify([previous.place, previous.radius_m]) !== JSON.stringify([next.place, next.radius_m])) {
+        if (!previous || !next || JSON.stringify([previous.expected_place ?? previous.place, previous.radius_m]) !== JSON.stringify([next.expected_place ?? next.place, next.radius_m])) {
             map.value = null
             resolvedPoint = null
         }
@@ -43,6 +44,7 @@ export function usePlaceAnalysis(options: { timeoutMs?: number } = {}) {
     }
     async function load(key: AnalysisBlockKey) {
         if (disposed || !input.value) return
+        if (input.value.analysis_version === 2 && 'selection_token' in input.value.place && !input.value.place.selection_token) return
         invalidate(key)
         const epoch = epochs[key]
         const snapshot = structuredClone(input.value)
@@ -60,7 +62,7 @@ export function usePlaceAnalysis(options: { timeoutMs?: number } = {}) {
                     reject(new ApiRequestError('timeout', null, null, null, 'Время ожидания блока истекло.'))
                 }, timeoutMs)
             })
-            const response = await Promise.race([fetchPlaceAnalysis({ place: snapshot.place, radius_m: snapshot.radius_m,
+            const response = await Promise.race([fetchPlaceAnalysis({ ...(snapshot.analysis_version === 2 ? { analysis_version: 2, expected_place: snapshot.expected_place } : {}), place: snapshot.place, radius_m: snapshot.radius_m,
                 ...(snapshot.date === null ? {} : { date: snapshot.date }), stations: snapshot.stations, blocks: [key] }, controller.signal), timeout])
             if (!current()) return
             const origin = JSON.stringify([response.place.point.lon, response.place.point.lat])
@@ -88,11 +90,23 @@ export function usePlaceAnalysis(options: { timeoutMs?: number } = {}) {
         }
     }
     function loadAll() { return Promise.all(analysisBlockKeys.map(load)) }
+    function retireSelection() {
+        if (input.value?.analysis_version === 2) {
+            input.value = { ...input.value, place: { kind: 'address', selection_token: '' } }
+            for (const key of analysisBlockKeys) {
+                epochs[key]++; controllers[key]?.abort(); delete controllers[key]
+                if (blocks[key].phase === 'loading') {
+                    blocks[key].phase = 'error'
+                    blocks[key].error = new ApiRequestError('http', 410, 'SNAPSHOT_EXPIRED', null, 'Выберите место заново.')
+                }
+            }
+        }
+    }
     function dispose() {
         disposed = true
         for (const key of analysisBlockKeys) invalidate(key)
         map.value = null
     }
     onBeforeUnmount(dispose)
-    return { input, blocks, map, setInput, load, loadAll, dispose }
+    return { input, blocks, map, setInput, load, loadAll, dispose, retireSelection }
 }

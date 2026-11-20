@@ -1,3 +1,4 @@
+import { validGeocodedPlace, sameSnapshot } from './geocoding'
 import { ApiRequestError, requestJson } from './errors'
 import type { AnalysisBlockKey, AnalysisRequest, PlaceAnalysisInput, PlaceAnalysisResponse } from '../types/placeAnalysis'
 
@@ -31,17 +32,24 @@ function address(v: any, id: string): boolean {
 }
 export function normalizeAnalysisInput(input: PlaceAnalysisInput): AnalysisRequest {
     const p = input.place
+    if (!record(p)) throw new ApiRequestError('http', 422, 'INVALID_REQUEST')
+    const external = input.analysis_version === 2
+    if (external && (!record(p) || p.kind !== 'address' || !('selection_token' in p) || typeof p.selection_token !== 'string' || !p.selection_token || new TextEncoder().encode(p.selection_token).length > 6144
+        || Object.keys(p).some(k => !['kind', 'selection_token'].includes(k)) || !validGeocodedPlace(input.expected_place))
+        || !external && (input.analysis_version !== undefined || input.expected_place !== undefined || 'selection_token' in p)) {
+        throw new ApiRequestError('http', 422, 'INVALID_REQUEST')
+    }
     const radius = input.radius_m === undefined ? 500 : input.radius_m
     const selection = { selected_ids: input.stations?.selected_ids === undefined ? [] : input.stations.selected_ids, radius_m: input.stations?.radius_m === undefined ? 5000 : input.stations.radius_m }
     const blocks = input.blocks === undefined ? [...analysisBlockKeys] : input.blocks
-    if (!record(p) || (p.kind === 'point' ? !point(p) || 'address_id' in p
-        : p.kind !== 'address' || typeof p.address_id !== 'string' || !/^osm:(node|way|relation):[1-9][0-9]{0,18}$/.test(p.address_id) || 'lon' in p || 'lat' in p)
+    if (!record(p) || (!external && (p.kind === 'point' ? !point(p) || 'address_id' in p
+        : p.kind !== 'address' || !('address_id' in p) || typeof p.address_id !== 'string' || !/^osm:(node|way|relation):[1-9][0-9]{0,18}$/.test(p.address_id) || 'lon' in p || 'lat' in p))
         || !integer(radius, 200, 1000) || (input.date !== undefined && !date(input.date))
         || (input.stations !== undefined && !record(input.stations)) || !ids(selection.selected_ids) || !integer(selection.radius_m, 1000, 20000)
         || !Array.isArray(blocks) || !blocks.length || blocks.length > 3 || new Set(blocks).size !== blocks.length || blocks.some(k => !analysisBlockKeys.includes(k))) {
         throw new ApiRequestError('http', 422, 'INVALID_REQUEST', null, 'Проверьте место, радиус, дату и выбор станций.')
     }
-    return { place: p.kind === 'point' ? { kind: 'point', lon: p.lon, lat: p.lat } : { kind: 'address', address_id: p.address_id },
+    return { ...(external ? { analysis_version: 2 as const, expected_place: structuredClone(input.expected_place) } : {}), place: external ? { kind: 'address', selection_token: (p as { selection_token: string }).selection_token } : p.kind === 'point' ? { kind: 'point', lon: p.lon, lat: p.lat } : { kind: 'address', address_id: (p as { address_id: string }).address_id },
         radius_m: radius, date: input.date ?? null, stations: { selected_ids: [...selection.selected_ids], radius_m: selection.radius_m }, blocks: [...blocks] }
 }
 function coverage(v: any): boolean {
@@ -182,14 +190,16 @@ function block(v: any, key: AnalysisBlockKey, requestDate: string | null): boole
         && record(d.counts) && ['selected', 'nearest', 'other'].every(c => integer(d.counts[c], 0))
 }
 export function validateAnalysisResponse(v: unknown, request: AnalysisRequest): PlaceAnalysisResponse {
-    if (!record(v) || v.analysis_version !== 1 || v.radius_m !== request.radius_m || v.date !== request.date || !utc(v.calculated_at)
+    if (!record(v) || v.analysis_version !== (request.analysis_version ?? 1) || v.radius_m !== request.radius_m || v.date !== request.date || !utc(v.calculated_at)
         || !record(v.place) || v.place.kind !== request.place.kind || !point(v.place.point)
         || !record(v.station_selection) || v.station_selection.radius_m !== request.stations.radius_m || !ids(v.station_selection.selected_ids)
         || !sameSet(v.station_selection.selected_ids, request.stations.selected_ids)
         || !record(v.blocks) || !sameSet(Object.keys(v.blocks), request.blocks) || !request.blocks.every(k => block(v.blocks[k], k, request.date))
         || !geometry(v.analysis_area) || v.analysis_area.type !== 'Polygon' || !bounds(v.analysis_bounds)) return invalid()
-    if (request.place.kind === 'point' ? v.place.address !== null || v.place.label !== null || v.place.point.lon !== request.place.lon || v.place.point.lat !== request.place.lat
-        : !address(v.place.address, request.place.address_id) || v.place.label !== v.place.address.label
+    if (request.analysis_version === 2) {
+        if (!validGeocodedPlace(v.place) || !sameSnapshot(v.place, request.expected_place)) return invalid()
+    } else if (request.place.kind === 'point' ? v.place.address !== null || v.place.label !== null || v.place.point.lon !== request.place.lon || v.place.point.lat !== request.place.lat
+        : !('address_id' in request.place) || !address(v.place.address, request.place.address_id) || v.place.label !== v.place.address.label
             || v.place.point.lon !== v.place.address.object.lon || v.place.point.lat !== v.place.address.object.lat) return invalid()
     // Structural bbox/contour consistency, never a replacement GIS circle or coverage calculation.
     const positions = v.analysis_area.coordinates.flat() as number[][]
@@ -199,7 +209,7 @@ export function validateAnalysisResponse(v: unknown, request: AnalysisRequest): 
 }
 export async function fetchPlaceAnalysis(input: PlaceAnalysisInput, signal?: AbortSignal): Promise<PlaceAnalysisResponse> {
     const request = normalizeAnalysisInput(input)
-    const body = { place: request.place, radius_m: request.radius_m, ...(request.date === null ? {} : { date: request.date }), stations: request.stations, blocks: request.blocks }
+    const body = { ...(request.analysis_version === 2 ? { analysis_version: 2 } : {}), place: request.place, radius_m: request.radius_m, ...(request.date === null ? {} : { date: request.date }), stations: request.stations, blocks: request.blocks }
     try {
         const value = await requestJson('/api/v1/place-analysis', { method: 'POST', body: JSON.stringify(body), signal,
             cache: 'no-store', referrerPolicy: 'no-referrer', headers: { Accept: 'application/json', 'Content-Type': 'application/json' } })

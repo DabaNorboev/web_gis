@@ -1,3 +1,4 @@
+import { geocodingModule } from './support/geocoding.mjs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { loadModule } from './support/vue-component.mjs'
@@ -6,7 +7,7 @@ const errorsUrl = new URL('../../resources/js/api/errors.ts', import.meta.url)
 const apiUrl = new URL('../../resources/js/api/placeAnalysis.ts', import.meta.url)
 function setup(fetch) {
     const errors = loadModule(errorsUrl, {}, { fetch })
-    return { ...errors, ...loadModule(apiUrl, { './errors': errors }) }
+    return { ...errors, ...loadModule(apiUrl, { './errors': errors, './geocoding': geocodingModule(errors) }) }
 }
 test('POST defaults, exact point echo, separate block selection and privacy options', async () => {
     const calls = []

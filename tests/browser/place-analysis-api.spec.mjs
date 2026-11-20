@@ -1,3 +1,4 @@
+import { fixtures as geocodingFixtures, preview as geocodingPreview } from './support/geocoding.mjs'
 import { test, expect } from '@playwright/test'
 import { responseFor } from '../frontend/fixtures/place-analysis.mjs'
 
@@ -115,11 +116,11 @@ test('unavailable providers never display demo objects or measurements; malforme
 
 test('exact address choice and station selection keep identity and independent POI results', async ({ page }) => {
     const calls = []
-    const objects = ['osm:node:1', 'osm:node:2'].map(id => responseFor({ place: { kind: 'address', address_id: id } }).place.address.object)
-    await page.route('**/api/v1/addresses/search?**', route => route.fulfill({ json: { data: [{ id: 'address:synthetic-group', label: 'Synthetic address', bounds: [.39, .49, .41, .51], objects }] } }))
+    const geo = await geocodingFixtures(page)
     await page.route('**/api/v1/place-analysis', route => {
         const request = route.request().postDataJSON(); calls.push(request)
-        const response = responseFor(request, { poi: 'READY', air: 'READY' })
+        const response = responseFor({ ...request, place: { kind: 'point', ...geo.selected.place.point } }, { poi: 'READY', air: 'READY' })
+        response.analysis_version = 2; response.place = geo.selected.place
         if (response.blocks.air) {
             const selected = request.stations.selected_ids.includes('synthetic-station')
             response.blocks.air.data.stations = [{ id: 'synthetic-station', name: 'Synthetic station', lon: .401, lat: .5,
@@ -129,14 +130,11 @@ test('exact address choice and station selection keep identity and independent P
         return route.fulfill({ json: response })
     })
     await page.goto('/analysis')
-    const search = page.getByRole('combobox', { name: 'Поиск адреса' })
-    await search.fill('Synthetic')
-    await expect(page.getByRole('option')).toHaveCount(2)
-    await search.press('ArrowDown'); await search.press('ArrowDown'); await search.press('Enter')
-    await expect(search).toHaveValue('Synthetic address')
+    await geocodingPreview(page)
+    await page.getByRole('button', { name: 'Подтвердить положение', exact: true }).click()
     await expect.poll(() => calls.length).toBe(3)
     await expect(card(page, 'poi').getByRole('status')).toHaveText('Готово')
-    expect(calls.every(r => r.place.kind === 'address' && r.place.address_id === 'osm:node:2' && !('lon' in r.place))).toBe(true)
+    expect(calls.every(r => r.place.kind === 'address' && r.analysis_version === 2 && r.place.selection_token === geo.selected.selection_token && !('lon' in r.place))).toBe(true)
     await page.getByRole('tab', { name: 'Воздух', exact: true }).click()
     await page.getByRole('button', { name: 'Включить станцию в выбор', exact: true }).click()
     await expect(card(page, 'air').getByRole('button')).toBeFocused()
