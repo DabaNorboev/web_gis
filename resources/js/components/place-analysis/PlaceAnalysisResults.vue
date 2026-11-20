@@ -45,6 +45,7 @@ function status(key: AnalysisBlockKey): string {
         return satelliteReasonLabel(selected.reason)
     }
     if (s.phase === 'unavailable') return 'Данные недоступны'
+    if (key === 'satellite' && satelliteReadFailed.value) return 'Ошибка чтения спутниковых данных'
     if (s.error?.kind === 'timeout') return 'Время ожидания истекло'
     if (s.error?.kind === 'invalid_response') return 'Получен несогласованный ответ'
     if (s.error?.kind === 'network') return 'Сеть недоступна'
@@ -81,6 +82,7 @@ const sources = computed(() => [...new Map(items.value.map(item => [
     item,
 ])).values()])
 const satellite = computed(() => props.blocks.satellite.response?.blocks.satellite)
+const satelliteReadFailed = computed(() => satellite.value?.status === 'ERROR' && satellite.value.code === 'SATELLITE_READ_FAILED')
 const satelliteData = computed<SatelliteData | null>(() => satellite.value?.status === 'READY' ? satellite.value.data : null)
 const satelliteInfo = computed<SatelliteData | null>(() => satelliteData.value ?? props.satelliteCatalog)
 const selectedSatellite = computed<SatelliteSelected | null>(() => satelliteData.value?.selected ?? null)
@@ -89,7 +91,8 @@ const selectedWarningList = computed(() => satelliteWarnings(selectedSatellite.v
 const selectedCoverage = computed(() => selectedSatellite.value?.coverage ?? null)
 const selectedCoverageReasons = computed(() => coverageReasons(selectedCoverage.value))
 const selectedDateKnown = computed(() => !props.date || satelliteDates.value.some(value => value.date === props.date))
-const satelliteImageUnavailable = computed(() => selectedSatellite.value?.status === 'READY' && !selectedSatellite.value.layers)
+const selectedDateInCatalog = computed(() => satelliteInfo.value?.releases.some(release => release.date === props.date))
+const satelliteImageUnavailable = computed(() => (selectedCoverage.value?.prepared_pixels ?? 0) > 0 && !selectedSatellite.value?.layers)
 const air = computed(() => props.blocks.air.response?.blocks.air)
 const cardNames = { poi: 'Объекты рядом', satellite: 'Спутник', air: 'Воздух' }
 const cardIcons = { poi: Layers, satellite: Satellite, air: Wind }
@@ -171,7 +174,7 @@ function toggleStation(id: string) {
             <select class="pa-select" aria-label="Дата снимка" :value="date" :disabled="!canLoad" @change="emit('date', ($event.target as HTMLSelectElement).value)">
                 <option value="">Без даты — только каталог</option>
                 <option v-for="available in satelliteDates" :key="available.date" :value="available.date">{{ formatObservationDate(available.date) }}{{ available.warnings.length ? ' · ограничение' : '' }}</option>
-                <option v-if="date && !selectedDateKnown" :value="date">{{ formatObservationDate(date) }} · нет в каталоге</option>
+                <option v-if="date && !selectedDateKnown" :value="date">{{ formatObservationDate(date) }}{{ selectedDateInCatalog ? '' : ' · нет в каталоге' }}</option>
             </select>
         </label>
         <label class="pa-field"><span>Область отображения</span>
@@ -183,7 +186,7 @@ function toggleStation(id: string) {
         </label>
         <div v-if="blocks.satellite.phase === 'error' || blocks.satellite.phase === 'unavailable'" class="pa-alert pa-alert--error" role="status">
             <TriangleAlert :size="16" aria-hidden="true" />
-            <div><strong>{{ blocks.satellite.phase === 'unavailable' ? 'Спутниковый источник недоступен' : 'Не удалось загрузить спутниковые данные' }}</strong>
+            <div><strong>{{ satelliteReadFailed ? 'Не удалось прочитать спутниковые данные' : blocks.satellite.phase === 'unavailable' ? 'Спутниковый источник недоступен' : 'Не удалось загрузить спутниковые данные' }}</strong>
                 <p>{{ blocks.satellite.phase === 'unavailable' ? 'Данные этой даты недоступны по предметной причине. Другие блоки анализа не затронуты.' : 'Повторите загрузку спутникового блока; объекты и воздух остаются доступны.' }}</p></div>
         </div>
         <button v-if="blocks.satellite.phase === 'error' || blocks.satellite.phase === 'unavailable'" class="pa-outline" type="button" @click="emit('load', 'satellite')">Повторить загрузку спутника</button>
@@ -195,6 +198,11 @@ function toggleStation(id: string) {
                     <div><strong>Ограничение выбранной даты</strong><p>{{ warning.message }}</p></div>
                 </div>
             </template>
+            <div v-if="satelliteImageUnavailable" class="pa-alert pa-alert--warning" role="status">
+                <TriangleAlert :size="16" aria-hidden="true" />
+                <div><strong>Изображения недоступны</strong><p>Аналитика по кругу сохранена.</p></div>
+            </div>
+            <button v-if="satelliteImageUnavailable" class="pa-outline" type="button" @click="emit('load', 'satellite')">Повторить загрузку изображений</button>
             <p v-if="satelliteData.selected.reason === 'DATE_NOT_SELECTED'" class="pa-note pa-note--strong">
                 Дата не выбрана. Каталог показывает только подготовленные даты и не является наблюдением.
             </p>
@@ -211,14 +219,9 @@ function toggleStation(id: string) {
                         </div>
                     </div>
                     <p v-if="(selectedCoverage?.usable_fraction ?? 1) < 1" class="pa-sat-coverage__note">Остальные пиксели круга неизвестны или исключены маской. Это не низкий NDVI.</p>
-                    <p class="pa-sat-coverage__scope" data-satellite-scope>{{ satelliteScope === 'circle' ? 'Слой показан только в круге анализа.' : 'Слой показан на всей подготовленной территории.' }} Показатели рассчитаны для выбранного круга.</p>
+                    <p v-if="satelliteData.selected.layers" class="pa-sat-coverage__scope" data-satellite-scope>{{ satelliteScope === 'circle' ? 'Слой показан только в круге анализа.' : 'Слой показан на всей подготовленной территории.' }} Показатели рассчитаны для выбранного круга.</p>
                 </div>
                 <p class="pa-note">NDVI безразмерен и не равен доле растительности. Неизвестные пиксели прозрачны; при сильном увеличении изображение становится крупнее, но новые детали не появляются.</p>
-                <div v-if="satelliteImageUnavailable" class="pa-alert pa-alert--warning" role="status">
-                    <TriangleAlert :size="16" aria-hidden="true" />
-                    <div><strong>Изображения недоступны</strong><p>Аналитика по кругу сохранена; растровые слои этой даты не подготовлены или доставка недоступна.</p></div>
-                </div>
-                <button v-if="satelliteImageUnavailable" class="pa-outline" type="button" @click="emit('load', 'satellite')">Повторить загрузку изображений</button>
                 <dl class="pa-sat-meta">
                     <div><dt>Дата съёмки</dt><dd>{{ formatObservationDate(satelliteData.selected.date) }}</dd></div>
                     <div><dt>Источник</dt><dd>Copernicus Sentinel-2 L2A</dd></div>
@@ -241,14 +244,14 @@ function toggleStation(id: string) {
                 </details>
             </template>
             <template v-else>
-                <p class="pa-note pa-note--strong">Для выбранной даты нет пригодных данных: {{ satelliteReasonLabel(satelliteData.selected.reason) }}.</p>
+                <p class="pa-note pa-note--strong">Средний NDVI недоступен. {{ satelliteReasonLabel(satelliteData.selected.mean_ndvi_reason) }}.</p>
+                <p v-if="satelliteData.selected.layers" class="pa-sat-coverage__scope" data-satellite-scope>{{ satelliteScope === 'circle' ? 'Слой показан только в круге анализа.' : 'Слой показан на всей подготовленной территории.' }}</p>
                 <details v-if="selectedCoverage" class="pa-sat-details">
                     <summary>Покрытие круга и причины исключений</summary>
                     <p>Пикселей круга: {{ selectedCoverage.circle_pixels }}; подготовлено: {{ selectedCoverage.prepared_pixels }}; пригодно: {{ selectedCoverage.usable_pixels }}.</p>
                     <ul v-if="selectedCoverageReasons.length" class="pa-sat-reasons">
                         <li v-for="reason in selectedCoverageReasons" :key="reason.key">{{ reason.label }}: {{ reason.count }}</li>
                     </ul>
-                    <p>Изображение отсутствует, потому что нет пригодных пикселей NDVI. Ноль NDVI не подставляется.</p>
                 </details>
             </template>
         </template>

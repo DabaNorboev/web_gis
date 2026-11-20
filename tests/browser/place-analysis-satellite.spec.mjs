@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { responseFor } from '../frontend/fixtures/place-analysis.mjs'
+import { markSelectedSatelliteUnusable, responseFor } from '../frontend/fixtures/place-analysis.mjs'
 
 const tilePng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
 const card = page => page.locator('[data-analysis-block="satellite"]')
@@ -49,6 +49,7 @@ async function setup(page, options = {}) {
             response.blocks.satellite.data.delivery_status = 'UNAVAILABLE'
             response.blocks.satellite.data.selected.layers = null
         }
+        if (request.blocks[0] === 'satellite' && request.date) options.changeSatellite?.(response.blocks.satellite)
         return route.fulfill({ json: response })
     })
     await page.goto('/analysis')
@@ -182,6 +183,73 @@ test('image delivery failure is explicit and retries only the satellite block', 
     await expect.poll(() => state.calls.length).toBe(before + 1)
     expect(state.calls.at(-1).blocks).toEqual(['satellite'])
     await expect.poll(() => visibility(page, ndviLayer)).toBe('visible')
+})
+
+test('satellite read errors, absent NDVI and corrupt replies preserve the selected POI', async ({ page }) => {
+    const options = {
+        changeSatellite(block) {
+            Object.assign(block, { status: 'ERROR', code: 'SATELLITE_READ_FAILED', message: 'Не удалось прочитать спутниковые данные.', data: null })
+        },
+    }
+    const state = await setup(page, options)
+    await page.getByRole('tab', { name: 'Объекты', exact: true }).click()
+    await page.getByRole('button', { name: 'Все', exact: true }).click()
+    const pharmacy = page.locator('.pa-objects').getByRole('button', { name: /Synthetic API pharmacy/ })
+    await pharmacy.click()
+
+    await openSatellite(page)
+    await chooseDate(page, '2024-05-07')
+    await expect(card(page).getByRole('status')).toHaveText('Ошибка чтения спутниковых данных')
+    await expect(page.getByText('Не удалось прочитать спутниковые данные', { exact: true })).toBeVisible()
+    await expect.poll(() => sourceTiles(page, tciLayer)).toBeUndefined()
+
+    options.changeSatellite = block => markSelectedSatelliteUnusable(block.data)
+    await page.getByRole('button', { name: 'Повторить загрузку спутника' }).click()
+    await expect(card(page).getByRole('status')).toHaveText('Нет пригодных пикселей NDVI')
+    await expect(page.getByText('Средний NDVI недоступен. Нет пригодных пикселей NDVI.', { exact: true })).toBeVisible()
+    await expect(page.getByLabel('Дата снимка').locator('option:checked')).toHaveText('07.05.2024')
+    await page.getByRole('button', { name: 'Снимок', exact: true }).click()
+    await expect.poll(() => visibility(page, tciLayer)).toBe('visible')
+    await expect.poll(() => state.tiles.some(tile => tile.path.includes('/2024-05-07/true-color/'))).toBe(true)
+
+    options.deliveryDown = true
+    await page.getByRole('button', { name: 'Обновить спутник', exact: true }).click()
+    await expect(card(page).getByRole('status')).toHaveText('Нет пригодных пикселей NDVI')
+    await expect(page.getByText('Изображения недоступны', { exact: true })).toBeVisible()
+    await expect.poll(() => sourceTiles(page, tciLayer)).toBeUndefined()
+
+    options.deliveryDown = false
+    options.changeSatellite = block => {
+        const data = block.data
+        markSelectedSatelliteUnusable(data)
+        const coverage = data.selected.coverage
+        Object.assign(coverage, {
+            prepared_pixels: 0, prepared_fraction: 0, geographic_pixels: 0, geographic_fraction: 0,
+            inside_rectangle_outside_target_pixels: coverage.circle_pixels, source_pixels: {},
+        })
+        coverage.reason_counts.cloud_or_cirrus = 0
+        coverage.reason_counts.outside_target = coverage.circle_pixels
+        const noPreparedData = { reason: 'NO_PREPARED_DATA', mean_ndvi_reason: 'NO_PREPARED_DATA' }
+        Object.assign(data.selected, noPreparedData, { layers: null })
+        Object.assign(data.releases.find(release => release.date === data.selected.date), noPreparedData)
+    }
+    await page.getByRole('button', { name: 'Повторить загрузку изображений' }).click()
+    await expect(card(page).getByRole('status')).toHaveText('Для круга нет подготовленных пикселей')
+    await expect(page.getByText('Изображения недоступны', { exact: true })).toHaveCount(0)
+    await expect.poll(() => sourceTiles(page, tciLayer)).toBeUndefined()
+
+    options.changeSatellite = block => {
+        markSelectedSatelliteUnusable(block.data)
+        block.data.selected.layers.ndvi.tileSize = 512
+    }
+    await page.getByRole('button', { name: 'Обновить спутник', exact: true }).click()
+    await expect(card(page).getByRole('status')).toHaveText('Получен несогласованный ответ')
+    await expect.poll(() => sourceTiles(page, tciLayer)).toBeUndefined()
+
+    await page.getByRole('tab', { name: 'Объекты', exact: true }).click()
+    await expect(pharmacy).toBeVisible()
+    await expect(pharmacy).toHaveAttribute('aria-pressed', 'true')
+    expect(state.calls.filter(call => call.blocks.includes('poi'))).toHaveLength(1)
 })
 
 test('keyboard controls, short screens and narrow layout keep the satellite UI usable', async ({ page }) => {

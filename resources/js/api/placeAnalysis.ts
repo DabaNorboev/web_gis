@@ -95,9 +95,13 @@ function satelliteLegend(v: any): boolean {
         && v.classes.every((c: any, i: number) => i === 0 || v.classes[i - 1].max === c.min)
         && v.classes[0].min >= -1 && v.classes.at(-1).max <= 1
 }
-function satelliteRaster(v: any): boolean {
+function satelliteRaster(v: any, selectedDate: string, layer: 'true-color' | 'ndvi'): boolean {
+    const tilePath = `${selectedDate}/${layer}/{z}/{x}/{y}.png`
     return record(v) && v.type === 'raster' && Array.isArray(v.tiles) && v.tiles.length > 0
-        && v.tiles.every((tile: any) => typeof tile === 'string' && /^\/api\/v1\/satellite\/[a-f0-9]{64}\/\d{4}-\d{2}-\d{2}\/(true-color|ndvi)\/\{z\}\/\{x\}\/\{y\}\.png$/.test(tile))
+        && v.tiles.every((tile: any) => {
+            const prefix = typeof tile === 'string' && /^\/api\/v1\/satellite\/[a-f0-9]{64}\//.exec(tile)?.[0]
+            return !!prefix && tile.slice(prefix.length) === tilePath
+        })
         && bounds(v.bounds) && v.tileSize === 256 && v.minzoom === 10 && v.maxzoom === 13
         && v.scheme === 'xyz' && typeof v.attribution === 'string'
 }
@@ -124,8 +128,7 @@ function satelliteBlockData(d: any, releaseByDate: Map<string, any>): boolean {
         || !(selected.reason === null || typeof selected.reason === 'string')
         || !(selected.mean_ndvi === null || finite(selected.mean_ndvi) && selected.mean_ndvi >= -1 && selected.mean_ndvi <= 1)
         || !(selected.mean_ndvi_reason === null || typeof selected.mean_ndvi_reason === 'string')
-        || !(selected.coverage === null || satelliteCoverage(selected.coverage))
-        || !(selected.layers === null || record(selected.layers) && satelliteRaster(selected.layers['true-color']) && satelliteRaster(selected.layers.ndvi))) return false
+        || !(selected.coverage === null || satelliteCoverage(selected.coverage))) return false
     if (selected.date === null) return selected.status === 'UNAVAILABLE' && selected.reason === 'DATE_NOT_SELECTED'
         && selected.coverage === null && selected.mean_ndvi === null && selected.layers === null
     const release = releaseByDate.get(selected.date)
@@ -135,11 +138,13 @@ function satelliteBlockData(d: any, releaseByDate: Map<string, any>): boolean {
         || selected.status !== release.status || selected.reason !== release.reason
         || JSON.stringify(selected.scenes) !== JSON.stringify(release.scenes)
         || JSON.stringify(selected.warnings) !== JSON.stringify(release.warnings)) return false
-    if (selected.status === 'READY' && (!satelliteCoverage(selected.coverage)
-        || JSON.stringify(selected.coverage) !== JSON.stringify(release.coverage)
-        || selected.mean_ndvi !== release.mean_ndvi || selected.mean_ndvi_reason !== null)) return false
-    if (selected.layers === null) return selected.status === 'READY' || selected.status === 'UNAVAILABLE'
-    return selected.status === 'READY'
+    if (JSON.stringify(selected.coverage) !== JSON.stringify(release.coverage)
+        || selected.mean_ndvi !== release.mean_ndvi || selected.mean_ndvi_reason !== release.mean_ndvi_reason) return false
+    if (selected.layers === null) return true
+    return d.delivery_status === 'READY' && selected.coverage?.prepared_pixels > 0
+        && (selected.status === 'READY' || ['NO_USABLE_NDVI', 'NO_GEOGRAPHIC_DATA'].includes(selected.reason))
+        && record(selected.layers) && satelliteRaster(selected.layers['true-color'], selected.date, 'true-color')
+        && satelliteRaster(selected.layers.ndvi, selected.date, 'ndvi')
 }
 function satelliteData(d: any, requestDate: string | null): boolean {
     const releases = Array.isArray(d?.releases) ? d.releases.filter((r: any) => record(r) && date(r.date)) : []
@@ -156,7 +161,9 @@ function block(v: any, key: AnalysisBlockKey, requestDate: string | null): boole
             && ['READY', 'UNAVAILABLE', 'ERROR'].includes(s.status) && typeof s.message === 'string'
             && (s.status === 'READY' ? s.code === null : typeof s.code === 'string' && /^[A-Z][A-Z0-9_]+$/.test(s.code)) }))) return false
     if (v.status === 'UNAVAILABLE' || v.status === 'ERROR') return v.data === null && typeof v.message === 'string' && v.message.length > 0
-        && typeof v.code === 'string' && (v.status === 'ERROR' ? v.code === 'BLOCK_CALCULATION_FAILED' : /^[A-Z][A-Z0-9_]+$/.test(v.code))
+        && typeof v.code === 'string' && (v.status === 'ERROR'
+            ? v.code === 'BLOCK_CALCULATION_FAILED' || (key === 'satellite' && v.code === 'SATELLITE_READ_FAILED')
+            : /^[A-Z][A-Z0-9_]+$/.test(v.code))
     if (v.status !== 'READY' || v.code !== null || !record(v.data)) return false
     const d = v.data
     if (key === 'poi') return coverage(v.coverage) && categories.every(c => coverage(v.coverage.by_category?.[c]) && completeness(v.completeness.by_category?.[c]))

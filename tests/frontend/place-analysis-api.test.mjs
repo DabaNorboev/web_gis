@@ -1,8 +1,9 @@
 import { geocodingModule } from './support/geocoding.mjs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { loadModule } from './support/vue-component.mjs'
-import { input, keys, responseFor } from './fixtures/place-analysis.mjs'
+import { input, keys, markSelectedSatelliteUnusable, responseFor } from './fixtures/place-analysis.mjs'
 const errorsUrl = new URL('../../resources/js/api/errors.ts', import.meta.url)
 const apiUrl = new URL('../../resources/js/api/placeAnalysis.ts', import.meta.url)
 function setup(fetch) {
@@ -138,4 +139,74 @@ test('malformed satellite descriptors, legend, selected release and coverage fra
         const api = setup(async () => new Response(JSON.stringify(response)))
         await assert.rejects(api.fetchPlaceAnalysis(request), e => e.kind === 'invalid_response')
     }
+})
+
+test('only the satellite block accepts SATELLITE_READ_FAILED and leaves READY POI available', async () => {
+    const response = responseFor(input, { satellite: 'ERROR', poi: 'READY' })
+    response.blocks.satellite.code = 'SATELLITE_READ_FAILED'
+    const api = setup(async () => new Response(JSON.stringify(response)))
+    const result = await api.fetchPlaceAnalysis(input)
+    assert.equal(result.blocks.satellite.status, 'ERROR')
+    assert.equal(result.blocks.poi.data.count, 1)
+
+    response.blocks.satellite.code = 'UNKNOWN_FAILURE'
+    await assert.rejects(api.fetchPlaceAnalysis(input), e => e.kind === 'invalid_response')
+    for (const key of ['poi', 'air']) {
+        const invalid = responseFor(input, { [key]: 'ERROR' })
+        invalid.blocks[key].code = 'SATELLITE_READ_FAILED'
+        await assert.rejects(setup(async () => new Response(JSON.stringify(invalid))).fetchPlaceAnalysis(input), e => e.kind === 'invalid_response')
+    }
+})
+
+test('a selected date without usable NDVI can carry valid imagery independently', async () => {
+    const request = { ...input, date: '2024-05-07', blocks: ['satellite'] }
+    const response = responseFor(request, { satellite: 'READY' })
+    const data = response.blocks.satellite.data
+    markSelectedSatelliteUnusable(data)
+    const api = setup(async () => new Response(JSON.stringify(response)))
+    const selected = (await api.fetchPlaceAnalysis(request)).blocks.satellite.data.selected
+    assert.equal(selected.mean_ndvi, null)
+    assert.equal(selected.mean_ndvi_reason, 'NO_USABLE_NDVI')
+    assert.ok(selected.layers['true-color'])
+
+    for (const corrupt of [
+        d => d.selected.mean_ndvi = 0,
+        d => d.selected.mean_ndvi_reason = null,
+        d => d.selected.manifest_sha256 = 'f'.repeat(64),
+        d => d.selected.layers.ndvi.tiles[0] = d.selected.layers.ndvi.tiles[0].replace('2024-05-07', '2024-08-15'),
+        d => d.selected.layers.ndvi.tiles[0] = d.selected.layers.ndvi.tiles[0].replace('/ndvi/', '/true-color/'),
+        d => d.selected.layers.ndvi.tileSize = 512,
+        d => d.delivery_status = 'UNAVAILABLE',
+        d => d.selected.coverage = d.releases[0].coverage = { ...d.selected.coverage, prepared_pixels: 0 },
+    ]) {
+        const invalid = structuredClone(response)
+        corrupt(invalid.blocks.satellite.data)
+        await assert.rejects(setup(async () => new Response(JSON.stringify(invalid))).fetchPlaceAnalysis(request), e => e.kind === 'invalid_response')
+    }
+    data.delivery_status = 'UNAVAILABLE'
+    data.selected.layers = null
+    assert.equal((await api.fetchPlaceAnalysis(request)).blocks.satellite.data.selected.layers, null)
+})
+
+const satelliteApiFixturesFile = process.env.SATELLITE_API_FIXTURES_FILE
+test('PHP satellite API responses pass through the production TS validator', { skip: !satelliteApiFixturesFile }, async () => {
+    const bodies = JSON.parse(readFileSync(satelliteApiFixturesFile, 'utf8'))
+    const request = { place: { kind: 'point', lon: 92.9, lat: 56 }, radius_m: 1000, date: '2024-05-07' }
+    const fetchResponse = (body, input = request) => setup(async () => new Response(body)).fetchPlaceAnalysis(input)
+    const unusable = (await fetchResponse(bodies.unusable)).blocks.satellite.data.selected
+    assert.equal(unusable.mean_ndvi, null)
+    assert.equal(unusable.mean_ndvi_reason, 'NO_USABLE_NDVI')
+    assert.ok(unusable.layers['true-color'])
+
+    const withoutDelivery = (await fetchResponse(bodies.withoutDelivery)).blocks.satellite.data
+    assert.equal(withoutDelivery.delivery_status, 'UNAVAILABLE')
+    assert.equal(withoutDelivery.selected.layers, null)
+    const ready = (await fetchResponse(bodies.ready, { ...request, date: '2026-06-06' })).blocks.satellite.data.selected
+    assert.equal(ready.mean_ndvi, 0)
+    assert.ok(ready.layers.ndvi)
+    assert.equal((await fetchResponse(bodies.readError)).blocks.satellite.code, 'SATELLITE_READ_FAILED')
+
+    const corrupt = JSON.parse(bodies.unusable)
+    corrupt.blocks.satellite.data.selected.layers.ndvi.tiles[0] += '?unexpected=1'
+    await assert.rejects(fetchResponse(JSON.stringify(corrupt)), e => e.kind === 'invalid_response')
 })

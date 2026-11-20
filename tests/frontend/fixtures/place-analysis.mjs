@@ -71,8 +71,21 @@ export function satelliteDataFor(date) {
         status: 'READY', reason: null, catalog_sha256: 'b'.repeat(64), source_index_sha256: 'c'.repeat(64),
         method_version: 'placelens-s2-date-v1', mask_version: 'scl456-dn-city-v1', legend_version: 'ndvi-fixed-v2',
         available_dates: releases.map(({ date: value, release_id, manifest_sha256, scenes, warnings, limitations }) => ({ date: value, release_id, manifest_sha256, scenes, warnings, limitations })),
-        releases, delivery_status: 'READY', legend: satelliteLegend, selected,
+        releases, delivery_status: 'READY', legend: structuredClone(satelliteLegend), selected,
     }
+}
+export function markSelectedSatelliteUnusable(data) {
+    const coverage = satelliteCoverage(1600, 0)
+    coverage.reason_counts.nodata = 0
+    coverage.reason_counts.cloud_or_cirrus = coverage.circle_pixels
+    const unavailable = {
+        status: 'UNAVAILABLE', reason: 'NO_USABLE_NDVI', mean_ndvi: null, mean_ndvi_reason: 'NO_USABLE_NDVI',
+        coverage,
+    }
+    const date = data.selected.date
+    Object.assign(data.selected, unavailable)
+    Object.assign(data.releases.find(release => release.date === date), unavailable)
+    data.available_dates = data.available_dates.filter(release => release.date !== date)
 }
 export function normalized(request) {
     return { ...structuredClone(request), radius_m: request.radius_m ?? 500, date: request.date ?? null,

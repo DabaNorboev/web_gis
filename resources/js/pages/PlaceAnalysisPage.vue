@@ -137,8 +137,7 @@ const showRadius = ref(true)
 const layersOpen = ref(true)
 const ndviLegendOpen = ref(true)
 const ndviLegendVisible = computed(() => showSatellite.value && satelliteOpacity.value > 0
-    && satelliteMode.value === 'ndvi' && satelliteSelected.value?.status === 'READY'
-    && !!satelliteLayers.value?.ndvi && !!satelliteLegend.value)
+    && satelliteMode.value === 'ndvi' && !!satelliteLayers.value?.ndvi && !!satelliteLegend.value)
 const objectList = ref<HTMLElement | null>(null)
 const mapRef = ref<{ focusMap: () => void } | null>(null)
 const placeButton = ref<HTMLButtonElement | null>(null)
