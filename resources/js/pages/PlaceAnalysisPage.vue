@@ -8,6 +8,11 @@ import {
 import MapThemeControl from '@/components/map/MapThemeControl.vue'
 import PlaceAnalysisMap from '@/components/place-analysis/PlaceAnalysisMap.vue'
 import { categoryMeta, categoryOrder, type AnalysisLayer, type AnalysisTab, type PlaceSelection, type AnalysisPoint, type PoiCategory, type SatelliteMode } from '@/place-analysis'
+import LocalAddressSearch from '@/components/place-analysis/LocalAddressSearch.vue'
+import PointAddressReference from '@/components/place-analysis/PointAddressReference.vue'
+import { useAnalysisPointAddress } from '@/composables/useAnalysisPointAddress'
+import { localAddressLabel } from '@/utils/addressLabels'
+import type { AnalysisAddress } from '@/types/placeAnalysis'
 import GeocodingSearch from '@/components/place-analysis/GeocodingSearch.vue'
 import type { GeocodingSelection } from '@/types/geocoding'
 import PlaceAnalysisResults from '@/components/place-analysis/PlaceAnalysisResults.vue'
@@ -18,6 +23,8 @@ import type {
 import { satelliteLayerLabel } from '@/utils/satellite'
 import '../../css/place-analysis.css'
 
+const searchMode = ref<'local' | 'geoapify'>('local')
+const searchQuery = ref('')
 const analysis = usePlaceAnalysis()
 const hasSelection = ref(false)
 const displayedGeometry = shallowRef<PlaceAnalysisResponse | null>(null)
@@ -26,6 +33,7 @@ let radiusTimer: ReturnType<typeof setTimeout> | null = null
 const realDate = ref('')
 const stationRadius = ref(5000)
 const selectedStationIds = ref<string[]>([])
+const localSearchRef = ref<{ clearDraft: () => void } | null>(null)
 const geocodingRef = ref<{ clearSelection: () => void; clearDraft: () => void } | null>(null)
 const geocodingSelection = shallowRef<GeocodingSelection | null>(null)
 const geocodingAuthorizationExpired = ref(false)
@@ -100,11 +108,22 @@ function chooseSatelliteDate(value: string) {
 const tabOrder: AnalysisTab[] = ['overview', 'objects', 'satellite', 'air']
 const activeTab = ref<AnalysisTab>('overview')
 const place = ref<PlaceSelection>({ id: null, label: 'Выберите место', lon: 92.85, lat: 56.01 })
+const selectedAddressLabel = ref('')
 const radius = ref(500)
 const pendingPoint = ref<AnalysisPoint | null>(null)
 const pickMode = ref(false)
 const referencePoint = computed(() => pendingPoint.value
     ?? (hasSelection.value && !place.value.id ? { lon: place.value.lon, lat: place.value.lat } : null))
+function acceptLocalAddress(address: AnalysisAddress) {
+    geocodingRef.value?.clearSelection(); geocodingSelection.value = null
+    geocodingAuthorizationExpired.value = false
+    selectedAddressLabel.value = localAddressLabel(address.label, address.display)
+    place.value = { id: address.id, label: address.label, lon: address.object.lon, lat: address.object.lat }
+    hasSelection.value = true; pendingPoint.value = null; pickMode.value = false
+    runAnalysis()
+}
+const pointReference = useAnalysisPointAddress(referencePoint, acceptLocalAddress)
+const { candidates: pointCandidates, status: pointStatus, transitionPending, transitionError } = pointReference
 const activeCategory = ref<PoiCategory | 'all'>('grocery')
 const selectedPoiId = ref<string | null>(null)
 const selectedStationId = ref<string | null>(null)
@@ -246,6 +265,8 @@ function startPointPick() {
 }
 
 function onMapPoint(point: AnalysisPoint) {
+    localSearchRef.value?.clearDraft()
+    pointReference.cancelTransition()
     geocodingRef.value?.clearDraft(); geocodingPreview.value = null
     pendingPoint.value = point
     pickMode.value = false
@@ -253,7 +274,9 @@ function onMapPoint(point: AnalysisPoint) {
 }
 
 function analyzePoint() {
+    pointReference.cancelTransition()
     if (!pendingPoint.value) return
+    localSearchRef.value?.clearDraft()
     geocodingRef.value?.clearSelection(); geocodingSelection.value = null
     place.value = { id: null, label: 'Точка на карте', ...pendingPoint.value }
     hasSelection.value = true
@@ -264,6 +287,7 @@ function analyzePoint() {
 }
 
 function cancelPoint() {
+    pointReference.cancelTransition()
     pendingPoint.value = null
     pickMode.value = false
     void nextTick(() => placeButton.value?.focus())
@@ -306,6 +330,7 @@ onBeforeUnmount(() => {
                 <span>Place<span>Lens</span></span>
             </a>
             <div class="pa-header__controls">
+                <button class="pa-outline" type="button" :aria-pressed="searchMode === 'geoapify'" @click="searchMode = searchMode === 'local' ? 'geoapify' : 'local'">Поиск: {{ searchMode === 'local' ? 'локальный' : 'Geoapify' }}</button>
                 <div class="pa-radius">
                     <label for="pa-radius-number">Радиус анализа:</label>
                     <input id="pa-radius-number" v-model.number="radius" class="pa-radius__number" type="number" min="200" max="1000" step="50" @change="normalizeRadius">
@@ -321,11 +346,13 @@ onBeforeUnmount(() => {
         <div class="pa-body">
             <aside id="pa-panel" class="pa-panel" aria-label="Панель анализа места">
                 <div class="pa-sidebar-search">
-                <GeocodingSearch ref="geocodingRef" :point="referencePoint" :selection-error="selectionError"
+                <LocalAddressSearch ref="localSearchRef" v-model:query="searchQuery" :enabled="searchMode === 'local'" @selected="acceptLocalAddress" />
+                <GeocodingSearch ref="geocodingRef" v-model:query="searchQuery" :enabled="searchMode === 'geoapify'" :point="referencePoint" :selection-error="selectionError"
                     @selected="acceptGeocodingSelection" @retired="retireGeocodingSelection" @authorization-expired="geocodingAuthorizationExpired = $event" @preview="geocodingPreview = $event" @point="onMapPoint" />
                 </div>
                 <div class="pa-api-actions">
-                    <p v-if="!geocodingSelection && (!referencePoint || pendingPoint)" class="pa-note">{{ hasSelection ? place.label : 'Выберите адресный объект или точку карты.' }}</p>
+                    <p v-if="!geocodingSelection && (!referencePoint || pendingPoint)" class="pa-note">{{ hasSelection ? (place.id ? selectedAddressLabel : place.label) : 'Выберите адресный объект или точку карты.' }}</p>
+                    <template v-if="referencePoint && !pendingPoint"><PointAddressReference :candidates="pointCandidates" :status="pointStatus" :transition-pending="transitionPending" :transition-error="transitionError" compact @analyze="pointReference.analyzeAddress" @retry="pointReference.retry" /></template>
                     <div class="pa-api-actions__main">
                     <button class="pa-primary" type="button" :disabled="!analysis.input.value || !!geocodingSelection && geocodingAuthorizationExpired" :aria-describedby="!hasSelection ? 'pa-selection-hint' : undefined" @click="runAnalysis">Анализировать место</button>
 
@@ -409,9 +436,10 @@ onBeforeUnmount(() => {
                         <button type="button" class="pa-icon-button" aria-label="Закрыть карточку точки" @click="cancelPoint"><X :size="15" aria-hidden="true" /></button>
                     </div>
                     <p>Координаты: {{ formatCoord(pendingPoint.lat) }}, {{ formatCoord(pendingPoint.lon) }}</p>
+                    <PointAddressReference :candidates="pointCandidates" :status="pointStatus" :transition-pending="transitionPending" :transition-error="transitionError" compact @analyze="pointReference.analyzeAddress" @retry="pointReference.retry" />
                     <div class="pa-point-card__actions">
                         <button class="pa-outline" type="button" @click="cancelPoint">Отмена</button>
-                        <button ref="analyzeButton" class="pa-primary" type="button" @click="analyzePoint">Анализировать</button>
+                        <button ref="analyzeButton" class="pa-primary" type="button" @click="analyzePoint">Анализировать точку</button>
                     </div>
                 </div>
 

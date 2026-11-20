@@ -6,16 +6,17 @@ async function setup(page,partial=false){
  await page.route('**/api/v1/addresses/resolve-point',r=>r.fulfill({json:pointReference()}))
  await page.route('**/api/v1/place-analysis',route=>{const request=route.request().postDataJSON();calls.push(request);const result=responseFor(request,{poi:'READY'});if(partial&&result.blocks.poi){result.blocks.poi.coverage.by_category.park.status='UNKNOWN';result.blocks.poi.data.counts_by_category.park=null;result.blocks.poi.data.count=null}return route.fulfill({json:result})})
  await page.goto('/analysis');await expect.poll(()=>page.evaluate(()=>!!window.__smokeMapIn('.pa-map')?.isStyleLoaded())).toBe(true)
- await pick(page);await page.getByRole('button',{name:'Анализировать',exact:true}).click();await expect(page.locator('[data-analysis-block="poi"] [role="status"]')).toHaveText('Готово');return calls
+ await pick(page);await page.getByRole('button',{name:'Анализировать точку',exact:true}).click();await expect(page.locator('[data-analysis-block="poi"] [role="status"]')).toHaveText('Готово');return calls
 }
 async function pick(page){await page.getByRole('button',{name:'Точка на карте',exact:true}).focus();await page.keyboard.press('Enter');await page.keyboard.press('Enter');await expect(page.getByRole('dialog',{name:'Выбранная точка'})).toBeVisible()}
 test('pending card stays above markers; selected marker stays at its geographic screen anchor; explicit reverse belongs to search',async({page})=>{
  await setup(page)
+ await page.getByRole('button',{name:'Поиск: локальный',exact:true}).click()
  await expect(page.getByRole('button',{name:'Найти адрес поблизости',exact:true})).toBeVisible()
  await expect(page.locator('.pa-header__controls .pa-place-button')).toHaveCount(0)
  await expect(page.locator('.pa-map-pick')).toBeVisible()
  await expect(page.locator('[data-geocoding] button').filter({hasText:'Найти адрес поблизости'})).toHaveCount(1)
- await expect(page.locator('.pa-point-reference')).toHaveCount(0)
+ await expect(page.locator('.pa-point-reference')).toHaveCount(1)
  await page.getByRole('tab',{name:'Объекты',exact:true}).click();await page.getByRole('button',{name:'Аптеки (1)',exact:true}).click()
  const marker=page.locator('.pa-map-marker[data-poi-id="osm:node:1"]')
  const center=()=>marker.evaluate(el=>{const r=el.getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})

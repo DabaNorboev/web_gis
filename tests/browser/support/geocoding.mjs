@@ -1,9 +1,11 @@
+import { pointReference } from '../../frontend/fixtures/point-address-reference.mjs'
 import { expect } from '@playwright/test'
 import { candidate, selection, envelope, iso } from '../../frontend/fixtures/geocoding.mjs'
 import { responseFor } from '../../frontend/fixtures/place-analysis.mjs'
 export async function fixtures(page, { candidateOverrides = {}, lookupError, confirmError, expired = false, expiresSoon = false } = {}) {
     const calls = [], requests = [], c = candidate(candidateOverrides)
     let current = selection(c, expiresSoon ? { expires_at: iso(7000), snapshot_expires_at: iso(7000) } : expired ? { expires_at: iso(-1000) } : {})
+    await page.route('**/api/v1/addresses/resolve-point', route => route.fulfill({ json: pointReference('NONE') }))
     await page.route('**/api/v1/geocoding/**', async route => {
         const op = route.request().url().split('/').at(-1), req = route.request().postDataJSON()
         calls.push({ op, req })
@@ -33,7 +35,7 @@ export async function fixtures(page, { candidateOverrides = {}, lookupError, con
 export async function point(page) {
     await page.getByRole('button', { name: 'Точка на карте', exact: true }).click()
     await page.keyboard.press('Enter')
-    await page.getByRole('button', { name: 'Анализировать', exact: true }).click()
+    await page.getByRole('button', { name: 'Анализировать точку', exact: true }).click()
 }
 export async function preview(page) {
     const input = page.getByRole('combobox', { name: 'Поиск адреса' })

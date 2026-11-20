@@ -52,6 +52,10 @@ class GeoapifyNormalizer
             if ($candidate['label'] === '') {
                 throw new GeocodingFailure('PROVIDER_RESPONSE_INVALID', 502);
             }
+            $district = $row['district'] ?? null;
+            if (is_string($district) && trim($district) !== '' && mb_strlen($district) <= 128) {
+                $candidate['components']['district'] = trim($district);
+            }
             $candidate['restrictions'] = self::restrictions($candidate);
             $candidate['can_confirm'] = $candidate['restrictions'] === [];
             $result[] = $candidate;

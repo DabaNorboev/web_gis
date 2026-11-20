@@ -33,16 +33,39 @@ class GeocodingTokens
         if ($this->now() >= $p['expires_at']) {
             throw new GeocodingFailure('CANDIDATE_EXPIRED', 410);
         }
-        $c = $p['candidate'];
-        $id = (string) Str::uuid();
+        return $this->selectionResponse($this->selectionPayload($p['candidate'], $p, (string) Str::uuid(), $this->now()));
+    }
+
+    public function prepareCandidate(array $candidate): array
+    {
+        if (isset($candidate['components']['district'])) {
+            try {
+                $this->candidate($candidate);
+                // A future selection ID is also a UUID. Check both envelope sizes before caching.
+                $this->encrypt($this->selectionPayload($candidate, $this->scope->identity(), $candidate['candidate_id'], $this->now()));
+
+                return $candidate;
+            } catch (GeocodingFailure $failure) {
+                if ($failure->errorCode !== 'PROVIDER_RESPONSE_INVALID') {
+                    throw $failure;
+                }
+                unset($candidate['components']['district']);
+            }
+        }
+        $this->candidate($candidate); // Keep the existing candidate size limit.
+
+        return $candidate;
+    }
+
+    private function selectionPayload(array $c, array $scope, string $id, int $now): array
+    {
         $place = ['kind' => 'address', 'selection_id' => $id, 'label' => $c['label'], 'point' => $c['point'],
             'address' => ['provider_id' => $c['provider_id'], 'components' => $c['components'], 'precision' => $c['precision'],
-                'number_match' => $c['number_match'], 'source' => $c['source'], 'scope_id' => $p['scope_id'], 'scope_sha256' => $p['scope_sha256']], 'building' => null];
-        $now = $this->now();
+                'number_match' => $c['number_match'], 'source' => $c['source'], 'scope_id' => $scope['scope_id'], 'scope_sha256' => $scope['scope_sha256']], 'building' => null];
 
-        return $this->selectionResponse(['schema' => 1, 'purpose' => 'geocoding_selection', 'provider' => 'geoapify',
+        return ['schema' => 1, 'purpose' => 'geocoding_selection', 'provider' => 'geoapify',
             'selection_id' => $id, 'place' => $place, 'snapshot_created_at' => $now, 'snapshot_expires_at' => $now + 7 * 86400,
-            'issued_at' => $now, 'expires_at' => $now + 86400]);
+            'issued_at' => $now, 'expires_at' => $now + 86400];
     }
 
     public function selection(string $token, bool $reconfirm = false): array
@@ -105,7 +128,12 @@ class GeocodingTokens
         $this->need($a['precision'] === ['level' => 'house', 'reason' => null, 'accuracy_m' => null, 'accuracy_reason' => 'NOT_VALIDATED']);
         $this->need(in_array($a['number_match'], ['EXACT', 'NOT_REQUESTED'], true));
         $c = $a['components'];
-        $this->fields($c, ['country_code', 'locality', 'street', 'number']);
+        $componentKeys = ['country_code', 'locality', 'street', 'number'];
+        if (is_array($c) && array_key_exists('district', $c)) {
+            $this->need(is_string($c['district']) && trim($c['district']) !== '' && mb_strlen($c['district']) <= 128);
+            $componentKeys[] = 'district';
+        }
+        $this->fields($c, $componentKeys);
         foreach (['country_code' => 128, 'locality' => 128, 'street' => 256] as $k => $limit) {
             $this->need($c[$k] === null || (is_string($c[$k]) && mb_strlen($c[$k]) <= $limit));
         }

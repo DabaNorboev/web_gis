@@ -5,13 +5,13 @@ import { loadModule } from './support/vue-component.mjs'
 import { candidate, selection, envelope } from './fixtures/geocoding.mjs'
 const errors = loadModule(new URL('../../resources/js/api/errors.ts', import.meta.url))
 const pause = ms => new Promise(r => setTimeout(r, ms))
-function setup() {
+function setup(enabled = vue.ref(true)) {
     const calls = [], selections = [], previews = []; let cleanup
     const hook = loadModule(new URL('../../resources/js/composables/useGeocoding.ts', import.meta.url), {
         vue: { ...vue, onBeforeUnmount: f => { cleanup = f } }, '@/api/errors': errors,
         '@/api/geocoding': { requestGeocoding: (operation, fields, signal, expected) => new Promise((resolve, reject) => calls.push({ operation, fields, signal, expected, resolve, reject })) },
     })
-    const state = hook.useGeocoding(v => selections.push(v), p => previews.push(p))
+    const state = hook.useGeocoding(v => selections.push(v), p => previews.push(p), vue.ref(''), enabled)
     return { state, calls, selections, previews, cleanup: () => cleanup() }
 }
 test('A-B-A and a single replaceable pending input reject stale lookup/finally', async () => {
@@ -91,3 +91,31 @@ test('UI timeout rejects late success and allows only one manual retry without o
         s.state.retry(); assert.equal(s.calls.length, 2)
     } finally { s.cleanup(); t.mock.timers.reset() }
 })
+
+for (const operation of ['search', 'reverse', 'confirm']) {
+    test(`mode A-B-A invalidates unabortable ${operation} without losing query or confirmed selection`, async () => {
+        const enabled = vue.ref(true), s = setup(enabled), c = candidate()
+        try {
+            s.state.query.value = 'Синтетический адрес'; s.state.search()
+            s.calls[0].resolve({ data: { status: 'OK', candidates: [c] } }); await pause(0)
+            s.state.choose(c)
+            const confirmed = s.state.confirm(); s.calls[1].resolve({ data: selection(c) }); await confirmed
+            const original = s.state.selection.value
+            if (operation === 'search') s.state.search()
+            if (operation === 'reverse') s.state.reverse({ lon: 0, lat: 0 })
+            let pending
+            if (operation === 'confirm') {
+                s.state.search(); s.calls[2].resolve({ data: { status: 'OK', candidates: [c] } }); await pause(0)
+                s.state.choose(c); pending = s.state.confirm()
+            }
+            const old = s.calls.at(-1), count = s.calls.length
+            enabled.value = false; enabled.value = true
+            assert.equal(old.signal.aborted, true)
+            old.resolve({ data: operation === 'confirm' ? selection(c, { selection_token: 'STALE' }) : { status: 'OK', candidates: [c] } })
+            await pending; await pause(400)
+            assert.equal(s.calls.length, count); assert.equal(s.state.query.value, 'Синтетический адрес')
+            assert.equal(s.state.selection.value, original); assert.equal(s.selections.length, 1)
+            assert.equal(s.state.lookup.value, null); assert.equal(s.state.preview.value, null); assert.equal(s.state.phase.value, 'idle')
+        } finally { s.cleanup() }
+    })
+}

@@ -1,12 +1,12 @@
-import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch, toValue, type Ref, type MaybeRefOrGetter } from 'vue'
 import { requestGeocoding } from '@/api/geocoding'
 import { ApiRequestError } from '@/api/errors'
 import type { AnalysisPoint } from '@/types/placeAnalysis'
 import type { GeocodingCandidate, GeocodingLookup, GeocodingSelection } from '@/types/geocoding'
 
 type Job = { epoch: number; operation: 'search' | 'reverse'; fields: Record<string, unknown> }
-export function useGeocoding(onSelection: (value: GeocodingSelection) => void, onPreview: (value: AnalysisPoint | null) => void) {
-    const query = ref(''), phase = ref('idle'), message = ref(''), now = ref(Date.now()), retryAt = ref(0), retried = ref(false)
+export function useGeocoding(onSelection: (value: GeocodingSelection) => void, onPreview: (value: AnalysisPoint | null) => void, query: Ref<string> = ref(''), enabled: MaybeRefOrGetter<boolean> = true) {
+    const phase = ref('idle'), message = ref(''), now = ref(Date.now()), retryAt = ref(0), retried = ref(false)
     const lookup = shallowRef<GeocodingLookup | null>(null), preview = shallowRef<GeocodingCandidate | null>(null), selection = shallowRef<GeocodingSelection | null>(null)
     let epoch = 0, disposed = false, active = false, queued: Job | null = null, lastJob: Job | null = null
     let debounce: ReturnType<typeof setTimeout> | undefined, lookupController: AbortController | null = null, confirmationController: AbortController | null = null
@@ -34,7 +34,10 @@ export function useGeocoding(onSelection: (value: GeocodingSelection) => void, o
                 : e.code === 'GEOCODING_QUOTA_EXHAUSTED' ? 'Лимит адресного поиска исчерпан. Выберите точку на карте.'
                     : e.status === 429 ? 'Поиск временно занят. Повторите после ожидания или выберите точку на карте.'
                         : e.code === 'SNAPSHOT_EXPIRED' ? 'Срок снимка истёк. Найдите и выберите адрес заново.'
-                            : 'Адресный поиск недоступен. Можно выбрать точку на карте.'
+                            : e.code === 'CANDIDATE_EXPIRED' ? 'Подсказка устарела. Повторите поиск.'
+                                : e.code === 'INVALID_SELECTION' ? 'Не удалось подтвердить адрес. Выберите адрес заново или поставьте точку на карте.'
+                                    : e.code === 'GEOCODING_UNAVAILABLE' ? 'Адресный поиск недоступен. Можно выбрать точку на карте.'
+                                        : 'Не удалось выполнить адресный запрос. Можно выбрать точку на карте.'
         phase.value = 'error'
     }
     function run(job: Job) {
@@ -53,8 +56,7 @@ export function useGeocoding(onSelection: (value: GeocodingSelection) => void, o
         void requestGeocoding(job.operation, job.fields, controller.signal).then(response => {
             if (disposed || timedOut || job.epoch !== epoch) return
             lookup.value = response.data; phase.value = 'results'
-            message.value = response.data.status === 'EMPTY' ? 'Адреса не найдены. Можно выбрать точку на карте.'
-                : response.data.status === 'NO_SELECTABLE_RESULTS' ? 'Найдены только ориентиры. Уточните положение точкой на карте.' : ''
+            message.value = response.data.status === 'EMPTY' ? 'Адреса не найдены. Можно выбрать точку на карте.' : ''
         }).catch(error => { if (!disposed && !timedOut && job.epoch === epoch) fail(error) }).finally(() => {
             clearTimeout(timer); active = false
             if (lookupController === controller) lookupController = null
@@ -63,6 +65,7 @@ export function useGeocoding(onSelection: (value: GeocodingSelection) => void, o
         })
     }
     watch(query, () => {
+        if (!toValue(enabled)) return
         resetDraft(); retried.value = false; lastJob = null
         const q = query.value.trim()
         if ([...q].length < 3) return
@@ -70,11 +73,14 @@ export function useGeocoding(onSelection: (value: GeocodingSelection) => void, o
         const current = epoch
         debounce = setTimeout(() => run({ epoch: current, operation: 'search', fields: { q, mode: 'autocomplete' } }), 350)
     }, { flush: 'sync' })
+    watch(() => toValue(enabled), () => { resetDraft(); lastJob = null }, { flush: 'sync' })
     function search() {
+        if (!toValue(enabled)) return
         resetDraft(); retried.value = false
         if ([...query.value.trim()].length >= 3) run({ epoch, operation: 'search', fields: { q: query.value.trim(), mode: 'search' } })
     }
     function reverse(point: AnalysisPoint) {
+        if (!toValue(enabled)) return
         resetDraft(); retried.value = false
         run({ epoch, operation: 'reverse', fields: { lon: point.lon, lat: point.lat } })
     }

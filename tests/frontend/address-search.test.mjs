@@ -10,11 +10,11 @@ const build = (ref, shallowRef, watch, onBeforeUnmount, searchAddresses) => load
 const pause = (ms) => new Promise(resolve => setTimeout(resolve, ms))
 const address = { id: 'address:example', label: 'проспект Мира, 10', object_count: 2, bounds: [92.89,56.01,92.90,56.02], objects: [{id:'osm:way:1'}, {id:'osm:way:2'}] }
 const response = (data) => ({ data, meta: { quality: { availability: 'AVAILABLE' } } })
-function setup(api) {
+function setup(api, enabled = vue.ref(true)) {
     const scope = effectScope()
     let cleanup
     const factory = build(ref, shallowRef, watch, (fn) => { cleanup = fn }, api)
-    const state = scope.run(factory)
+    const state = scope.run(() => factory(vue.ref(''), enabled))
     return { state, dispose() { cleanup(); scope.stop() } }
 }
 
@@ -87,4 +87,17 @@ test('errors can be retried, and Escape or disposal invalidates pending response
     resolvePending(response([address]))
     await last
     assert.deepEqual(state.results.value, [])
+})
+
+test('mode switch cancels local lookup and A-B-A rejects a late unabortable response without searching', async () => {
+    const enabled = vue.ref(true), calls = []
+    const { state, dispose } = setup((q, signal) => new Promise(resolve => calls.push({ q, signal, resolve })), enabled)
+    try {
+        state.query.value = 'Синтетический адрес'; const pending = state.search()
+        enabled.value = false; enabled.value = true
+        assert.equal(calls[0].signal.aborted, true)
+        calls[0].resolve(response([address])); await pending; await pause(350)
+        assert.equal(state.query.value, 'Синтетический адрес'); assert.equal(calls.length, 1)
+        assert.deepEqual(state.results.value, []); assert.equal(state.open.value, false); assert.equal(state.status.value, 'idle')
+    } finally { dispose() }
 })

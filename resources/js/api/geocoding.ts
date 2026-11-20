@@ -22,6 +22,7 @@ function attribution(v: any): boolean {
 }
 function components(v: any): boolean {
     return record(v) && nullableText(v.country_code, 128) && nullableText(v.locality, 128) && nullableText(v.street, 256)
+        && (v.district === undefined || (text(v.district, 128) && v.district.trim() !== ''))
         && record(v.number) && ['COMPLETE', 'UNKNOWN'].includes(v.number.parse_status)
         && ['raw', 'key', 'base', 'fraction', 'letter', 'corpus', 'structure'].every(k => nullableText(v.number[k], 128))
 }

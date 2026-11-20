@@ -8,7 +8,7 @@ async function choosePoint(page) {
     await button.focus(); await page.keyboard.press('Enter')
     await expect(page.locator('.pa-map')).toBeFocused()
     await page.keyboard.press('Enter')
-    const analyze = page.getByRole('button', { name: 'Анализировать', exact: true })
+    const analyze = page.getByRole('button', { name: 'Анализировать точку', exact: true })
     await expect(analyze).toBeFocused(); await page.keyboard.press('Enter')
 }
 function fixture(route, statuses = {}) {

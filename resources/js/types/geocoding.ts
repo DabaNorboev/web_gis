@@ -1,7 +1,7 @@
 import type { AnalysisPoint } from './placeAnalysis'
 export interface Attribution { text: string; url: string }
 export interface GeocodingNumber { raw: string | null; key: string | null; base: string | null; fraction: string | null; letter: string | null; corpus: string | null; structure: string | null; parse_status: 'COMPLETE' | 'UNKNOWN' }
-export interface GeocodingComponents { country_code: string | null; locality: string | null; street: string | null; number: GeocodingNumber }
+export interface GeocodingComponents { country_code: string | null; locality: string | null; street: string | null; district?: string; number: GeocodingNumber }
 export interface GeocodingPrecision { level: 'house' | 'street' | 'locality' | null; reason: string | null; accuracy_m: null; accuracy_reason: 'NOT_VALIDATED' }
 export interface GeocodingSource { provider: 'geoapify'; provider_result_type: string | null; observed_at: null; source_updated_at: null; received_at: string; normalization_version: 1; attribution: Attribution[] }
 export interface GeocodingCandidate {

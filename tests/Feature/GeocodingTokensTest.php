@@ -41,6 +41,40 @@ class GeocodingTokensTest extends TestCase
         }
     }
 
+    public function test_display_district_preserves_the_immutable_snapshot_and_ignores_other_areas(): void
+    {
+        $normalizer = app(GeoapifyNormalizer::class);
+        $rows = [$this->row(['district' => 'Условный район']), $this->row(['county' => 'Условный округ', 'suburb' => 'Условный пригород']),
+            $this->row(['district' => ['invalid']])];
+        [$candidate, $withoutDistrict, $invalidDistrict] = $normalizer->normalize($rows, null, CarbonImmutable::now('UTC')->toISOString())['candidates'];
+        $this->assertSame('Условный район', $candidate['components']['district']);
+        $this->assertArrayNotHasKey('district', $withoutDistrict['components']);
+        $this->assertArrayNotHasKey('district', $invalidDistrict['components']);
+
+        $tokens = app(GeocodingTokens::class);
+        $selection = $tokens->confirm($tokens->candidate($candidate)['candidate_token']);
+        $this->assertSame($candidate['components'], $selection['place']['address']['components']);
+        $this->assertSame($candidate['label'], $selection['place']['label']);
+        $this->assertSame('10/2А к3 стр4', $selection['place']['address']['components']['number']['raw']);
+        $this->assertSame($selection['place'], $tokens->reconfirm($selection['selection_token'])['place']);
+    }
+
+    public function test_display_district_is_omitted_if_only_the_selection_envelope_would_overflow(): void
+    {
+        $row = $this->row(['formatted' => str_repeat('界', 512), 'place_id' => str_repeat('x', 55),
+            'street' => str_repeat('Я', 256), 'district' => str_repeat('Я', 32)]);
+        $candidate = app(GeoapifyNormalizer::class)->normalize([$row], null, CarbonImmutable::now('UTC')->toISOString())['candidates'][0];
+        $tokens = app(GeocodingTokens::class);
+        $candidateToken = $tokens->candidate($candidate)['candidate_token'];
+        $this->code('PROVIDER_RESPONSE_INVALID', fn () => $tokens->confirm($candidateToken));
+
+        $fitted = $tokens->prepareCandidate($candidate);
+        unset($candidate['components']['district']);
+        $this->assertSame($candidate, $fitted);
+        $chosen = $tokens->confirm($tokens->candidate($fitted)['candidate_token']);
+        $this->assertSame($candidate['components'], $chosen['place']['address']['components']);
+    }
+
     public function test_absolute_lifecycle_replay_and_scope_rules(): void
     {
         $tokens = app(GeocodingTokens::class);

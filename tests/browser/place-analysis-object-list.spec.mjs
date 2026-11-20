@@ -27,7 +27,7 @@ test('all categories, icons, numbered summaries and linked map selection', async
     await expect.poll(() => page.evaluate(() => !!window.__smokeMapIn('.pa-map')?.isStyleLoaded())).toBe(true)
     await page.getByRole('button', { name: 'Точка на карте', exact: true }).focus()
     await page.keyboard.press('Enter'); await page.keyboard.press('Enter')
-    await page.getByRole('button', { name: 'Анализировать', exact: true }).click()
+    await page.getByRole('button', { name: 'Анализировать точку', exact: true }).click()
     await expect(page.locator('[data-analysis-block="poi"] [role="status"]')).toHaveText('Готово')
     await page.getByRole('tab', { name: 'Объекты', exact: true }).click()
     const filters = page.getByRole('group', { name: 'Категории объектов' })

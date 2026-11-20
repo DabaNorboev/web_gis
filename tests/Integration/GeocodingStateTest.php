@@ -277,19 +277,22 @@ class GeocodingStateTest extends PostgisTestCase
         config(['geocoding.enabled' => true]);
         $this->mock(GeoapifyTransport::class, function ($m) {
             $m->shouldReceive('available')->andReturnTrue();
-            $m->shouldReceive('request')->once()->with('autocomplete', \Mockery::on(fn ($p) => $p['filter'] === 'rect:0,0,10,10' && $p['limit'] === 5 && $p['lang'] === 'ru'), \Mockery::type(GeocodingState::class))->andReturn([$this->row()]);
+            $m->shouldReceive('request')->once()->with('autocomplete', \Mockery::on(fn ($p) => $p['filter'] === 'rect:0,0,10,10' && $p['limit'] === 5 && $p['lang'] === 'ru'), \Mockery::type(GeocodingState::class))->andReturn([$this->row(['district' => 'Условный район'])]);
         });
         $request = ['request_id' => (string) Str::uuid(), 'q' => 'Синтетическая 10/2А к3 стр4', 'mode' => 'autocomplete'];
         $a = $this->postJson('/api/v1/geocoding/search', $request)->assertOk()->assertJsonPath('meta.cache', 'MISS')->json();
+        $this->assertSame('Условный район', $a['data']['candidates'][0]['components']['district']);
         $cacheRow = DB::table('geocoding_cache')->first();
         $this->assertSame(300, $cacheRow->expires_at - $cacheRow->created_at);
         $request['request_id'] = (string) Str::uuid();
         $b = $this->postJson('/api/v1/geocoding/search', $request)->assertOk()->assertJsonPath('meta.cache', 'HIT')->json();
+        $this->assertSame('Условный район', $b['data']['candidates'][0]['components']['district']);
         $this->assertSame($a['meta']['received_at'], $b['meta']['received_at']);
         $this->assertSame($a['data']['candidates'][0]['candidate_id'], $b['data']['candidates'][0]['candidate_id']);
         $this->assertNotSame($a['data']['candidates'][0]['candidate_token'], $b['data']['candidates'][0]['candidate_token']);
         $this->assertSame($cacheRow->expires_at, DB::table('geocoding_cache')->first()->expires_at);
         $chosen = app(GeocodingTokens::class)->confirm($a['data']['candidates'][0]['candidate_token']);
+        $this->assertSame('Условный район', $chosen['place']['address']['components']['district']);
         DB::table('geocoding_cache')->delete();
         $this->assertSame($chosen['place'], app(GeocodingTokens::class)->selection($chosen['selection_token'])['place']);
         $this->mock(GeoapifyTransport::class, function ($m) {
@@ -300,6 +303,27 @@ class GeocodingStateTest extends PostgisTestCase
         $request['request_id'] = (string) Str::uuid();
         $this->postJson('/api/v1/geocoding/search', $request)->assertStatus(504)->assertJsonPath('code', 'PROVIDER_TIMEOUT');
         $this->assertSame(0, DB::table('geocoding_cache')->count());
+    }
+
+    public function test_cache_without_display_district_can_still_confirm_and_reconfirm(): void
+    {
+        $this->scopeFixture();
+        $this->mock(GeoapifyTransport::class, fn ($mock) => $mock->shouldNotReceive('request'));
+        $request = ['request_id' => (string) Str::uuid(), 'q' => 'Синтетическая 10/2А к3 стр4', 'mode' => 'autocomplete'];
+        $candidate = $this->candidateFixture();
+        $state = app(GeocodingState::class);
+        $state->put($state->cacheKey('search', $request, app(GeocodingScope::class)->identity()), [
+            'data' => ['status' => 'OK', 'reason' => null, 'candidates' => [$candidate]],
+            'received_at' => $candidate['source']['received_at'],
+        ], 300);
+
+        $response = $this->postJson('/api/v1/geocoding/search', $request)->assertOk()->assertJsonPath('meta.cache', 'HIT');
+        $this->assertArrayNotHasKey('district', $response->json('data.candidates.0.components'));
+        $tokens = app(GeocodingTokens::class);
+        $selection = $tokens->confirm($response->json('data.candidates.0.candidate_token'));
+        $this->assertSame($candidate['label'], $selection['place']['label']);
+        $this->assertSame($candidate['components'], $selection['place']['address']['components']);
+        $this->assertSame($selection['place'], $tokens->reconfirm($selection['selection_token'])['place']);
     }
 
     public function test_reverse_positive_empty_and_landmark_ttls_and_outside_scope_without_network(): void

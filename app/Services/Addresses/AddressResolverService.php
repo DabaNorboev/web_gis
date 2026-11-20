@@ -42,6 +42,8 @@ class AddressResolverService
         $row = DB::table('osm_addresses')->where('dataset_import_id', $import->id)->where('osm_type', $parts[1])->where('osm_id', $parts[2])
             ->selectRaw("label,point_method,ST_X(geom) lon,ST_Y(geom) lat,ST_AsGeoJSON(source_geom) geometry,
                 ST_XMin(Box3D(source_geom)) west,ST_YMin(Box3D(source_geom)) south,ST_XMax(Box3D(source_geom)) east,ST_YMax(Box3D(source_geom)) north,
+                coalesce(nullif(btrim(street),''), place) AS address_line, house_number,
+                raw_data->'tags'->>'addr:district' AS district,
                 raw_data->'tags'->>'building:levels' levels,
                 CASE WHEN coalesce(raw_data->'tags'->>'building','') NOT IN ('','no') THEN 'building'
                     WHEN osm_type='node' THEN 'address_point' ELSE 'address_area' END object_type")->first();
@@ -53,6 +55,7 @@ class AddressResolverService
         $object = ['id' => $id, 'lon' => $lon, 'lat' => $lat, 'geometry' => json_decode($row->geometry, true),
             'point_method' => $row->point_method, 'object_type' => $row->object_type, 'levels' => $row->levels];
         $address = ['id' => $id, 'label' => $row->label, 'object' => $object,
+            'display' => ['address_line' => $row->address_line, 'house_number' => $row->house_number, 'district' => $row->district],
             'bounds' => [(float) $row->west, (float) $row->south, (float) $row->east, (float) $row->north],
             'source' => 'OpenStreetMap', 'dataset_import_id' => $import->id,
             'observed_at' => $import->observed_at ? CarbonImmutable::parse($import->observed_at)->utc()->toIso8601String() : null,

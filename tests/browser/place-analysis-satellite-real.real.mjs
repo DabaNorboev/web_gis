@@ -18,7 +18,7 @@ async function pickPoint(page) {
     await page.keyboard.press('Enter')
     await expect(page.locator('.pa-map')).toBeFocused()
     await page.keyboard.press('Enter')
-    await page.getByRole('button', { name: 'Анализировать', exact: true }).press('Enter')
+    await page.getByRole('button', { name: 'Анализировать точку', exact: true }).press('Enter')
 }
 async function openSatellite(page) {
     await page.getByRole('tab', { name: 'Спутник', exact: true }).click()
@@ -106,7 +106,7 @@ test('real A10.2 catalog, two dates, TCI/NDVI, legend, zoom and quick changes', 
     })
     await page.keyboard.press('Enter')
     await expect(page.getByRole('dialog', { name: 'Выбранная точка' })).toBeVisible()
-    await page.getByRole('button', { name: 'Анализировать', exact: true }).click()
+    await page.getByRole('button', { name: 'Анализировать точку', exact: true }).click()
     await expect.poll(() => calls.some(call => call.place.kind === 'point' && Math.abs(call.place.lon - target.lon) < 1e-6 && Math.abs(call.place.lat - target.lat) < 1e-6)).toBe(true)
     await expect(card(page).getByRole('status')).toHaveText('Наблюдение готово')
 })

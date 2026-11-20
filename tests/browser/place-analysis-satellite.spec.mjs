@@ -12,7 +12,7 @@ async function pickPoint(page) {
     await page.keyboard.press('Enter')
     await expect(page.locator('.pa-map')).toBeFocused()
     await page.keyboard.press('Enter')
-    await page.getByRole('button', { name: 'Анализировать', exact: true }).press('Enter')
+    await page.getByRole('button', { name: 'Анализировать точку', exact: true }).press('Enter')
 }
 async function openSatellite(page) {
     await page.getByRole('tab', { name: 'Спутник', exact: true }).click()
@@ -365,7 +365,7 @@ test('satellite controls have one owner and NDVI legend preserves manual state a
         map.jumpTo({ center: [center.lng + .01, center.lat] })
     })
     await page.locator('.pa-map').press('Enter')
-    await page.getByRole('button', { name: 'Анализировать', exact: true }).click()
+    await page.getByRole('button', { name: 'Анализировать точку', exact: true }).click()
     await expect(card(page).getByRole('status')).toHaveText('Наблюдение готово')
     await expect(legend).toHaveAttribute('aria-expanded', 'false')
     await openSatellite(page)

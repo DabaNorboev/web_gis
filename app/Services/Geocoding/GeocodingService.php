@@ -56,11 +56,12 @@ class GeocodingService
                     $normalized['reason'] = 'POSITION_REQUIRES_POINT';
                 }
             }
-            foreach ($normalized['candidates'] as $candidate) {
+            foreach ($normalized['candidates'] as &$candidate) {
                 if ($candidate['can_confirm']) {
-                    $this->tokens->candidate($candidate); // Reject oversized snapshots before cache write.
+                    $candidate = $this->tokens->prepareCandidate($candidate);
                 }
             }
+            unset($candidate);
             $cached = ['data' => $normalized, 'received_at' => $normalized['candidates'] === [] ? null : $received];
             $this->state->put($key, $cached, $cached['data']['status'] === 'EMPTY' ? 60 : ($point === null ? 300 : 3600));
         }

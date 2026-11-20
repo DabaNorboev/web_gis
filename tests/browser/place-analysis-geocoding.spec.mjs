@@ -6,7 +6,7 @@ import { fixtures, point, preview } from './support/geocoding.mjs'
 
 test('address preview is separate from selection; confirm uses v2 and shows attribution', async ({ page }, info) => {
     const errors = []; page.on('pageerror', e => errors.push(e.message))
-    const f = await fixtures(page); await page.goto('/')
+    const f = await fixtures(page); await page.goto('/'); await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click()
     await expect(page.getByText('Текст поиска передаётся Geoapify', { exact: true })).toBeVisible()
     await preview(page)
     expect(f.requests).toHaveLength(0)
@@ -30,7 +30,7 @@ test('address preview is separate from selection; confirm uses v2 and shows attr
     await page.screenshot({ path: info.outputPath('geocoding-selected.png'), fullPage: true })
 })
 test('a point uses v1; reverse is explicit and switching to address requires confirm', async ({ page }) => {
-    const f = await fixtures(page); await page.goto('/'); await point(page)
+    const f = await fixtures(page); await page.goto('/'); await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click(); await point(page)
     await expect.poll(() => f.requests.length).toBe(3); expect(f.calls).toHaveLength(0)
     const original = f.requests[0].place
     await page.getByRole('button', { name: 'Найти адрес поблизости', exact: true }).click()
@@ -43,21 +43,26 @@ test('a point uses v1; reverse is explicit and switching to address requires con
 test('street/number mismatch cannot confirm; failure keeps point analysis available', async ({ page }) => {
     const f = await fixtures(page, { candidateOverrides: { precision: { level: 'street', reason: null, accuracy_m: null, accuracy_reason: 'NOT_VALIDATED' },
         source: { ...candidate().source, provider_result_type: 'street' }, can_confirm: false, restrictions: ['HOUSE_REQUIRED'], candidate_token: null, expires_at: null } })
-    await page.goto('/'); await preview(page)
+    await page.goto('/'); await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click(); await preview(page)
+    const addressPreview = page.getByRole('region', { name: 'Подтверждение адреса' })
+    await expect(addressPreview.getByText('Улица', { exact: true })).toBeVisible()
+    await expect(addressPreview).not.toContainText('Синтетическая улица, 10')
     await expect(page.getByRole('button', { name: 'Подтвердить положение', exact: true })).toHaveCount(0)
-    await page.getByRole('button', { name: 'Уточнить свободную точку', exact: true }).click()
-    await page.getByRole('button', { name: 'Анализировать', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Уточнить свободную точку', exact: true })).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('dialog', { name: 'Выбранная точка' })).toContainText('Координаты:')
+    await page.getByRole('button', { name: 'Анализировать точку', exact: true }).click()
     await expect.poll(() => f.requests.length).toBe(3); expect(f.requests.every(r => r.place.kind === 'point')).toBe(true)
 })
 test('provider unavailable is safe and never blocks independent point analysis', async ({ page }) => {
-    const f = await fixtures(page, { lookupError: 'GEOCODING_UNAVAILABLE' }); await page.goto('/')
+    const f = await fixtures(page, { lookupError: 'GEOCODING_UNAVAILABLE' }); await page.goto('/'); await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click()
     await page.getByRole('combobox', { name: 'Поиск адреса' }).fill('Синтетическая')
     await expect(page.getByText('Адресный поиск недоступен. Можно выбрать точку на карте.', { exact: true })).toBeVisible()
     await expect(page.locator('body')).not.toContainText('PRIVATE_CANARY')
     await point(page); await expect.poll(() => f.requests.length).toBe(3)
 })
 test('expired selection requires explicit reconfirm and does not repeat geocoding', async ({ page }) => {
-    const f = await fixtures(page, { expired: true }); await page.goto('/'); await preview(page)
+    const f = await fixtures(page, { expired: true }); await page.goto('/'); await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click(); await preview(page)
     await page.getByRole('button', { name: 'Подтвердить положение', exact: true }).click()
     await expect(page.getByRole('button', { name: 'Переподтвердить положение', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Переподтвердить положение', exact: true }).click()
@@ -66,7 +71,7 @@ test('expired selection requires explicit reconfirm and does not repeat geocodin
     expect(f.calls.filter(c => c.op === 'search')).toHaveLength(1)
 })
 test('absolute seven-day expiry preserves ready results and requires a new choice without automatic exchange', async ({ page }) => {
-    const f = await fixtures(page); await page.clock.install({ time: Date.now() }); await page.goto('/'); await preview(page)
+    const f = await fixtures(page); await page.clock.install({ time: Date.now() }); await page.goto('/'); await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click(); await preview(page)
     await page.getByRole('button', { name: 'Подтвердить положение', exact: true }).click()
     await expect(page.locator('[data-analysis-block="poi"]').getByRole('status')).toHaveText('Готово')
     await page.clock.fastForward(7 * 86400000 + 2000)
@@ -76,7 +81,7 @@ test('absolute seven-day expiry preserves ready results and requires a new choic
     expect(f.calls.filter(c => c.op === 'reconfirm')).toHaveLength(0)
 })
 test('absolute expiry during an in-flight block clears loading and rejects its late response', async ({ page }) => {
-    const f = await fixtures(page, { expiresSoon: true }); await page.clock.install({ time: Date.now() }); await page.goto('/'); await preview(page)
+    const f = await fixtures(page, { expiresSoon: true }); await page.clock.install({ time: Date.now() }); await page.goto('/'); await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click(); await preview(page)
     await page.getByRole('button', { name: 'Подтвердить положение', exact: true }).click()
     const poi = page.locator('[data-analysis-block="poi"]')
     await expect(poi.getByRole('status')).toHaveText('Готово')

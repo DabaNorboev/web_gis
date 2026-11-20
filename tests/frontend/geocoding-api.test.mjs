@@ -24,6 +24,19 @@ test('candidate and selection require matching request, original point, number, 
         assert.throws(() => geo.validateGeocodingResponse(bad, 'confirm', request, c))
     }
 })
+test('optional district survives confirmation and remains part of the snapshot', () => {
+    const withDistrict = candidate({ components: { ...c.components, district: 'Условный район' } })
+    const result = envelope(request, { status: 'OK', reason: null, candidates: [withDistrict] })
+    assert.doesNotThrow(() => geo.validateGeocodingResponse(result, 'search', request))
+    const confirmed = envelope(request, selection(withDistrict))
+    assert.doesNotThrow(() => geo.validateGeocodingResponse(confirmed, 'confirm', request, withDistrict))
+    const changed = structuredClone(confirmed)
+    delete changed.data.place.address.components.district
+    assert.throws(() => geo.validateGeocodingResponse(changed, 'confirm', request, withDistrict))
+    const malformed = structuredClone(result)
+    malformed.data.candidates[0].components.district = { text: 'Условный район' }
+    assert.throws(() => geo.validateGeocodingResponse(malformed, 'search', request))
+})
 test('reverse must echo exact input and preserve house distance limit', () => {
     const r = { request_id: id, lon: .4, lat: .5 }
     const result = envelope(r, { status: 'OK', reason: null, point: { lon: .4, lat: .5 }, candidates: [{ ...c, number_match: 'NOT_REQUESTED', reference_distance_m: 12 }] })

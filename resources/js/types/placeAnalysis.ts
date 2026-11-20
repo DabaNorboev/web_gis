@@ -1,3 +1,4 @@
+import type { LocalAddressDisplay } from './address'
 import type { GeocodedPlace } from './geocoding'
 import type { Point, Polygon, MultiPolygon } from 'geojson'
 
@@ -25,7 +26,7 @@ export interface AnalysisRequest {
     blocks: AnalysisBlockKey[]
 }
 export interface AnalysisAddress {
-    id: string; label: string
+    id: string; label: string; display?: LocalAddressDisplay
     object: AnalysisPoint & { id: string; geometry: Point | Polygon | MultiPolygon; point_method: 'osm_node' | 'point_on_surface'; object_type: 'building' | 'address_point' | 'address_area'; levels: string | null }
     bounds: [number, number, number, number]
     source: string; dataset_import_id: number; observed_at: string | null; source_updated_at: string | null; reason: string

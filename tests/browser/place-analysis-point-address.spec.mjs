@@ -9,7 +9,7 @@ for (const reason of ['NO_RESULTS', 'OUTSIDE_SCOPE', 'NO_NEARBY_RESULTS']) {
             const r = route.request().postDataJSON()
             return route.fulfill({ json: envelope(r, { status: 'EMPTY', reason, point: { lon: r.lon, lat: r.lat }, candidates: [] }, null, 'NONE') })
         })
-        await page.goto('/'); await point(page)
+        await page.goto('/'); await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click(); await point(page)
         await expect.poll(() => f.requests.length).toBe(3)
         await page.getByRole('button', { name: 'Найти адрес поблизости', exact: true }).click()
         await expect(page.getByText('Адреса не найдены. Можно выбрать точку на карте.', { exact: true })).toBeVisible()
@@ -18,12 +18,12 @@ for (const reason of ['NO_RESULTS', 'OUTSIDE_SCOPE', 'NO_NEARBY_RESULTS']) {
         expect(f.requests).toHaveLength(3)
     })
 }
-test('reverse failure and confirm failure preserve the point without exposing private error bodies', async ({ page }) => {
-    const f = await fixtures(page, { confirmError: 'INVALID_SELECTION' }); await page.goto('/'); await point(page)
+test('confirm failure preserves the point without exposing private error bodies', async ({ page }) => {
+    const f = await fixtures(page, { confirmError: 'INVALID_SELECTION' }); await page.goto('/'); await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click(); await point(page)
     await page.getByRole('button', { name: 'Найти адрес поблизости', exact: true }).click()
     await page.getByRole('option').first().click()
     await page.getByRole('button', { name: 'Подтвердить положение', exact: true }).click()
-    await expect(page.getByText('Адресный поиск недоступен. Можно выбрать точку на карте.', { exact: true })).toBeVisible()
+    await expect(page.getByText('Не удалось подтвердить адрес. Выберите адрес заново или поставьте точку на карте.', { exact: true })).toBeVisible()
     await expect(page.locator('body')).not.toContainText('PRIVATE_CANARY')
     await expect(page.locator('[data-analysis-block="poi"]').getByRole('status')).toHaveText('Готово')
     expect(f.requests).toHaveLength(3)
@@ -31,7 +31,7 @@ test('reverse failure and confirm failure preserve the point without exposing pr
 test('late reverse for the previous point cannot show an old address or move the new point', async ({ page }) => {
     const f = await fixtures(page); let stale
     await page.route('**/api/v1/geocoding/reverse', route => { stale = route })
-    await page.goto('/'); await point(page)
+    await page.goto('/'); await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click(); await point(page)
     await page.getByRole('button', { name: 'Найти адрес поблизости', exact: true }).click()
     await expect.poll(() => !!stale).toBe(true)
     await page.evaluate(() => window.__smokeMapIn('.pa-map').jumpTo({ center: [1, 1] }))
