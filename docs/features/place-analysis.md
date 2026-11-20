@@ -158,7 +158,7 @@ Resolver, coverage и серверный круг переиспользуютс
 
 ## 6. Блок `satellite`
 
-NDVI дат без процента растительности и анализа изменений; UI/активация отдельно. Нет runtime/pin — `UNAVAILABLE/SATELLITE_NOT_CONFIGURED`, недоверенный каталог — `UNAVAILABLE/SATELLITE_CATALOG_UNTRUSTED`, неожиданный отказ — `ERROR/SATELLITE_READ_FAILED`. data=null при отказе; coverage/completeness блока всегда null. POI/air независимы; READY допускает [].
+NDVI дат без процента растительности и анализа изменений; UI/активация отдельно. Нет runtime/pin — `UNAVAILABLE/SATELLITE_NOT_CONFIGURED`, недоверенный каталог — `UNAVAILABLE/SATELLITE_CATALOG_UNTRUSTED`, отказ чтения — `ERROR/SATELLITE_READ_FAILED` (только `satellite`, с повтором блока). data=null при отказе; coverage/completeness всегда null. POI/air независимы; READY допускает [].
 
 `data`: method/mask/legend versions, catalog/source-index hashes, legend, delivery_status и:
 
@@ -168,11 +168,11 @@ NDVI дат без процента растительности и анализ
 | `releases[]` | Все даты с status/reason/coverage/mean_ndvi/mean_ndvi_reason, теми же provenance и ограничениями. |
 | `scenes[]` | Все составляющие: scene_id/product_uri/tile/platform/baseline/datatake, acquired_at_catalog/acquired_at_granule UTC; общей выдуманной сцены нет. |
 | `selected` | Запрошенная строка releases + `layers`. Нет даты — DATE_NOT_SELECTED; нет её в каталоге — DATE_NOT_IN_CATALOG; coverage/mean_ndvi=null с причиной. Автовыбора нет; неверный формат — 422. |
-| `layers` | MapLibre raster-source descriptors true-color/ndvi; null без подготовленных пикселей или доставки. |
+| `layers` | MapLibre raster descriptors true-color/ndvi выбранной даты/выпуска. Допустимы при `NO_USABLE_NDVI` и `NO_GEOGRAPHIC_DATA` при наличии подготовленных пикселей и доставки. Без пикселей или доставки — null. |
 
 Знаменатель — круг native-центров 10 м EPSG:32646 через PostGIS, не точный geography-контур. `source_footprint_fraction` — объединение футпринтов, `prepared_fraction` — target, `geographic_fraction` — ненулевые исходные данные, `usable_fraction` — допустимый NDVI. Доли независимы от городских. Coverage: *_pixels, circle_pixels, outside_rectangle_pixels, inside_rectangle_outside_target_pixels, reason_counts/source_pixels. Overlap один раз; краевой пиксель неизвестен.
 
-Ноль NDVI допустим. Нет подготовленных/географических/пригодных данных — UNAVAILABLE с NO_PREPARED_DATA/NO_GEOGRAPHIC_DATA/NO_USABLE_NDVI, среднее null. Повреждение блока — SATELLITE_RELEASE_UNTRUSTED, coverage/среднее null; бюджет — READ_BUDGET_EXCEEDED. Остальные даты и статус каталога сохраняются.
+Ноль NDVI допустим. Нет подготовленных/географических/пригодных данных — UNAVAILABLE с NO_PREPARED_DATA/NO_GEOGRAPHIC_DATA/NO_USABLE_NDVI, среднее null с причиной. UI показывает причину, доступные слои или отдельный отказ доставки. Повреждение блока — SATELLITE_RELEASE_UNTRUSTED, coverage/среднее null; бюджет — READ_BUDGET_EXCEEDED. Остальные даты и статус каталога сохраняются.
 
 `EARLY_SPRING_SNOW` для 07.05.2024: снег запада и ранняя фенология, не летнее состояние; [метаданные](../../config/satellite/catalog-metadata.json) закреплены по hash manifest. ndvi-fixed-v2 общая; отказ доставки сохраняет аналитику. Порча PNG проверяется при чтении.
 
@@ -271,7 +271,7 @@ API и клиентский lifecycle А7 реализованы без мигр
 ## 12. Ограничения и открытые вопросы
 
 - **POI:** четыре локальные категории подключены. А8 принят владельцем. Польза проверяется отдельно с людьми.
-- **Спутники:** шесть дат подключены. `valid_fraction` — покрытие пригодными данными. Композиции и различия отложены.
+- **Спутники:** список дат зависит от активного каталога. `valid_fraction` — покрытие пригодными данными. Композиции и различия отложены.
 - **А11/А12:** часовой пояс, QC, история оборудования/координат, полный ряд и стабильность ID. `timezone: null`/`qc: UNKNOWN` обязательны, пока это не подтверждено.
 - **Остаток А7:** решение владельца о хранении, обмене, URL и восстановлении reload/Back/Forward; затем отдельная реализация и регрессии совместимости. Сейчас новый ввод только в памяти. А6 и весь А7 не закрыты; полная проверка UI на данных будущих providers — А8–А12/И1–И3/А13.
 - **Производительность:** число дат/станций ограничивают А10/А12; тяжёлая raster/GIS-обработка в HTTP запрещена. 5 станций и 5 км — стартовые технические значения, не обещание полной сети.
