@@ -106,7 +106,7 @@ Confirm выдаёт `selection_id` (UUID), `selection_token` (≤6144 байт,
 
 Ответ v2: конверт блоков, `analysis_version:2`, `place` из confirm без токенов/фиктивного OSM `object`. UI сверяет версию/selection_id/весь снимок и обычные параметры/epoch. Три независимых запроса блоков используют один selection_token. При `now>=expires_at` — 410 `SELECTION_EXPIRED`; выбор/результаты неизменны, UI предлагает явное переподтверждение. Автоматического продления, reload/URL/долговременного хранения нет.
 
-Свободная точка, reverse и переход к адресу — [целевое поведение Г4](point-address.md#внешний-ориентир-г3г4-план). Они не меняют legacy resolver.
+Свободная точка, reverse и переход к адресу — [сценарий Г5](point-address.md#внешний-ориентир-г5). Они не меняют legacy resolver.
 
 ### Переподтверждение снимка
 
@@ -168,7 +168,7 @@ Upstream 401/403 выключает сеть до исправления; generi
 
 Кэш не меняет ID/точку/подпись/происхождение/точность выбора. Снимок/токен — память экрана, не storage/URL. Старые OSM API/ID/данные сохраняются. Старый `place.address_id` разрешается только локальным resolver; provider ID и токены туда не принимаются, соответствие по тексту/координатам не создаётся.
 
-До ввода: «Текст поиска передаётся Geoapify». У результатов/выбора — `Powered by Geoapify` со ссылкой `https://www.geoapify.com/` и атрибуция источников; OSM — `© OpenStreetMap contributors`, `https://www.openstreetmap.org/copyright`. Массив `{text,url}` включён в `source.attribution` защищённого снимка, показывается при использовании; атрибуция подложки его не заменяет. [FAQ хранения](https://www.geoapify.com/geocoding-api/) разрешает хранение с атрибуцией; тариф проверяется до подключения. Reverse — по [явному действию](point-address.md#внешний-ориентир-г3г4-план). Во внешний API передаются только текст либо lon/lat, язык/scope/limit, серверный ключ/IP; без browser IP/ID, cookies, Referer, selection_token, радиуса, станций и результатов.
+До ввода: «Текст поиска передаётся Geoapify». У результатов/выбора — `Powered by Geoapify` со ссылкой `https://www.geoapify.com/` и атрибуция источников; OSM — `© OpenStreetMap contributors`, `https://www.openstreetmap.org/copyright`. Массив `{text,url}` включён в `source.attribution` защищённого снимка, показывается при использовании; атрибуция подложки его не заменяет. [FAQ хранения](https://www.geoapify.com/geocoding-api/) разрешает хранение с атрибуцией; тариф проверяется до подключения. Reverse — по [явному действию](point-address.md#внешний-ориентир-г5). Во внешний API передаются только текст либо lon/lat, язык/scope/limit, серверный ключ/IP; без browser IP/ID, cookies, Referer, selection_token, радиуса, станций и результатов.
 
 Новые пути/анализ v2 наследуют [защиты POST](place-analysis.md#21-приватность-нового-post): no-store/no-referrer, безопасные логи/ошибки, без spool тел. Nginx/FPM/APM/HTTP-клиент не журналируют тела/заголовки/токены/исходящие URL с ключом и вводом; только фиксированный код/метод/длительность/счётчики. Исключения без message/arguments, включая debug; CORS чужим origin закрыт. Ключи не попадают в bundle/отчёты, .env не перезаписывается.
 
