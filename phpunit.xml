@@ -21,6 +21,10 @@
         <server name="PLACE_ANALYSIS_PARKS_ENABLED" value="false" force="true"/>
         <env name="PLACE_ANALYSIS_PARKS_ENABLED" value="false" force="true"/>
         <!-- Local provider activation must not leak into isolated tests. -->
+        <server name="AIR_SNAPSHOT_ROOT" value="" force="true"/>
+        <env name="AIR_SNAPSHOT_ROOT" value="" force="true"/>
+        <server name="AIR_SCHEDULE_ENABLED" value="false" force="true"/>
+        <env name="AIR_SCHEDULE_ENABLED" value="false" force="true"/>
         <server name="SATELLITE_RUNTIME" value="" force="true"/>
         <env name="SATELLITE_RUNTIME" value="" force="true"/>
         <server name="SATELLITE_RUNTIME_SHA256" value="" force="true"/>

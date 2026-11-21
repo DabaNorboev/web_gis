@@ -3,6 +3,7 @@
 namespace App\Services\Analysis;
 
 use App\Services\Addresses\AddressResolverService;
+use App\Services\Air\AirProvider;
 use App\Services\Geocoding\GeocodingTokens;
 use App\Services\Gis\AnalysisArea;
 use Carbon\CarbonImmutable;
@@ -43,7 +44,12 @@ class PlaceAnalysisService
         $blocks = [];
         foreach ($input['blocks'] ?? self::BLOCKS as $key) {
             try {
-                $blocks[$key] = $this->calculateBlock($key, $key === 'satellite' ? $point + ['satellite_date' => $input['date'] ?? null] : $point, $radius);
+                $blockInput = match ($key) {
+                    'satellite' => $point + ['satellite_date' => $input['date'] ?? null],
+                    'air' => $point + ['selected_station_ids' => $input['stations']['selected_ids'] ?? []],
+                    default => $point,
+                };
+                $blocks[$key] = $this->calculateBlock($key, $blockInput, $radius);
             } catch (Throwable $error) {
                 Log::error('Place analysis block failed.', ['exception_type' => get_class($error), 'block' => $key]);
                 $blocks[$key] = ['status' => 'ERROR', 'code' => 'BLOCK_CALCULATION_FAILED',
@@ -69,15 +75,6 @@ class PlaceAnalysisService
         if ($key === 'satellite') {
             return app(SatelliteProvider::class)->analyze($point, $radius, $point['satellite_date'] ?? null);
         }
-        $reason = match ($key) {
-            'air' => 'Provider справочника и наблюдений станций анализа места ещё не реализован (А11–А12).',
-        };
-
-        $completeness = ['status' => 'UNKNOWN', 'reason' => $reason];
-
-        return ['status' => 'UNAVAILABLE', 'code' => 'BLOCK_NOT_AVAILABLE', 'message' => $reason,
-            'calculated_at' => CarbonImmutable::now('UTC')->toISOString(),
-            'coverage' => null,
-            'completeness' => $key === 'satellite' ? null : $completeness, 'data' => null];
+        return app(AirProvider::class)->analyze($point['selected_station_ids'], $point);
     }
 }

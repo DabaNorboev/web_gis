@@ -43,7 +43,7 @@ class PlaceAnalysisApiTest extends TestCase
         $this->assertSame(['poi', 'satellite', 'air'], array_keys($r->json('blocks')));
         foreach (PlaceAnalysisService::BLOCKS as $key) {
             $r->assertJsonPath("blocks.$key.status", 'UNAVAILABLE')->assertJsonPath("blocks.$key.code", match ($key) {
-                'poi' => 'POI_SNAPSHOTS_UNAVAILABLE', 'satellite' => 'SATELLITE_NOT_CONFIGURED', default => 'BLOCK_NOT_AVAILABLE'
+                'poi' => 'POI_SNAPSHOTS_UNAVAILABLE', 'satellite' => 'SATELLITE_NOT_CONFIGURED', default => 'AIR_SOURCE_UNAVAILABLE'
             })
                 ->assertJsonPath("blocks.$key.data", null);
             $this->assertMatchesRegularExpression('/Z$/', $r->json("blocks.$key.calculated_at"));
