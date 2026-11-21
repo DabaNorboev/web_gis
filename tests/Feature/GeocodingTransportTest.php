@@ -18,8 +18,7 @@ class GeocodingTransportTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // Launch PHP with -d curl.cainfo=/tmp/placelens-g3-ca.pem (read at transfer time).
-        $this->cert = '/tmp/placelens-g3-ca.pem';
+        $this->cert = tempnam(sys_get_temp_dir(), 'g3-ca-');
         $this->key = tempnam(sys_get_temp_dir(), 'g3-key-');
         $this->opensslConfig = tempnam(sys_get_temp_dir(), 'g3-ssl-');
         file_put_contents($this->opensslConfig, "[req]\ndistinguished_name=dn\nx509_extensions=ext\n[dn]\n[ext]\nsubjectAltName=DNS:localhost,IP:127.0.0.1\nbasicConstraints=critical,CA:TRUE\n");
@@ -38,6 +37,19 @@ class GeocodingTransportTest extends TestCase
         parent::tearDown();
     }
 
+    private function transferToPeer(string $url, GeocodingState $state): array
+    {
+        $client = new class extends GeoapifyTransport
+        {
+            public function local(string $url, GeocodingState $state, string $caFile): array
+            {
+                return $this->transfer($url, $state, $caFile);
+            }
+        };
+
+        return $client->local($url, $state, $this->cert);
+    }
+
     private function probe(string $mode, ?string $error, float $minimum = 0, float $maximum = 3): void
     {
         $process = proc_open([PHP_BINARY, base_path('tests/Support/Geocoding/tls-server.php'), $this->cert, $this->key, $mode],
@@ -49,16 +61,9 @@ class GeocodingTransportTest extends TestCase
         $state->shouldReceive('finish')->once();
         $state->shouldReceive('upstreamQuota')->with(null)->andReturn(3600);
         $state->shouldReceive('upstreamStatus')->withAnyArgs()->andReturnNull();
-        $client = new class extends GeoapifyTransport
-        {
-            public function local(string $url, GeocodingState $state): array
-            {
-                return $this->transfer($url, $state);
-            }
-        };
         $start = microtime(true);
         try {
-            $result = $client->local('https://'.$endpoint.'/synthetic', $state);
+            $result = $this->transferToPeer('https://'.$endpoint.'/synthetic', $state);
             $this->assertNull($error);
             $this->assertSame([], $result);
         } catch (GeocodingFailure $e) {
@@ -117,19 +122,13 @@ class GeocodingTransportTest extends TestCase
             [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'a']], $pipes);
         $endpoint = trim(fgets($pipes[1]));
         $this->assertMatchesRegularExpression('/^127\.0\.0\.1:\d+$/', $endpoint);
-        $client = new class extends GeoapifyTransport
-        {
-            public function local(string $url, GeocodingState $state): array
-            {
-                return $this->transfer($url, $state);
-            }
-        };
         $start = microtime(true);
         try {
-            $client->local('https://'.$endpoint, $state);
+            $this->transferToPeer('https://'.$endpoint, $state);
             $this->fail('Lost locks must abort');
         } catch (GeocodingFailure $e) {
             $this->assertSame('GEOCODING_UNAVAILABLE', $e->errorCode);
+            $this->assertGreaterThan(2, $calls);
             $this->assertLessThan(3, microtime(true) - $start);
         } finally {
             proc_terminate($peer, 9);

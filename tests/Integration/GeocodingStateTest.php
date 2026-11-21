@@ -185,7 +185,10 @@ class GeocodingStateTest extends PostgisTestCase
         $workers = [];
         try {
             for ($n = 0; $n < 6; $n++) {
-                $env = array_merge(getenv(), ['G3_WORKER_DB' => json_encode(config('database.connections.pgsql'))]);
+                $env = array_merge(getenv(), [
+                    'APP_KEY' => config('app.key'),
+                    'G3_WORKER_DB' => json_encode(config('database.connections.pgsql')),
+                ]);
                 $process = proc_open([PHP_BINARY, base_path('tests/Support/Geocoding/worker.php'), (string) $n],
                     [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'a']], $pipes, base_path(), $env);
                 stream_set_timeout($pipes[1], 10);
@@ -231,8 +234,12 @@ class GeocodingStateTest extends PostgisTestCase
         $address = stream_socket_get_name($portProbe, false);
         fclose($portProbe);
         $marker = tempnam(sys_get_temp_dir(), 'g3-abort-');
-        $env = array_merge(getenv(), ['G3_WORKER_DB' => json_encode(config('database.connections.pgsql')),
-            'G3_ABORT_MARKER' => $marker, 'G3_ABORT_URL' => 'https://'.$stallAddress]);
+        $env = array_merge(getenv(), [
+            'APP_KEY' => config('app.key'),
+            'G3_WORKER_DB' => json_encode(config('database.connections.pgsql')),
+            'G3_ABORT_MARKER' => $marker,
+            'G3_ABORT_URL' => 'https://'.$stallAddress,
+        ]);
         $process = proc_open([PHP_BINARY, '-S', $address, base_path('tests/Support/Geocoding/abort-router.php')],
             [0 => ['pipe', 'r'], 1 => ['file', '/dev/null', 'a'], 2 => ['file', '/dev/null', 'a']], $pipes, base_path(), $env);
         try {
@@ -397,6 +404,8 @@ class GeocodingStateTest extends PostgisTestCase
 
     public function test_guard_failure_rejects_network_admission_and_releases_all_slots(): void
     {
+        // Resolve guard tables only in this fixture schema, even after other suites migrate public.
+        config(['database.connections.pgsql.search_path' => $this->schema]);
         Schema::drop('geocoding_guards');
         $state = new GeocodingState;
         $this->rejects('GEOCODING_UNAVAILABLE', fn () => $state->start('synthetic-failed-guard'));
