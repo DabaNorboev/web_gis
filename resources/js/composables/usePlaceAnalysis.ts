@@ -23,11 +23,11 @@ export function usePlaceAnalysis(options: { timeoutMs?: number } = {}) {
     let disposed = false
     const timeoutMs = options.timeoutMs ?? 20_000
 
-    function invalidate(key: AnalysisBlockKey) {
+    function invalidate(key: AnalysisBlockKey, preserveResponse = false) {
         epochs[key]++
         controllers[key]?.abort()
         delete controllers[key]
-        Object.assign(blocks[key], empty())
+        Object.assign(blocks[key], { phase: 'idle', error: null, response: preserveResponse ? blocks[key].response : null })
     }
     function setInput(value: PlaceAnalysisInput | null) {
         const next = value === null ? null : normalizeAnalysisInput(value)
@@ -42,10 +42,10 @@ export function usePlaceAnalysis(options: { timeoutMs?: number } = {}) {
         }
         input.value = next
     }
-    async function load(key: AnalysisBlockKey) {
+    async function load(key: AnalysisBlockKey, { preserveResponse = false } = {}) {
         if (disposed || !input.value) return
         if (input.value.analysis_version === 2 && 'selection_token' in input.value.place && !input.value.place.selection_token) return
-        invalidate(key)
+        invalidate(key, preserveResponse)
         const epoch = epochs[key]
         const snapshot = structuredClone(input.value)
         const expected = dependencies(snapshot, key)
@@ -78,7 +78,7 @@ export function usePlaceAnalysis(options: { timeoutMs?: number } = {}) {
             resolvedPoint = origin
             map.value = response
             const block = response.blocks[key]!
-            blocks[key].response = response
+            if (block.status === 'READY' || !preserveResponse || !blocks[key].response) blocks[key].response = response
             blocks[key].phase = block.status === 'READY' ? 'ready' : block.status === 'UNAVAILABLE' ? 'unavailable' : 'error'
         } catch (error) {
             if (!current()) return
@@ -89,7 +89,7 @@ export function usePlaceAnalysis(options: { timeoutMs?: number } = {}) {
             if (current()) delete controllers[key]
         }
     }
-    function loadAll() { return Promise.all(analysisBlockKeys.map(load)) }
+    function loadAll() { return Promise.all(analysisBlockKeys.map(key => load(key))) }
     function retireSelection() {
         if (input.value?.analysis_version === 2) {
             input.value = { ...input.value, place: { kind: 'address', selection_token: '' } }

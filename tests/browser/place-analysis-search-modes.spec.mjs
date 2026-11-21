@@ -8,6 +8,9 @@ import { envelope } from '../frontend/fixtures/geocoding.mjs'
 const mode = page => page.getByRole('button', { name: /^Поиск: / })
 const input = page => page.getByRole('combobox', { name: 'Поиск адреса' })
 const ready = page => page.locator('[data-analysis-block="poi"]').getByRole('status')
+const addressMarker = (page, id) => page.locator(`.pa-address-marker[data-address-id="${id}"]`)
+const addressFeatures = page => page.evaluate(() =>
+    window.__smokeMapIn('.pa-map')?.getSource('pa-address-preview')?.serialize().data.features ?? [])
 function resolved(id) {
     const p = Object.values(places).find(p => p.id === id) ?? { ...places.a, id }
     return { address: { id, label: p.label, object: addressObject({ ...p, lon: .4, lat: .5 }), bounds: [.4, .5, .4, .5], source: 'OpenStreetMap', dataset_import_id: 1, observed_at: null, source_updated_at: null, reason: 'Synthetic' }, capabilities: { resolver_version: 1, selected_profile_version: 1 } }
@@ -31,7 +34,19 @@ async function local(page) {
 test('local starts by default; explicit OSM object uses v1 and mode preserves text, place and ready results', async ({ page }) => {
     const f = await local(page); await page.goto('/')
     await expect(mode(page)).toHaveText('Поиск: локальный')
+    const legend = page.getByRole('button', { name: 'Категории POI' })
+    await expect(legend).toHaveAttribute('aria-expanded', 'false')
+    await legend.press('Enter')
+    await expect(page.locator('#pa-poi-legend-body')).toBeVisible()
+    await legend.press('Space')
+    await expect(page.locator('#pa-poi-legend-body')).toBeHidden()
     await input(page).fill('Тестовая улица, 1')
+    const marker = addressMarker(page, places.a.id)
+    await expect(marker).toHaveText('')
+    await expect(marker).toHaveAccessibleName('Тестовая улица, 1 · на карте')
+    await expect(page.locator('.pa-sidebar-search')).not.toContainText('OpenStreetMap')
+    await expect.poll(() => page.evaluate(() => window.__smokeMapIn('.pa-map')?.getZoom())).toBeLessThanOrEqual(16.5)
+    expect(f.requests).toHaveLength(0)
     await page.getByRole('button', { name: 'Тестовая улица, 1', exact: true }).click()
     await expect(ready(page)).toHaveText('Готово')
     expect(f.resolutions).toEqual([places.a.id]); expect(f.requests).toHaveLength(3)
@@ -126,19 +141,47 @@ for (const external of [false, true]) {
             const card = page.getByRole('dialog', { name: 'Выбранная точка' })
             await expect.poll(() => !!sourcePoint).toBe(true)
             await mode(page).click(); await expect(card).toBeVisible()
+            const pointAction = card.getByRole('button', { name: 'Анализировать точку', exact: true })
+            const addressAction = card.getByRole('button', { name: 'Анализировать адрес', exact: true })
+            await expect(card.getByRole('button', { name: 'Закрыть карточку точки', exact: true })).toBeVisible()
+            await expect(card.getByRole('button', { name: 'Отмена', exact: true })).toHaveCount(0)
             if (['address', 'ambiguous'].includes(action)) {
-                const choices = card.getByRole('button', { name: 'Анализировать этот адрес', exact: true })
-                await expect(choices).toHaveCount(action === 'ambiguous' ? 2 : 1)
+                await expect(card.locator('.pa-point-actions button')).toHaveCount(2)
+                if (action === 'ambiguous') {
+                    await expect(addressAction).toBeDisabled()
+                    await card.getByRole('combobox', { name: 'Ближайший адрес' }).selectOption(places.b.id)
+                }
+                await expect(addressAction).toBeEnabled()
+                const box = await card.boundingBox()
+                for (const button of [pointAction, addressAction]) {
+                    const area = await button.boundingBox()
+                    expect(area.height).toBeGreaterThanOrEqual(44)
+                    expect(area.width).toBeLessThan(box.width - 32)
+                }
+                const a = await pointAction.boundingBox(), b = await addressAction.boundingBox()
+                expect(Math.max(b.x - a.x - a.width, b.y - a.y - a.height)).toBeGreaterThanOrEqual(8)
                 expect(f.resolutions).toHaveLength(0)
-                await choices.last().click()
+                await addressAction.click()
                 await expect(ready(page)).toHaveText('Готово')
                 expect(f.resolutions).toEqual([action === 'ambiguous' ? places.b.id : places.a.id])
                 expect(f.requests.every(r => r.place.address_id === f.resolutions[0] && !r.analysis_version)).toBe(true)
             } else {
                 if (action === 'error') await expect(card).toContainText('Адрес-ориентир недоступен')
-                await card.getByRole('button', { name: 'Анализировать точку', exact: true }).click()
+                if (action === 'empty' || action === 'error') {
+                    await expect(card.locator('.pa-point-actions button')).toHaveCount(1)
+                    await expect(addressAction).toHaveCount(0)
+                }
+                await pointAction.click()
                 await expect(ready(page)).toHaveText('Готово')
                 expect(f.requests.every(r => r.place.kind === 'point' && r.place.lon === sourcePoint.lon && r.place.lat === sourcePoint.lat)).toBe(true)
+                if (action === 'point') {
+                    const referenceButton = page.locator('.pa-api-actions').getByRole('button', { name: 'Анализировать адрес', exact: true })
+                    const analyze = page.getByRole('button', { name: 'Анализировать место', exact: true })
+                    await expect(referenceButton).toBeVisible()
+                    const referenceBox = await referenceButton.boundingBox()
+                    const analyzeBox = await analyze.boundingBox()
+                    expect(analyzeBox.y - referenceBox.y - referenceBox.height).toBeGreaterThanOrEqual(8)
+                }
             }
             expect(f.calls).toHaveLength(0); expect(f.requests).toHaveLength(3)
         })
@@ -215,7 +258,7 @@ test('confirming a pending point cancels a local resolver started after placing 
 
 const emptySearchMessages = {
     AVAILABLE: 'Адреса не найдены.',
-    UNAVAILABLE: 'Локальный поиск недоступен. Можно выбрать точку на карте.',
+    UNAVAILABLE: 'Локальный поиск недоступен.',
 }
 for (const [availability, message] of Object.entries(emptySearchMessages)) {
     test(`empty HTTP 200 local search with ${availability} keeps point analysis available`, async ({ page }) => {
@@ -258,14 +301,20 @@ test('local keyboard selects a concrete object with a complete compact address',
     })
     await page.goto('/')
     await input(page).fill('Неоднозначная')
-    await expect(page.getByRole('option')).toHaveText(response.data[0].objects.map((_, i) => `${shortLabel} · Объект ${i + 1}`))
+    const group = page.getByRole('group', { name: shortLabel, exact: true })
+    await expect(group.getByRole('option')).toHaveCount(response.data[0].objects.length)
+    for (const [index] of response.data[0].objects.entries()) {
+        await expect(group.getByRole('option').nth(index)).toHaveAccessibleName(`${shortLabel} · Здание ${index + 1}`)
+    }
     expect(f.resolutions).toHaveLength(0)
     await input(page).press('ArrowUp')
-    const lastLabel = `${shortLabel} · Объект ${response.data[0].objects.length}`
+    const lastLabel = `${shortLabel} · Здание ${response.data[0].objects.length}`
     await expect(page.getByRole('option', { name: lastLabel, exact: true, selected: true })).toBeInViewport()
     await input(page).press('ArrowDown')
     await input(page).press('ArrowDown')
-    await expect(page.getByRole('option', { selected: true })).toHaveText(shortLabel + ' · Объект 2')
+    await expect(page.getByRole('option', { selected: true })).toHaveAccessibleName(shortLabel + ' · Здание 2')
+    await expect(addressMarker(page, 'osm:way:502')).toHaveClass(/is-highlighted/)
+    expect(f.resolutions).toHaveLength(0); expect(f.requests).toHaveLength(0)
     await input(page).press('Enter')
     await expect(ready(page)).toHaveText('Готово')
     await expect(page.getByText(shortLabel, { exact: true })).toHaveCount(1)
@@ -273,3 +322,107 @@ test('local keyboard selects a concrete object with a complete compact address',
     expect(f.resolutions).toEqual(['osm:way:502'])
     expect(f.requests.every(r => r.place.address_id === 'osm:way:502')).toBe(true)
 })
+
+test('local groups fit their API bounds and connect list, source geometry and exact map choice', async ({ page }) => {
+    const f = await local(page)
+    const response = structuredClone(searchResponse('Неоднозначная'))
+    const group = response.data[0]
+    const building = group.objects[0]
+    // The point shares the building marker's anchor. Both must remain clickable.
+    const addressPoint = addressObject({ ...building, id: 'osm:node:602' })
+    group.objects = [building, addressPoint]
+    group.object_count = group.objects.length
+    const other = searchResponse(places.b.label).data[0]
+    other.match_type = 'approximate'
+    response.data.push(other)
+    await page.route('**/api/v1/addresses/search?*', route => route.fulfill({ json: response }))
+    await page.goto('/')
+    await expect.poll(() => page.evaluate(() => !!window.__smokeMapIn('.pa-map')?.isStyleLoaded())).toBe(true)
+    await page.evaluate(() => {
+        const map = window.__smokeMapIn('.pa-map')
+        const original = map.fitBounds.bind(map)
+        map.fitBounds = (bounds, options) => {
+            window.lastAddressFit = bounds.toArray().flat()
+            return original(bounds, options)
+        }
+    })
+    await input(page).fill('Неоднозначная')
+    const list = page.getByRole('listbox', { name: 'Локальные адреса' })
+    await expect(list.getByRole('group')).toHaveCount(2)
+    await expect(list.getByText('Приблизительное совпадение')).toBeVisible()
+    await expect.poll(() => page.evaluate(() => window.lastAddressFit)).toEqual(group.bounds)
+    await expect(addressMarker(page, building.id)).toHaveText('1')
+    await expect(addressMarker(page, addressPoint.id)).toHaveText('2')
+    await expect.poll(async () => (await addressFeatures(page)).map(item => item.geometry))
+        .toEqual([building.geometry, addressPoint.geometry])
+
+    const buildingLabel = `${group.label} · Здание 1`
+    const pointLabel = `${group.label} · Адресная точка 2`
+    const buildingRow = list.getByRole('button', { name: buildingLabel, exact: true })
+    const pointRow = list.getByRole('button', { name: pointLabel, exact: true })
+    await buildingRow.hover()
+    await expect(addressMarker(page, building.id)).toHaveClass(/is-highlighted/)
+    await expect.poll(async () => (await addressFeatures(page)).filter(item => item.properties.highlighted).map(item => item.geometry))
+        .toEqual([building.geometry])
+
+    await list.getByRole('button', { name: other.label, exact: true }).focus()
+    await expect.poll(() => page.evaluate(() => window.lastAddressFit)).toEqual(other.bounds)
+    await expect(addressMarker(page, other.objects[0].id)).toHaveClass(/is-highlighted/)
+    await pointRow.focus()
+    await expect.poll(() => page.evaluate(() => window.lastAddressFit)).toEqual(group.bounds)
+    await expect(addressMarker(page, addressPoint.id)).toHaveClass(/is-highlighted/)
+    await expect.poll(async () => (await addressFeatures(page)).filter(item => item.properties.highlighted).map(item => item.geometry))
+        .toEqual([addressPoint.geometry])
+
+    const marker = addressMarker(page, addressPoint.id)
+    await expect(marker).toHaveAccessibleName(pointLabel + ' · на карте')
+    await addressMarker(page, building.id).focus()
+    await expect(buildingRow).toHaveClass(/is-active/)
+    expect(f.resolutions).toEqual([]); expect(f.requests).toEqual([])
+    await marker.click()
+    await expect(ready(page)).toHaveText('Готово')
+    expect(f.resolutions).toEqual([addressPoint.id])
+    expect(f.requests).toHaveLength(3)
+    expect(f.requests.every(request => request.place.address_id === addressPoint.id)).toBe(true)
+})
+
+for (const destination of ['point', 'mode']) {
+    test(`a late local search body cannot reopen preview after switching to ${destination}`, async ({ page }) => {
+        const f = await local(page)
+        let stale
+        await page.route('**/api/v1/addresses/search?*', route => { stale = route })
+        await page.addInitScript(() => {
+            const fetch = window.fetch.bind(window)
+            window.fetch = async (input, options) => {
+                if (typeof input !== 'string' || !input.startsWith('/api/v1/addresses/search?')) return fetch(input, options)
+                const response = await fetch(input, { ...options, signal: undefined })
+                const json = response.json.bind(response)
+                response.json = async () => {
+                    const body = await json()
+                    setTimeout(() => { document.documentElement.dataset.lateSearchRead = 'yes' }, 0)
+                    return body
+                }
+                return response
+            }
+        })
+        await page.goto('/')
+        await input(page).fill('Неоднозначная')
+        await expect.poll(() => !!stale).toBe(true)
+        if (destination === 'point') {
+            await point(page)
+            await expect(ready(page)).toHaveText('Готово')
+        } else {
+            await mode(page).click()
+            await mode(page).click()
+            await expect(mode(page)).toHaveText('Поиск: локальный')
+        }
+        await stale.fulfill({ json: searchResponse('Неоднозначная') })
+        await expect(page.locator('html')).toHaveAttribute('data-late-search-read', 'yes')
+        await expect(page.getByRole('option')).toHaveCount(0)
+        await expect(page.locator('.pa-address-marker')).toHaveCount(0)
+        expect(await addressFeatures(page)).toEqual([])
+        expect(f.resolutions).toEqual([]); expect(f.calls).toEqual([])
+        expect(f.requests).toHaveLength(destination === 'point' ? 3 : 0)
+        expect(f.requests.every(request => request.place.kind === 'point')).toBe(true)
+    })
+}

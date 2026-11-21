@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useAddressSearch } from '@/composables/useAddressSearch'
-import { distinguishAddressLabels, localAddressLabel } from '@/utils/addressLabels'
+import { localAddressLabel, localAddressType } from '@/utils/addressLabels'
 import { resolveAddress } from '@/api/searchProfiles'
+import type { AddressSearchPreview } from '@/utils/addressMap'
+import type { AddressResult } from '@/types/address'
 import type { AnalysisAddress } from '@/types/placeAnalysis'
 
 const props = defineProps<{ query: string; enabled: boolean }>()
@@ -12,14 +14,53 @@ watch(() => props.query, value => { query.value = value }, { flush: 'sync' })
 watch(query, value => emit('update:query', value), { flush: 'sync' })
 const search = useAddressSearch(query, () => props.enabled)
 const { results, meta, status, open, activeIndex } = search
-const options = computed(() => results.value.flatMap(result => result.objects.map(object => ({
-    key: `${result.id}:${object.id}`,
-    id: object.id,
-    label: localAddressLabel(result.label, object.display),
-}))))
-const labels = computed(() => distinguishAddressLabels(options.value.map(option => option.label), 'Объект'))
+const groups = computed(() => {
+    let index = 0
+    return results.value.map(result => {
+        const addresses = result.objects.map(object => localAddressLabel(result.label, object.display))
+        const commonAddress = addresses.length > 1 && addresses.every(address => address === addresses[0]) ? addresses[0] : null
+        return {
+            result,
+            title: commonAddress ?? result.label,
+            options: result.objects.map((object, position) => {
+                const address = addresses[position]!
+                const number = position + 1
+                const type = addresses.length > 1 ? `${localAddressType[object.object_type]} ${number}` : null
+                const label = type ? `${address} · ${type}` : address
+                return { id: object.id, result, index: index++, number, label, text: commonAddress ? type! : label }
+            }),
+        }
+    })
+})
+const options = computed(() => groups.value.flatMap(group => group.options))
+const previewGroup = shallowRef<AddressResult | null>(null)
+const listHover = ref<number | null>(null)
+const mapHover = ref<string | null>(null)
+const mapFocus = ref<string | null>(null)
+const highlighted = computed(() => listHover.value !== null ? options.value[listHover.value]
+    : options.value.find(option => option.result === previewGroup.value && option.id === (mapHover.value ?? mapFocus.value))
+        ?? options.value[activeIndex.value])
+const preview = computed<AddressSearchPreview | null>(() => {
+    if (!props.enabled || !open.value) return null
+    const group = groups.value.find(item => item.result === previewGroup.value) ?? groups.value[0]
+    if (!group) return null
+    return {
+        groups: [group.result], selectedId: null, highlightedId: highlighted.value?.id ?? null, highlightedGroupId: null,
+        labels: new Map(group.options.map(option => [option.id, option.label])),
+    }
+})
 const queryInput = ref<HTMLInputElement | null>(null)
-watch(results, () => { activeIndex.value = -1 })
+watch(results, value => {
+    activeIndex.value = -1
+    listHover.value = mapHover.value = mapFocus.value = null
+    previewGroup.value = value[0] ?? null
+}, { flush: 'sync' })
+watch(highlighted, option => {
+    if (option && previewGroup.value !== option.result) {
+        previewGroup.value = option.result
+        mapHover.value = mapFocus.value = null
+    }
+})
 const pending = ref(false), error = ref(false)
 let epoch = 0, controller: AbortController | null = null
 function reset() { epoch++; controller?.abort(); pending.value = false; error.value = false }
@@ -27,7 +68,7 @@ watch(() => props.enabled, reset, { flush: 'sync' })
 watch(query, reset, { flush: 'sync' })
 onBeforeUnmount(reset)
 async function choose(id: string) {
-    if (pending.value || !props.enabled) return
+    if (pending.value || !props.enabled || !open.value || !options.value.some(option => option.id === id)) return
     reset()
     const current = epoch, request = new AbortController()
     controller = request; pending.value = true
@@ -41,42 +82,69 @@ async function choose(id: string) {
     } catch { if (current === epoch) error.value = true }
     finally { clearTimeout(timer); if (current === epoch) pending.value = false }
 }
-defineExpose({ clearDraft: () => { reset(); search.resetDraft() } })
+function clearDraft() { reset(); search.resetDraft() }
+function submit() { clearDraft(); void search.search() }
+function highlightFromMap(id: string | null, source: 'pointer' | 'focus') {
+    if (source === 'focus' && id !== null) {
+        listHover.value = null
+        mapHover.value = null
+    }
+    const highlight = source === 'pointer' ? mapHover : mapFocus
+    highlight.value = id
+}
+function focusOption(index: number) {
+    listHover.value = null
+    mapHover.value = null
+    activeIndex.value = index
+}
+function leaveList(event: FocusEvent) {
+    if (!(event.relatedTarget instanceof Node) || !(event.currentTarget as HTMLElement).contains(event.relatedTarget)) {
+        activeIndex.value = -1
+    }
+}
+defineExpose({ clearDraft, preview, highlightFromMap, choose })
 function key(event: KeyboardEvent) {
-    if (event.key === 'Escape') { reset(); search.resetDraft() }
     if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
         event.preventDefault(); open.value = true
         const count = options.value.length
         if (!count) return
-        activeIndex.value = event.key === 'ArrowDown' ? (activeIndex.value + 1) % count
-            : activeIndex.value <= 0 ? count - 1 : activeIndex.value - 1
+        focusOption(event.key === 'ArrowDown' ? (activeIndex.value + 1) % count
+            : activeIndex.value <= 0 ? count - 1 : activeIndex.value - 1)
         void nextTick(() => document.getElementById(`pa-local-${activeIndex.value}`)?.scrollIntoView({ block: 'nearest' }))
     }
     if (event.key === 'Enter') {
         event.preventDefault()
         const option = options.value[activeIndex.value]
         if (open.value && option) void choose(option.id)
-        else void search.search()
+        else submit()
     }
 }
 </script>
 <template>
     <div v-show="enabled" class="pa-geocoding">
-        <label class="pa-note" for="pa-local-query">Локальный поиск OpenStreetMap</label>
-        <form class="pa-search" role="search" @submit.prevent="search.search()">
+        <form class="pa-search" role="search" @submit.prevent="submit" @focusout="leaveList" @keydown.esc.prevent="clearDraft">
             <input id="pa-local-query" ref="queryInput" v-model="query" class="pa-search__input" type="search" maxlength="160" role="combobox" aria-label="Поиск адреса" aria-autocomplete="list" aria-controls="pa-local-options" :aria-expanded="open && !!options.length" :aria-activedescendant="open && activeIndex >= 0 ? `pa-local-${activeIndex}` : undefined" placeholder="Поиск адреса в Красноярске" @keydown="key" @focus="open = true">
-            <button v-if="query" class="pa-search__clear" type="button" aria-label="Очистить поиск" @click="query = ''; search.resetDraft()">×</button>
+            <button v-if="query" class="pa-search__clear" type="button" aria-label="Очистить поиск" @click="query = ''; clearDraft()">×</button>
             <div v-if="open && options.length" id="pa-local-options" class="pa-suggestions" role="listbox" aria-label="Локальные адреса">
-                <div v-for="(option, i) in options" :key="option.key" :id="`pa-local-${i}`" role="option" :aria-label="labels[i]" :aria-selected="activeIndex === i">
-                    <button class="pa-suggestion" :class="{ 'is-active': activeIndex === i }" type="button" :disabled="pending" @focus="activeIndex = i" @click="choose(option.id)">{{ labels[i] }}</button>
+                <div v-for="group in groups" :key="group.result.id" class="pa-address-group" role="group" :aria-label="group.title">
+                    <p v-if="group.options.length > 1 || group.result.match_type === 'approximate'" class="pa-address-group__title">
+                        <strong v-if="group.options.length > 1">{{ group.title }}</strong>
+                        <small v-if="group.result.match_type === 'approximate'">Приблизительное совпадение</small>
+                    </p>
+                    <div v-for="option in group.options" :key="option.id" :id="`pa-local-${option.index}`" role="option" :aria-label="option.label" :aria-selected="activeIndex === option.index">
+                        <button class="pa-suggestion" :class="{ 'is-active': highlighted === option }" type="button" :aria-label="option.label" :aria-disabled="pending"
+                            @pointermove="listHover = option.index" @pointerleave="listHover = null" @focus="focusOption(option.index)" @click="choose(option.id)">
+                            <span v-if="group.options.length > 1" class="pa-address-number" aria-hidden="true">{{ option.number }}</span>
+                            <span>{{ option.text }}</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </form>
-        <p v-if="status === 'loading' || pending" class="pa-note" role="status">Поиск…</p>
-        <p v-if="status === 'ready' && !results.length" class="pa-note" role="status">
-            {{ meta?.quality.availability === 'UNAVAILABLE' ? 'Локальный поиск недоступен. Можно выбрать точку на карте.' : 'Адреса не найдены.' }}
+        <p v-if="status === 'loading' || pending" class="pa-note" role="status">{{ pending ? 'Получаем адрес…' : 'Поиск…' }}</p>
+        <p v-else-if="status === 'ready' && !results.length" class="pa-note" role="status">
+            {{ meta?.quality.availability === 'UNAVAILABLE' ? 'Локальный поиск недоступен.' : 'Адреса не найдены.' }}
         </p>
-        <p v-if="status === 'error' || error" class="pa-note" role="status">Не удалось получить адрес. Можно выбрать точку на карте.</p>
-        <a class="pa-note" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a>
+        <p v-else-if="status === 'error' || error" class="pa-note" role="status">{{ error ? 'Не удалось получить адрес.' : 'Не удалось выполнить поиск.' }}</p>
     </div>
 </template>

@@ -7,7 +7,9 @@ import { fixtures, point, preview } from './support/geocoding.mjs'
 test('address preview is separate from selection; confirm uses v2 and shows attribution', async ({ page }, info) => {
     const errors = []; page.on('pageerror', e => errors.push(e.message))
     const f = await fixtures(page); await page.goto('/'); await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click()
-    await expect(page.getByText('Текст поиска передаётся Geoapify', { exact: true })).toBeVisible()
+    const notice = 'Поиск через интернет (API Geoapify). Текст запроса передаётся сервису.'
+    await expect(page.getByText(notice, { exact: true })).toBeVisible()
+    await expect(page.getByRole('combobox', { name: 'Поиск адреса' })).toHaveAccessibleDescription(notice)
     await preview(page)
     expect(f.requests).toHaveLength(0)
     await expect(page.locator('.pa-map-pending')).toHaveCount(1)
@@ -16,7 +18,9 @@ test('address preview is separate from selection; confirm uses v2 and shows attr
     await expect.poll(() => f.requests.length).toBe(3)
     expect(f.requests.every(r => r.analysis_version === 2 && r.place.selection_token && !r.place.address_id && !r.place.lon)).toBe(true)
     await expect(page.locator('[data-analysis-block="poi"]').getByRole('status')).toHaveText('Готово')
-    await expect(page.getByRole('link', { name: 'Powered by Geoapify', exact: true })).toBeVisible()
+    const credit = { name: 'Powered by Geoapify', exact: true }
+    await expect(page.getByRole('region', { name: 'Карта анализа' }).getByRole('link', credit)).toBeVisible()
+    await expect(page.locator('.pa-sidebar-search').getByRole('link', credit)).toHaveCount(0)
     const inputBox = await page.getByRole('combobox', { name: 'Поиск адреса' }).boundingBox()
     const searchBox = await page.locator('.pa-sidebar-search').boundingBox()
     expect(inputBox.y).toBeGreaterThanOrEqual(searchBox.y)
@@ -57,7 +61,7 @@ test('street/number mismatch cannot confirm; failure keeps point analysis availa
 test('provider unavailable is safe and never blocks independent point analysis', async ({ page }) => {
     const f = await fixtures(page, { lookupError: 'GEOCODING_UNAVAILABLE' }); await page.goto('/'); await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click()
     await page.getByRole('combobox', { name: 'Поиск адреса' }).fill('Синтетическая')
-    await expect(page.getByText('Адресный поиск недоступен. Можно выбрать точку на карте.', { exact: true })).toBeVisible()
+    await expect(page.getByText('Адресный поиск недоступен.', { exact: true })).toBeVisible()
     await expect(page.locator('body')).not.toContainText('PRIVATE_CANARY')
     await point(page); await expect.poll(() => f.requests.length).toBe(3)
 })

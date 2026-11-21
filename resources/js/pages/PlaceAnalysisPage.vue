@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch, type Component } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch, type Component } from 'vue'
 import {
     BusFront, Camera, ChevronDown, ChevronRight, ChevronUp, CircleDashed, Layers, LayoutDashboard,
     Leaf, Map as MapIcon, MapPin, Palette, Pill, RadioTower, RotateCw, Satellite, Search,
@@ -16,7 +16,11 @@ import type { AnalysisAddress } from '@/types/placeAnalysis'
 import GeocodingSearch from '@/components/place-analysis/GeocodingSearch.vue'
 import type { GeocodingSelection } from '@/types/geocoding'
 import PlaceAnalysisResults from '@/components/place-analysis/PlaceAnalysisResults.vue'
+import PlaceAnalysisAir from '@/components/place-analysis/PlaceAnalysisAir.vue'
+import PlaceAnalysisGuide from '@/components/place-analysis/PlaceAnalysisGuide.vue'
+import { useAirStationHistory } from '@/composables/useAirStationHistory'
 import { usePlaceAnalysis } from '@/composables/usePlaceAnalysis'
+import { useSidebarWidth } from '@/composables/useSidebarWidth'
 import type {
     AnalysisBlockKey, PlaceAnalysisInput, PlaceAnalysisResponse, SatelliteData, SatelliteRasterSource,
 } from '@/types/placeAnalysis'
@@ -31,9 +35,7 @@ const displayedGeometry = shallowRef<PlaceAnalysisResponse | null>(null)
 const geometryStale = computed(() => !!displayedGeometry.value && !analysis.map.value)
 let radiusTimer: ReturnType<typeof setTimeout> | null = null
 const realDate = ref('')
-const stationRadius = ref(5000)
-const selectedStationIds = ref<string[]>([])
-const localSearchRef = ref<{ clearDraft: () => void } | null>(null)
+const localSearchRef = ref<InstanceType<typeof LocalAddressSearch> | null>(null)
 const geocodingRef = ref<{ clearSelection: () => void; clearDraft: () => void } | null>(null)
 const geocodingSelection = shallowRef<GeocodingSelection | null>(null)
 const geocodingAuthorizationExpired = ref(false)
@@ -54,6 +56,10 @@ function acceptGeocodingSelection(value: GeocodingSelection) {
     runAnalysis()
 }
 const realPoi = computed(() => analysis.blocks.poi.response?.blocks.poi)
+const airData = computed(() => {
+    const block = analysis.blocks.air.response?.blocks.air
+    return block?.status === 'READY' ? block.data : null
+})
 const satelliteCatalog = shallowRef<SatelliteData | null>(null)
 const satelliteData = computed<SatelliteData | null>(() => {
     const block = analysis.blocks.satellite.response?.blocks.satellite
@@ -63,10 +69,6 @@ const satelliteSelected = computed(() => satelliteData.value?.selected ?? null)
 const satelliteLayers = computed<Partial<Record<'true-color' | 'ndvi', SatelliteRasterSource>> | null>(() => satelliteSelected.value?.layers ?? null)
 const satelliteCatalogData = computed(() => satelliteData.value ?? satelliteCatalog.value)
 const satelliteLegend = computed(() => satelliteCatalogData.value?.legend ?? null)
-const realStations = computed(() => {
-    const block = analysis.blocks.air.response?.blocks.air
-    return block?.status === 'READY' ? block.data.stations.map((s, i) => ({ ...s, number: i + 1, distance_km: s.distance_m / 1000 })) : []
-})
 const mapCenter = computed(() => displayedGeometry.value ? displayedGeometry.value.place.point : place.value)
 const realMapPois = computed(() => realPoi.value?.status === 'READY' ? realPoi.value.data.items.map(p => ({
     id: p.id, category: p.category, name: p.name ?? 'Без названия', ...p.point, distance_m: p.distance_m, geometry: p.geometry,
@@ -78,24 +80,24 @@ function retireGeocodingSelection() {
 function syncInput() {
     if (geocodingSelection.value && !geocodingSelection.value.selection_token) return
     const valid = hasSelection.value && Number.isInteger(radius.value) && radius.value >= 200 && radius.value <= 1000
-        && Number.isInteger(stationRadius.value) && stationRadius.value >= 1000 && stationRadius.value <= 20000
     const input: PlaceAnalysisInput | null = !valid ? null : {
         ...(geocodingSelection.value ? { analysis_version: 2 as const, expected_place: geocodingSelection.value.place } : {}),
         place: geocodingSelection.value ? { kind: 'address', selection_token: geocodingSelection.value.selection_token } : place.value.id ? { kind: 'address', address_id: place.value.id } : { kind: 'point', lon: place.value.lon, lat: place.value.lat },
         radius_m: radius.value, ...(realDate.value ? { date: realDate.value } : {}),
-        stations: { selected_ids: selectedStationIds.value, radius_m: stationRadius.value },
     }
     analysis.setInput(input)
 }
 function runAnalysis() {
     if (geocodingSelection.value && (!geocodingSelection.value.selection_token || geocodingAuthorizationExpired.value)) return
     if (radiusTimer) { clearTimeout(radiusTimer); radiusTimer = null }
+    stationContext.value = null
     syncInput(); void analysis.loadAll()
+    void nextTick(() => mapRef.value?.fitContext())
 }
-function setStationRadius(value: number) {
-    stationRadius.value = Number.isInteger(value) ? Math.max(1000, Math.min(20000, value)) : 5000
+function loadBlock(key: AnalysisBlockKey) {
+    syncInput()
+    void analysis.load(key, { preserveResponse: key === 'air' && !!airData.value })
 }
-function loadBlock(key: AnalysisBlockKey) { syncInput(); void analysis.load(key) }
 function chooseSatelliteDate(value: string) {
     if (value !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(value)) return
     if (realDate.value === value) return
@@ -115,6 +117,7 @@ const pickMode = ref(false)
 const referencePoint = computed(() => pendingPoint.value
     ?? (hasSelection.value && !place.value.id ? { lon: place.value.lon, lat: place.value.lat } : null))
 function acceptLocalAddress(address: AnalysisAddress) {
+    localSearchRef.value?.clearDraft()
     geocodingRef.value?.clearSelection(); geocodingSelection.value = null
     geocodingAuthorizationExpired.value = false
     selectedAddressLabel.value = localAddressLabel(address.label, address.display)
@@ -127,7 +130,21 @@ const { candidates: pointCandidates, status: pointStatus, transitionPending, tra
 const activeCategory = ref<PoiCategory | 'all'>('grocery')
 const selectedPoiId = ref<string | null>(null)
 const selectedStationId = ref<string | null>(null)
-const stationFocusRequest = ref(0)
+const stationContext = shallowRef<AnalysisPoint | null>(null)
+const mapStations = computed(() => airData.value?.stations.flatMap((station, index) =>
+    station.crs === 'EPSG:4326' ? [{ id: station.id, name: station.name, lon: station.lon, lat: station.lat, number: index + 1 }] : [],
+) ?? [])
+const historyStation = computed(() => airData.value?.stations.find(station => station.id === selectedStationId.value) ?? null)
+const { state: historyState, load: loadHistory } = useAirStationHistory(
+    computed(() => airData.value?.snapshot_version ?? null),
+    computed(() => historyStation.value?.id ?? null),
+)
+const chartDocked = ref(false)
+const inlineAirHistory = useTemplateRef('inlineAirHistory')
+const chartTarget = computed(() => chartDocked.value ? '#pa-air-dock' : inlineAirHistory.value)
+const workspace = ref<HTMLElement | null>(null)
+const sidebar = useSidebarWidth(workspace, 'analysis')
+const { enabled: sidebarResizable, width: sidebarWidth, bounds: sidebarBounds, style: sidebarStyle, dragging: sidebarDragging } = sidebar
 const satelliteMode = ref<SatelliteMode>('ndvi')
 const satelliteOpacity = ref(0.7)
 const showObjects = ref(true)
@@ -136,10 +153,11 @@ const showStations = ref(true)
 const showRadius = ref(true)
 const layersOpen = ref(true)
 const ndviLegendOpen = ref(true)
+const poiLegendOpen = ref(false)
 const ndviLegendVisible = computed(() => showSatellite.value && satelliteOpacity.value > 0
     && satelliteMode.value === 'ndvi' && !!satelliteLayers.value?.ndvi && !!satelliteLegend.value)
 const objectList = ref<HTMLElement | null>(null)
-const mapRef = ref<{ focusMap: () => void } | null>(null)
+const mapRef = useTemplateRef('mapRef')
 const placeButton = ref<HTMLButtonElement | null>(null)
 const analyzeButton = ref<HTMLButtonElement | null>(null)
 const satelliteScope = ref<'territory' | 'circle'>('territory')
@@ -176,11 +194,20 @@ function moveLayer(index: number, direction: -1 | 1) {
 watch(realMapPois, () => { selectedPoiId.value = null })
 watch(analysis.map, value => { if (value) displayedGeometry.value = value }, { flush: 'sync' })
 watch(satelliteData, value => { if (value) satelliteCatalog.value = value }, { flush: 'sync' })
-watch(place, () => { displayedGeometry.value = null; satelliteCatalog.value = null }, { flush: 'sync' })
+watch(place, () => {
+    displayedGeometry.value = null; satelliteCatalog.value = null; selectedStationId.value = null
+    stationContext.value = null
+}, { flush: 'sync' })
+watch(airData, data => {
+    if (data && !historyStation.value) {
+        selectedStationId.value = null
+        stationContext.value = null
+    }
+}, { flush: 'sync' })
 watch(() => Object.values(analysis.blocks).some(block => block.error?.code === 'ADDRESS_POINT_CHANGED'), changed => {
     if (changed) displayedGeometry.value = null
 }, { flush: 'sync' })
-watch([place, radius, realDate, stationRadius, selectedStationIds, hasSelection], syncInput, { deep: true, flush: 'sync' })
+watch([place, radius, realDate, hasSelection], syncInput, { deep: true, flush: 'sync' })
 watch(radius, () => {
     satelliteCatalog.value = null
     if (radiusTimer) clearTimeout(radiusTimer)
@@ -259,6 +286,7 @@ function startPointPick() {
         cancelPick()
         return
     }
+    localSearchRef.value?.clearDraft()
     pickMode.value = true
     void nextTick(() => mapRef.value?.focusMap())
 }
@@ -302,9 +330,27 @@ function formatCoord(value: number) {
 }
 
 function selectStation(id: string) {
+    const station = airData.value?.stations.find(item => item.id === id)
+    if (!station) return
+    if (station.crs === 'EPSG:4326') {
+        localSearchRef.value?.clearDraft()
+        geocodingRef.value?.clearDraft()
+    }
     selectedStationId.value = id
-    showStations.value = true
-    stationFocusRequest.value += 1
+    stationContext.value = station.crs === 'EPSG:4326' ? { lon: station.lon, lat: station.lat } : null
+    void nextTick(() => document.getElementById('pa-air-station')?.focus())
+}
+
+function selectStationFromMap(id: string) {
+    selectTab('air')
+    selectStation(id)
+}
+
+function toggleChartDock() {
+    chartDocked.value = !chartDocked.value
+    if (!chartDocked.value) selectTab('air')
+    // Moving a focused button between DOM containers can drop focus.
+    void nextTick(() => document.getElementById('pa-air-dock-toggle')?.focus())
 }
 
 onMounted(() => {
@@ -342,7 +388,7 @@ onBeforeUnmount(() => {
             </div>
         </header>
 
-        <div class="pa-body">
+        <div ref="workspace" class="pa-body" :class="{ 'is-resizing': sidebarDragging }" :style="sidebarStyle">
             <aside id="pa-panel" class="pa-panel" aria-label="Панель анализа места">
                 <div class="pa-sidebar-search">
                 <LocalAddressSearch ref="localSearchRef" v-model:query="searchQuery" :enabled="searchMode === 'local'" @selected="acceptLocalAddress" />
@@ -351,7 +397,9 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="pa-api-actions">
                     <p v-if="!geocodingSelection && (!referencePoint || pendingPoint)" class="pa-note">{{ hasSelection ? (place.id ? selectedAddressLabel : place.label) : 'Выберите адресный объект или точку карты.' }}</p>
-                    <template v-if="referencePoint && !pendingPoint"><PointAddressReference :candidates="pointCandidates" :status="pointStatus" :transition-pending="transitionPending" :transition-error="transitionError" compact @analyze="pointReference.analyzeAddress" @retry="pointReference.retry" /></template>
+                    <PointAddressReference v-if="referencePoint && !pendingPoint" :candidates="pointCandidates" :status="pointStatus"
+                        :transition-pending="transitionPending" :transition-error="transitionError"
+                        @analyze="pointReference.analyzeAddress" @retry="pointReference.retry" />
                     <div class="pa-api-actions__main">
                     <button class="pa-primary" type="button" :disabled="!analysis.input.value || !!geocodingSelection && geocodingAuthorizationExpired" :aria-describedby="!hasSelection ? 'pa-selection-hint' : undefined" @click="runAnalysis">Анализировать место</button>
 
@@ -378,6 +426,7 @@ onBeforeUnmount(() => {
                 </nav>
 
                 <div :id="`pa-panel-${activeTab}`" class="pa-panel__scroll" role="tabpanel" :aria-labelledby="`pa-tab-${activeTab}`">
+                    <PlaceAnalysisGuide v-if="hasSelection && (activeTab === 'air' || activeTab === 'satellite')" :key="activeTab" :topic="activeTab" />
                     <div v-if="!hasSelection" id="pa-selection-hint" class="pa-selection-hint">
                         <MapPin :size="28" aria-hidden="true" />
                         <h2>Сначала выберите место</h2>
@@ -385,13 +434,25 @@ onBeforeUnmount(() => {
                     </div>
                     <PlaceAnalysisResults v-else :tab="activeTab" :blocks="analysis.blocks" :selected-poi="selectedPoiId" :category="activeCategory"
                         :satellite-scope="satelliteScope" :can-load="!!analysis.input.value" :date="realDate" :satellite-mode="satelliteMode" :satellite-catalog="satelliteCatalog"
-                        :station-radius="stationRadius" :selected-ids="selectedStationIds"
-                        @load="loadBlock" @open="openAnalysisTab" @poi="selectPoi" @category="selectCategory" @station="selectStation"
+                        :selected-station="selectedStationId"
+                        @load="loadBlock" @open="openAnalysisTab" @poi="selectPoi" @category="selectCategory"
                         @date="chooseSatelliteDate" @satellite-mode="satelliteMode = $event" @satellite-scope="satelliteScope = $event"
-                        @station-radius="setStationRadius" @station-selection="selectedStationIds = $event" />
+                        @station="selectStation">
+                        <template #air-history>
+                            <div ref="inlineAirHistory"></div>
+                        </template>
+                    </PlaceAnalysisResults>
                 </div>
             </aside>
 
+            <div v-if="sidebarResizable" class="pa-divider" role="separator" tabindex="0"
+                aria-label="Ширина панели анализа" aria-orientation="vertical" aria-controls="pa-panel"
+                :aria-valuemin="sidebarBounds.min" :aria-valuemax="sidebarBounds.max" :aria-valuenow="sidebarWidth"
+                :aria-valuetext="`${sidebarWidth} пикселей`"
+                @pointerdown="sidebar.pointerDown" @pointermove="sidebar.pointerMove" @pointerup="sidebar.pointerEnd"
+                @pointercancel="sidebar.pointerEnd" @lostpointercapture="sidebar.pointerEnd" @keydown="sidebar.keydown"></div>
+
+            <div class="pa-map-workspace">
             <section class="pa-map-shell" aria-label="Карта анализа">
                 <PlaceAnalysisMap
                     ref="mapRef"
@@ -401,9 +462,9 @@ onBeforeUnmount(() => {
                     :show-place-pin="hasSelection"
                     :geometry-stale="geometryStale"
                     :analysis-bounds="displayedGeometry?.analysis_bounds ?? null"
-                    :stations="realStations"
                     :radius="displayedGeometry?.radius_m ?? radius"
                     :pois="mapPois"
+                    :stations="mapStations"
                     :poi-distances-known="true"
                     :tab="activeTab"
                     :show-objects="mapShowObjects"
@@ -416,16 +477,19 @@ onBeforeUnmount(() => {
                     :satellite-opacity="satelliteOpacity"
                     :satellite-layers="satelliteLayers"
                     :category-filter="mapCategoryFilter"
+                    :address-preview="pickMode || searchMode !== 'local' ? null : localSearchRef?.preview"
                     :selected-poi="selectedPoiId"
                     :selected-station="selectedStationId"
-                    :station-focus-request="stationFocusRequest"
+                    :station-context="stationContext"
                     :pending-point="geocodingPreview ?? pendingPoint"
                     :pending-draggable="!!geocodingPreview"
                     :pick-mode="pickMode"
                     @select-point="onMapPoint"
+                    @highlight-address="(id, source) => localSearchRef?.highlightFromMap(id, source)"
+                    @select-address="localSearchRef?.choose($event)"
                     @cancel-pick="cancelPick"
                     @select-poi="selectPoiFromMap"
-                    @select-station="selectStation"
+                    @select-station="selectStationFromMap"
                     @retry-satellite="loadBlock('satellite')"
                 />
 
@@ -435,11 +499,12 @@ onBeforeUnmount(() => {
                         <button type="button" class="pa-icon-button" aria-label="Закрыть карточку точки" @click="cancelPoint"><X :size="15" aria-hidden="true" /></button>
                     </div>
                     <p>Координаты: {{ formatCoord(pendingPoint.lat) }}, {{ formatCoord(pendingPoint.lon) }}</p>
-                    <PointAddressReference :candidates="pointCandidates" :status="pointStatus" :transition-pending="transitionPending" :transition-error="transitionError" compact @analyze="pointReference.analyzeAddress" @retry="pointReference.retry" />
-                    <div class="pa-point-card__actions">
-                        <button class="pa-outline" type="button" @click="cancelPoint">Отмена</button>
-                        <button ref="analyzeButton" class="pa-primary" type="button" @click="analyzePoint">Анализировать точку</button>
-                    </div>
+                    <PointAddressReference :candidates="pointCandidates" :status="pointStatus" :transition-pending="transitionPending"
+                        :transition-error="transitionError" @analyze="pointReference.analyzeAddress">
+                        <template #point>
+                            <button ref="analyzeButton" class="pa-primary" type="button" @click="analyzePoint">Анализировать точку</button>
+                        </template>
+                    </PointAddressReference>
                 </div>
 
                 <button ref="placeButton" class="pa-map-pick" type="button" :class="{ 'is-picking': pickMode }" :aria-pressed="pickMode" aria-label="Точка на карте" title="Выбрать точку на карте" @click="startPointPick"><MapPin :size="18" aria-hidden="true" /></button>
@@ -447,6 +512,7 @@ onBeforeUnmount(() => {
                     <span class="pa-map-style__label"><Palette :size="14" aria-hidden="true" /> Тема</span>
                     <MapThemeControl />
                 </div>
+                <div id="pa-search-attribution"></div>
 
                 <aside class="pa-layers" :class="{ 'is-collapsed': !layersOpen }" aria-label="Слои карты">
                     <h2 class="pa-layers__title">
@@ -463,7 +529,6 @@ onBeforeUnmount(() => {
                         </button>
                     </h2>
                     <div v-show="layersOpen" id="pa-layers-body" class="pa-layers__body">
-                        <p class="pa-layers__hint">Порядок — сверху вниз. Стрелки меняют порядок слоёв.</p>
                         <div v-for="(key, index) in layerOrder" :key="key" class="pa-layer-item" :data-layer-key="key">
                             <label class="pa-layer-row">
                                 <input v-if="key === 'objects'" v-model="showObjects" type="checkbox">
@@ -472,11 +537,6 @@ onBeforeUnmount(() => {
                                 <input v-else v-model="showRadius" type="checkbox">
                                 <component :is="layerIcons[key]" class="pa-layer-icon" :size="15" aria-hidden="true" />
                                 <span>{{ layerLabel(key) }}</span>
-                                <span v-if="key === 'objects'" class="pa-layer-swatches" aria-hidden="true">
-                                    <i v-for="category in categoryOrder" :key="category" class="pa-swatch" :class="`pa-swatch--${category}`">
-                                        <component :is="categoryIcons[category]" :size="10" />
-                                    </i>
-                                </span>
                             </label>
                             <div class="pa-layer-order" role="group" :aria-label="`Порядок слоя «${layerLabel(key)}»`">
                                 <button
@@ -530,16 +590,28 @@ onBeforeUnmount(() => {
                             <div class="pa-legend__row"><RadioTower class="pa-legend__icon" :size="14" aria-hidden="true" /> Станция мониторинга</div>
                             <div class="pa-legend__row"><CircleDashed class="pa-legend__icon" :size="14" aria-hidden="true" /> Радиус анализа ({{ radius }} м)</div>
                         </div>
-                        <div v-else-if="activeTab !== 'satellite'" class="pa-legend">
-                            <strong class="pa-legend__title">Категории</strong>
-                            <div v-for="category in categoryOrder" :key="category" class="pa-legend__row">
-                                <component :is="categoryIcons[category]" class="pa-legend__icon" :size="14" :style="{ color: categoryMeta[category].color }" aria-hidden="true" />
-                                {{ categoryMeta[category].label }}
+                        <section v-else-if="activeTab !== 'satellite'" class="pa-legend" aria-label="Легенда объектов">
+                            <button class="pa-legend__toggle" type="button" :aria-expanded="poiLegendOpen"
+                                aria-controls="pa-poi-legend-body" @click="poiLegendOpen = !poiLegendOpen">
+                                Категории POI
+                                <ChevronDown :size="14" :class="{ 'is-open': poiLegendOpen }" aria-hidden="true" />
+                            </button>
+                            <div v-show="poiLegendOpen" id="pa-poi-legend-body">
+                                <div v-for="category in categoryOrder" :key="category" class="pa-legend__row">
+                                    <component :is="categoryIcons[category]" class="pa-legend__icon" :size="14" :style="{ color: categoryMeta[category].color }" aria-hidden="true" />
+                                    {{ categoryMeta[category].label }}
+                                </div>
                             </div>
-                        </div>
+                        </section>
                     </div>
                 </aside>
             </section>
+                <div v-show="chartDocked && historyStation" id="pa-air-dock" class="pa-air-dock"></div>
+            </div>
         </div>
+        <Teleport v-if="historyStation && chartTarget" :to="chartTarget">
+            <PlaceAnalysisAir :station="historyStation" :state="historyState" :docked="chartDocked"
+                @retry="loadHistory" @toggle-dock="toggleChartDock" />
+        </Teleport>
     </div>
 </template>

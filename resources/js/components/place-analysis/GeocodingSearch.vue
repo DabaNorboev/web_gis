@@ -20,10 +20,6 @@ const previewLabel = computed(() => {
     const c = preview.value
     return c ? labels.value[candidates.value.indexOf(c)] ?? geocodingAddressLabel(c.components, c.precision.level) : ''
 })
-const precisionNote = computed(() => {
-    if (preview.value && !preview.value.can_confirm) return 'Для подтверждения дома нужны полный номер, точка и результат уровня дома. При необходимости выберите свободную точку.'
-    return 'Поставщик определил адрес на уровне дома. Точность координат не измерена, вход в здание не подтверждён.'
-})
 watch(phase, value => {
     if (value !== 'selected') return
     void nextTick(() => {
@@ -69,10 +65,10 @@ defineExpose({ clearSelection: geo.clearSelection, clearDraft: geo.resetDraft })
 </script>
 <template>
     <div class="pa-geocoding" data-geocoding @keydown.esc="cancelPreview">
-        <label v-if="enabled !== false" class="pa-note" for="pa-geocoding-query">Текст поиска передаётся Geoapify</label>
+        <p v-if="enabled !== false" id="pa-geocoding-text-notice" class="pa-note">Поиск через интернет (API Geoapify). Текст запроса передаётся сервису.</p>
         <form v-if="enabled !== false" class="pa-search" role="search" @submit.prevent="opened = true; geo.search()" @focusout="event => { if (!event.relatedTarget || !(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node)) opened = false }">
             <input id="pa-geocoding-query" ref="queryInput" v-model="query" class="pa-search__input" type="search" maxlength="160" role="combobox" placeholder="Поиск адреса в Красноярске"
-                aria-label="Поиск адреса" aria-autocomplete="list" aria-controls="pa-geocoding-options" :aria-expanded="opened && !!candidates.length"
+                aria-label="Поиск адреса" aria-describedby="pa-geocoding-text-notice" aria-autocomplete="list" aria-controls="pa-geocoding-options" :aria-expanded="opened && !!candidates.length"
                 :aria-activedescendant="hasActiveCandidate ? `pa-geocoding-${active}` : undefined" @keydown="key" @focus="opened = true">
             <button v-if="query" class="pa-search__clear" type="button" aria-label="Очистить поиск" @click="query = ''; geo.resetDraft(); opened = false">×</button>
             <div v-if="opened && candidates.length" class="pa-suggestions">
@@ -88,8 +84,11 @@ defineExpose({ clearSelection: geo.clearSelection, clearDraft: geo.resetDraft })
         <p v-if="message" class="pa-note" role="status">{{ message }}</p>
         <p v-if="waitSeconds" class="pa-note">Повтор не ранее чем через {{ waitSeconds }} с.</p>
         <button v-if="canRetry" type="button" class="pa-outline" @click="geo.retry()">Повторить поиск</button>
-        <button v-if="point && enabled !== false" type="button" class="pa-outline" :disabled="phase === 'loading' || confirming" @click="opened = true; geo.reverse(point)">Найти адрес поблизости</button>
-        <p v-if="point && enabled !== false" class="pa-note">При поиске адреса поблизости координаты передаются Geoapify. Анализ точки доступен без этого запроса.</p>
+        <div v-if="point && enabled !== false" class="pa-geocoding-reverse">
+            <p id="pa-geocoding-point-notice" class="pa-note">Координаты передаются Geoapify</p>
+            <button type="button" class="pa-outline" aria-describedby="pa-geocoding-point-notice" :disabled="phase === 'loading' || confirming"
+                @click="opened = true; geo.reverse(point)">Найти адрес поблизости</button>
+        </div>
         <section v-if="preview" class="pa-geocoding-preview" aria-label="Подтверждение адреса">
             <strong>{{ geo.lookup.value?.point ? 'Адрес поблизости: ' : '' }}{{ previewLabel }}</strong>
             <p v-if="preview.precision.level === 'street' && previewLabel !== 'Улица'" class="pa-note">Улица</p>
@@ -105,16 +104,16 @@ defineExpose({ clearSelection: geo.clearSelection, clearDraft: geo.resetDraft })
                 <button type="button" class="pa-outline" :disabled="confirming" @click="geo.confirm(true)">{{ confirming ? 'Подтверждение…' : 'Переподтвердить положение' }}</button>
             </template>
         </section>
-        <details v-if="preview || selection || candidates.length" class="pa-note">
-            <summary>Точность адреса</summary>
-            <p>{{ preview || selection ? precisionNote : 'Для подтверждения дома нужны полный номер и точка. Заявленный уровень адреса не измеряет точность координат.' }}</p>
-        </details>
-        <div v-if="preview || selection || candidates.length" class="pa-note pa-geocoding-attribution">
-            <a v-for="a in (preview?.source.attribution ?? selection?.place.address.source.attribution ?? geo.lookup.value?.candidates[0]?.source.attribution ?? [])" :key="a.url" :href="a.url" target="_blank" rel="noopener noreferrer">{{ a.text }}</a>
-        </div>
+        <Teleport v-if="preview || selection || candidates.length" defer to="#pa-search-attribution">
+            <div class="pa-geocoding-attribution" role="group" aria-label="Источники адресного поиска">
+                <a v-for="a in (preview?.source.attribution ?? selection?.place.address.source.attribution ?? candidates[0]?.source.attribution ?? [])"
+                    :key="a.url" :href="a.url" target="_blank" rel="noopener noreferrer">{{ a.text }}</a>
+            </div>
+        </Teleport>
     </div>
 </template>
 <style scoped>
 .pa-geocoding-preview { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--pa-border, #d4dfd7); border-radius: 8px; background: var(--pa-surface, #fff); }
-.pa-geocoding-attribution { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.pa-geocoding-reverse { display: grid; gap: 4px; }
+.pa-geocoding-reverse button { justify-self: start; margin: 0; }
 </style>

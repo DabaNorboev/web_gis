@@ -29,15 +29,15 @@ export function useGeocoding(onSelection: (value: GeocodingSelection) => void, o
         errorCode.value = e.code
         now.value = Date.now()
         retryAt.value = now.value + Math.min(86400, Math.max(0, Number(e.retryAfter) || 0)) * 1000
-        message.value = e.kind === 'invalid_response' ? 'Ответ поиска не прошёл проверку. Выберите точку на карте.'
-            : e.kind === 'timeout' ? 'Время ожидания поиска истекло. Можно выбрать точку на карте.'
-                : e.code === 'GEOCODING_QUOTA_EXHAUSTED' ? 'Лимит адресного поиска исчерпан. Выберите точку на карте.'
-                    : e.status === 429 ? 'Поиск временно занят. Повторите после ожидания или выберите точку на карте.'
+        message.value = e.kind === 'invalid_response' ? 'Ответ поиска не прошёл проверку.'
+            : e.kind === 'timeout' ? 'Время ожидания истекло.'
+                : e.code === 'GEOCODING_QUOTA_EXHAUSTED' ? 'Лимит поиска исчерпан.'
+                    : e.status === 429 ? 'Поиск временно занят.'
                         : e.code === 'SNAPSHOT_EXPIRED' ? 'Срок снимка истёк. Найдите и выберите адрес заново.'
                             : e.code === 'CANDIDATE_EXPIRED' ? 'Подсказка устарела. Повторите поиск.'
-                                : e.code === 'INVALID_SELECTION' ? 'Не удалось подтвердить адрес. Выберите адрес заново или поставьте точку на карте.'
-                                    : e.code === 'GEOCODING_UNAVAILABLE' ? 'Адресный поиск недоступен. Можно выбрать точку на карте.'
-                                        : 'Не удалось выполнить адресный запрос. Можно выбрать точку на карте.'
+                                : e.code === 'INVALID_SELECTION' ? 'Не удалось подтвердить адрес. Выберите его заново.'
+                                    : e.code === 'GEOCODING_UNAVAILABLE' ? 'Адресный поиск недоступен.'
+                                        : 'Не удалось выполнить адресный запрос.'
         phase.value = 'error'
     }
     function run(job: Job) {
@@ -56,7 +56,7 @@ export function useGeocoding(onSelection: (value: GeocodingSelection) => void, o
         void requestGeocoding(job.operation, job.fields, controller.signal).then(response => {
             if (disposed || timedOut || job.epoch !== epoch) return
             lookup.value = response.data; phase.value = 'results'
-            message.value = response.data.status === 'EMPTY' ? 'Адреса не найдены. Можно выбрать точку на карте.' : ''
+            message.value = response.data.status === 'EMPTY' ? 'Адреса не найдены.' : ''
         }).catch(error => { if (!disposed && !timedOut && job.epoch === epoch) fail(error) }).finally(() => {
             clearTimeout(timer); active = false
             if (lookupController === controller) lookupController = null

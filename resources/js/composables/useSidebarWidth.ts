@@ -7,15 +7,15 @@ export function sidebarWidthBounds(workspace: number) {
     return { min, max: Math.max(min, Math.min(640, Math.floor(workspace * 0.55), workspace - mapMin - 12)) }
 }
 
-export function useSidebarWidth(container: Ref<HTMLElement | null>, page: 'home' | 'profile') {
+export function useSidebarWidth(container: Ref<HTMLElement | null>, page: 'home' | 'profile' | 'analysis') {
     const size = ref(0)
     const desktop = ref(false)
     const preferred = ref<number | null>(null)
     const dragging = ref(false)
     const bounds = computed(() => sidebarWidthBounds(size.value))
     const enabled = computed(() => desktop.value && size.value >= 700)
-    const defaultWidth = computed(() => page === 'profile' ? 480 : 440)
-    const width = computed(() => Math.round(Math.max(bounds.value.min, Math.min(bounds.value.max, preferred.value ?? defaultWidth.value))))
+    const defaultWidth = page === 'analysis' ? 420 : page === 'profile' ? 480 : 440
+    const width = computed(() => Math.round(Math.max(bounds.value.min, Math.min(bounds.value.max, preferred.value ?? defaultWidth))))
     const style = computed(() => enabled.value ? { '--sidebar-width': `${width.value}px` } : {})
     const storageKey = `placelens:sidebar:${page}:v1`
     let observer: ResizeObserver | undefined
@@ -23,7 +23,7 @@ export function useSidebarWidth(container: Ref<HTMLElement | null>, page: 'home'
 
     function measure() {
         size.value = container.value?.getBoundingClientRect().width ?? 0
-        desktop.value = window.matchMedia('(min-width: 768px)').matches
+        desktop.value = window.matchMedia(page === 'analysis' ? '(width > 820px)' : '(min-width: 768px)').matches
         if (!enabled.value) { pointer = null; dragging.value = false }
     }
     function persist() {

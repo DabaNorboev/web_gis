@@ -1,6 +1,6 @@
 import { validGeocodedPlace, sameSnapshot } from './geocoding'
 import { ApiRequestError, requestJson } from './errors'
-import type { AnalysisBlockKey, AnalysisRequest, PlaceAnalysisInput, PlaceAnalysisResponse } from '../types/placeAnalysis'
+import type { AirStationHistory, AirStationHistoryRequest, AnalysisBlockKey, AnalysisRequest, PlaceAnalysisInput, PlaceAnalysisResponse } from '../types/placeAnalysis'
 
 export const analysisBlockKeys: AnalysisBlockKey[] = ['poi', 'satellite', 'air']
 const categories = ['grocery', 'pharmacy', 'official_stop', 'park'] as const
@@ -151,7 +151,83 @@ function satelliteData(d: any, requestDate: string | null): boolean {
     if (!satelliteBlockData(d, new Map(releases.map((r: any) => [r.date, r])))) return false
     return requestDate === null ? d.selected.date === null : d.selected.date === requestDate
 }
-function block(v: any, key: AnalysisBlockKey, requestDate: string | null): boolean {
+const stationId = (v: unknown): v is string => typeof v === 'string' && /^[1-9][0-9]{0,15}$/.test(v) && Number.isSafeInteger(Number(v))
+const airSource = 'air.krasn.ru/project/9'
+const hourMs = 3_600_000
+// A fixed-offset calendar is used for validation and bin arithmetic only.
+function sourceHour(v: unknown): number {
+    if (typeof v !== 'string' || !date(v.slice(0, 10)) || !/^\d{4}-\d\d-\d\d (?:[01]\d|2[0-3]):00:00$/.test(v)) return NaN
+    return Date.parse(v.replace(' ', 'T') + 'Z')
+}
+function airWindow(v: unknown): number {
+    if (!record(v)) return NaN
+    return (sourceHour(v.end_exclusive) - sourceHour(v.begin_inclusive)) / hourMs
+}
+function inAirWindow(time: unknown, window: Value): boolean {
+    const hour = sourceHour(time)
+    return hour >= sourceHour(window.begin_inclusive) && hour < sourceHour(window.end_exclusive)
+}
+function airSnapshot(v: any): boolean {
+    return record(v) && sha256(v.snapshot_version) && integer(airWindow(v.window_raw), 1, 168)
+        && utc(v.last_success_at) && (v.last_observed_at_raw === null || inAirWindow(v.last_observed_at_raw, v.window_raw))
+        && v.timezone === null && v.utc_offset === null && v.time_reason === 'SOURCE_TIMEZONE_UNCONFIRMED'
+        && v.freshness === 'UNKNOWN' && v.scope === 'STATION_OBSERVATIONS'
+        && v.indicator === 'pm2_5' && v.unit === 'µg/m³' && v.aggregation === 'hourly'
+}
+function airRow(v: any): boolean {
+    if (!record(v) || !Number.isFinite(sourceHour(v.observed_at_raw)) || v.observed_at_utc !== null || v.qc !== 'UNKNOWN') return false
+    if (v.row_present === false) return v.value === null && v.missing_reason === 'SOURCE_ROW_MISSING' && v.qc_reason === 'SOURCE_ROW_MISSING'
+    return v.row_present === true && v.qc_reason === 'SOURCE_QC_NOT_PROVIDED'
+        && (v.value === null ? v.missing_reason === 'SOURCE_VALUE_NULL_OR_ABSENT' : finite(v.value) && v.missing_reason === null)
+}
+function airPosition(station: Value): boolean {
+    if (station.crs === 'EPSG:4326') {
+        const provenance = station.coordinate_provenance
+        return point(station) && station.coordinate_reason === 'A11_OPERATOR_MAP_INTERPRETATION'
+            && record(provenance) && provenance.raw_file === 'raw/air-project9-api.json' && provenance.source_id === station.id
+    }
+    return (station.lon === null || station.lon === undefined) && (station.lat === null || station.lat === undefined)
+        && (station.crs === null || station.crs === undefined) && station.coordinate_provenance === undefined
+        && (station.coordinate_reason === undefined || station.coordinate_reason === 'SOURCE_DATUM_CRS_UNCONFIRMED')
+}
+function airData(d: any, selectedIds: string[]): boolean {
+    if (!airSnapshot(d) || !Array.isArray(d.stations) || d.stations.length > 20 || !ids(d.missing_selected_ids) || !record(d.counts)) return false
+    const hours = airWindow(d.window_raw)
+    if (!d.stations.every((s: any) => {
+        if (!record(s) || !stationId(s.id) || typeof s.name !== 'string' || !s.name.length || s.source !== airSource
+            || !airPosition(s) || (s.distance_m !== null && (s.crs !== 'EPSG:4326' || !finite(s.distance_m) || s.distance_m < 0))
+            || s.selected !== selectedIds.includes(s.id) || s.group !== (s.selected ? 'selected' : 'unlocated') || s.status !== 'UNKNOWN') return false
+        const h = s.history
+        if (!record(h) || !integer(h.row_count, 0, hours) || !integer(h.null_values, 0, h.row_count) || h.missing_hour_bins !== hours - h.row_count) return false
+        if (h.row_count === 0) return h.status === 'UNAVAILABLE' && h.reason === 'SOURCE_ROW_MISSING'
+            && h.first_observed_at_raw === null && h.last_observed_at_raw === null && s.latest === null
+        return h.status === 'AVAILABLE' && h.reason === null && inAirWindow(h.first_observed_at_raw, d.window_raw)
+            && inAirWindow(h.last_observed_at_raw, d.window_raw) && h.first_observed_at_raw <= h.last_observed_at_raw
+            && airRow(s.latest) && s.latest.row_present && s.latest.observed_at_raw === h.last_observed_at_raw
+    })) return false
+    const stationIds = new Set(d.stations.map((s: any) => s.id))
+    const missing = selectedIds.filter(id => !stationIds.has(id))
+    const selected = selectedIds.length - missing.length
+    const observed = d.stations.map((s: any) => s.history.last_observed_at_raw).filter(Boolean).sort().at(-1) ?? null
+    return stationIds.size === d.stations.length && sameSet(d.missing_selected_ids, missing)
+        && d.last_observed_at_raw === observed && d.counts.selected === selected && d.counts.unlocated === d.stations.length - selected
+}
+export function validateAirStationHistory(v: unknown, request: AirStationHistoryRequest): AirStationHistory {
+    if (!record(v) || !airSnapshot(v) || v.snapshot_version !== request.snapshot_version || v.station_id !== request.station_id
+        || !stationId(v.station_id) || v.source !== airSource || !Array.isArray(v.rows) || v.rows.length !== airWindow(v.window_raw)
+        || !v.rows.every((row, i) => airRow(row) && sourceHour(row.observed_at_raw) === sourceHour(v.window_raw.begin_inclusive) + i * hourMs)) {
+        throw new ApiRequestError('invalid_response')
+    }
+    return v as unknown as AirStationHistory
+}
+export async function fetchAirStationHistory(request: AirStationHistoryRequest, signal?: AbortSignal): Promise<AirStationHistory> {
+    const { snapshot_version, station_id } = request
+    if (!sha256(snapshot_version) || !stationId(station_id)) throw new ApiRequestError('http', 422, 'INVALID_REQUEST')
+    const path = `/api/v1/air/snapshots/${snapshot_version}/stations/${station_id}/history`
+    const data = await requestJson(path, { signal, mode: 'same-origin', cache: 'no-store', referrerPolicy: 'no-referrer', headers: { Accept: 'application/json' } })
+    return validateAirStationHistory(data, { snapshot_version, station_id })
+}
+function block(v: any, key: AnalysisBlockKey, requestDate: string | null, selectedIds: string[]): boolean {
     if (!record(v) || !utc(v.calculated_at) || !nullableText(v.message)) return false
     if (key === 'satellite' ? v.coverage !== null || v.completeness !== null
         : key === 'air' ? v.coverage !== null || !completeness(v.completeness)
@@ -190,18 +266,14 @@ function block(v: any, key: AnalysisBlockKey, requestDate: string | null): boole
         }) && (categories.every(c => v.coverage.by_category[c].status === 'COVERED' && v.completeness.by_category[c].status !== 'PARTIAL')
             ? d.count === d.items.length : d.count === null)
     if (key === 'satellite') return satelliteData(d, requestDate)
-    return Array.isArray(d.stations) && d.stations.every((s: any) => record(s) && typeof s.id === 'string' && typeof s.name === 'string' && point(s)
-        && typeof s.source === 'string' && integer(s.dataset_import_id, 1) && finite(s.distance_m) && s.distance_m >= 0 && typeof s.selected === 'boolean'
-        && ['selected', 'nearest', 'other'].includes(s.group) && ['ACTIVE', 'INACTIVE', 'UNKNOWN'].includes(s.status))
-        && Array.isArray(d.missing_selected_ids) && d.missing_selected_ids.every((id: any) => typeof id === 'string')
-        && record(d.counts) && ['selected', 'nearest', 'other'].every(c => integer(d.counts[c], 0))
+    return airData(d, selectedIds)
 }
 export function validateAnalysisResponse(v: unknown, request: AnalysisRequest): PlaceAnalysisResponse {
     if (!record(v) || v.analysis_version !== (request.analysis_version ?? 1) || v.radius_m !== request.radius_m || v.date !== request.date || !utc(v.calculated_at)
         || !record(v.place) || v.place.kind !== request.place.kind || !point(v.place.point)
         || !record(v.station_selection) || v.station_selection.radius_m !== request.stations.radius_m || !ids(v.station_selection.selected_ids)
         || !sameSet(v.station_selection.selected_ids, request.stations.selected_ids)
-        || !record(v.blocks) || !sameSet(Object.keys(v.blocks), request.blocks) || !request.blocks.every(k => block(v.blocks[k], k, request.date))
+        || !record(v.blocks) || !sameSet(Object.keys(v.blocks), request.blocks) || !request.blocks.every(k => block(v.blocks[k], k, request.date, request.stations.selected_ids))
         || !geometry(v.analysis_area) || v.analysis_area.type !== 'Polygon' || !bounds(v.analysis_bounds)) return invalid()
     if (request.analysis_version === 2) {
         if (!validGeocodedPlace(v.place) || !sameSnapshot(v.place, request.expected_place)) return invalid()
