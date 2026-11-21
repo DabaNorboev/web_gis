@@ -1,12 +1,12 @@
 ---
 status: current
-updated: 2026-11-20
+updated: 2026-11-22
 verified: code
 ---
 
 # Анализ одного места: целевой контракт API
 
-API А7 реализован: POST `/api/v1/place-analysis`, адрес/точка, 200–1000 м, эхо/серверный круг и независимые блоки. POI — §5; спутники — §6; воздух А11–А12 недоступен.
+API А7 реализован: POST `/api/v1/place-analysis`, адрес/точка, 200–1000 м, эхо/серверный круг и независимые блоки. POI — §5; спутники — §6; воздух — §7.
 
 **Г3 активирован на Г5:** адрес v2 с selection_token; [контракт](address-search.md#подтверждение-и-передача-в-анализ), [проверки](../testing.md#локальная-проверка-г5). V1 для точки/OSM-ID сохранён. V2 не вызывает Geoapify и не создаёт OSM object; [Г6](address-search.md#план-два-режима-поиска-г6) возвращает локальный поиск в UI.
 
@@ -21,7 +21,7 @@ API А7 реализован: POST `/api/v1/place-analysis`, адрес/точк
 - новый вход принимает адрес или точку, 200–1000 м, дату и отдельный выбор станций, не ослабляя старые контракты;
 - координаты и списки передаются в JSON-теле, а не в query; ответы не кэшируются.
 
-Resolver, coverage и серверный круг переиспользуются. POI, спутниковые runtime и raster-доставка реализованы (§5–6); нужны локальные данные. Provider воздуха — задача А11–А12; пока `UNAVAILABLE`.
+Resolver, coverage и серверный круг переиспользуются. POI, спутниковые runtime и raster-доставка реализованы (§5–6); нужны локальные данные. Воздух читает активный локальный выпуск А12 (§7).
 
 ## 2. Вход
 
@@ -180,38 +180,25 @@ POST сохраняет no-store/no-referrer и безопасные ошибк�
 
 ## 7. Блок `air`
 
-Показывает наблюдения конкретных станций, положение, расстояние и доступность истории. Не измеряет воздух в точке и не ограничивает станции кругом места. `coverage` блока — `null`; полнота сети/истории — `completeness`.
+[А12](../data/air.md#обновление-и-хранение-а12) читает локальный снимок станций КНЦ СО РАН / air.krasn.ru, проект 9. `coverage: null`, `completeness.status: UNKNOWN`. При отсутствии или повреждении выпуска блок отдаёт `UNAVAILABLE/AIR_SOURCE_UNAVAILABLE` с `data: null`. POI и спутник независимы.
 
-| Поле | Значение |
-|---|---|
-| `selection` | `radius_m` (1000–20000, по умолчанию 5000), `selected_ids`. Не зависит от `radius_m` места. |
-| `data.stations` | Станции: выбранные, до 5 ближайших в области выбора и остальные в ней. |
-| `missing_selected_ids` | Запрошенные ID, отсутствующие в справочнике; не делают блок ошибочным. |
-| `counts` | `selected`, `nearest`, `other` — число возвращённых станций по группам, не оценка полноты сети. |
+`data`: `snapshot_version` (SHA-256 готового manifest), `window_raw` (до 168 часов, `begin_inclusive` и `end_exclusive`), `last_success_at` (UTC), `last_observed_at_raw` (исходное время или `null`). `timezone` и `utc_offset` равны `null`, `time_reason: SOURCE_TIMEZONE_UNCONFIRMED`. `freshness: UNKNOWN`, `scope: STATION_OBSERVATIONS`, `indicator: pm2_5`, `unit: µg/m³`, `aggregation: hourly`.
 
-Станция:
+`stations`: `id`, `name`, `source: air.krasn.ru/project/9`, `status: UNKNOWN`. Для проверенных А11: `lon`, `lat`, `crs: EPSG:4326`, `coordinate_reason: A11_OPERATOR_MAP_INTERPRETATION`, `coordinate_provenance: {raw_file, source_id}`. Иначе координаты и CRS — `null`, причина `SOURCE_DATUM_CRS_UNCONFIRMED`. [А11](../data/air.md#основание-для-маркеров-и3). `distance_m` — метры по прямой от точки анализа (PostGIS geography) или `null`. Сортировка по возрастанию, `null` в конце. Допустимы ответы без полей координат.
 
-| Поле | Значение |
-|---|---|
-| `id`, `name`, `source`, `dataset_import_id` | ID источника, подпись, ключ источника, ID снимка/справочника. |
-| `lon`, `lat`, `distance_m` | Координаты EPSG:4326 и прямое geography-расстояние до места; не измерение в точке. |
-| `group`, `selected` | `selected` — явно запрошена; `nearest` — до 5 ближайших, не попавших в `selected`; `other` — остальные в области выбора. `selected` имеет приоритет; порядок — группа, затем расстояние. |
-| `status` | `ACTIVE`, `INACTIVE`, `UNKNOWN` из справочника. |
-| `metadata` | `observed_at`, `source_updated_at`, `timezone`, `crs`, `reason`; неизвестное — `null`. Дата наблюдения не заменяется датой публикации. |
-| `latest` | Последнее наблюдение или `null`; `latest_reason` объясняет отсутствие. |
-| `history` | Сводка: `status: AVAILABLE|UNAVAILABLE|UNKNOWN`, `first_observed_at`, `last_observed_at`, `reason`; полный ряд — А12. |
+Группы `selected` и `unlocated`, `selected`, `counts` и `missing_selected_ids` отражают явный выбор ID. `history` содержит статус `AVAILABLE|UNAVAILABLE`, фактические `first_observed_at_raw` и `last_observed_at_raw`, `row_count`, `null_values`, `missing_hour_bins` и `reason`. `latest` содержит последнюю строку или `null`.
 
-`latest`: `observed_at` — исходная строка времени; `timezone`/`utc_offset` — `null`, пока часовой пояс не подтверждён; `aggregation: hourly`; `values` — список наблюдений. В первом выпуске только `pm2_5`, `unit: µg/m³`: нуль допустим, пропуск — `null` с `quality.availability: INSUFFICIENT_DATA` и причиной. `quality`: `method: MEASURED|null`, `availability: AVAILABLE|INSUFFICIENT_DATA|UNAVAILABLE`, `freshness: UNKNOWN`, `qc: UNKNOWN|VALID|SUSPECT` (по умолчанию `UNKNOWN`). Другие величины требуют свидетельства А11.
+`GET /api/v1/air/snapshots/{snapshot_version}/stations/{station_id}/history` отдаёт метаданные того же выпуска, `station_id`, `source` и `rows` по одному часовому интервалу. Исходная метка `observed_at_raw` сохраняется буквально, для отсутствующей строки она обозначает пропущенный час. `observed_at_utc: null`, `qc: UNKNOWN`. Число, включая 0, имеет `row_present: true` и `missing_reason: null`. Пустое значение имеет `row_present: true` и `SOURCE_VALUE_NULL_OR_ABSENT`. Пропущенный час имеет `row_present: false` и `SOURCE_ROW_MISSING`. В обоих случаях пропуска `value: null`. `qc_reason` равен `SOURCE_QC_NOT_PROVIDED` для существующей строки и `SOURCE_ROW_MISSING` для отсутствующей.
 
-- Станции вне круга места доступны; отсутствие станции в области выбора не означает её отсутствия в городе.
-- Нет справочника/импорта — `UNAVAILABLE` (`AIR_SOURCE_UNAVAILABLE`); неожиданный отказ расчёта — `ERROR`.
-- Глубина, непрерывность и QC архива не обещаются; `history.status: UNKNOWN` — допустимое состояние. `first_observed_at`/`last_observed_at` — исходные строки времени; часовой пояс не подставляется.
+При смене pin сервер отдаёт `409 AIR_SNAPSHOT_CHANGED`, для неизвестной станции `404 AIR_STATION_NOT_FOUND`, без доступного выпуска `503 AIR_SOURCE_UNAVAILABLE`. [Проверки PHP и TypeScript](../testing.md#плановое-обновление-и-локальная-история-воздуха-а12).
+
+Выбор строки или маркера, в том числе вне круга, открывает [историю станции из версии сводки](../frontend-structure.md#станции-и-история-воздуха). «Обновить» перечитывает сводку, повтор ошибки графика запрашивает историю выбранной станции.
 
 ## 8. Независимость и поздние ответы
 
 1. Подтверждение адреса/здания или точки запускает независимые POST к одному endpoint, каждый с `blocks:[один блок]`, своими `loading`/`error`/`retry`, AbortController/epoch/таймаутом. POI показывается по своему ответу, не ждёт air/satellite. Пакетный API сохранён, но один JSON не даёт поэтапной доставки и для независимой загрузки UI не используется.
-2. Ошибка/повтор затрагивают только свой блок. Неожиданный отказ resolver/круга — 503 `SERVICE_UNAVAILABLE` данного запроса; предметные 404/503 адреса сохраняются. Бюджет А7: в транзакции resolver/круга `statement_timeout=2s`, `lock_timeout=500ms`; до трёх предметных SELECT (снимок адресов, объект, круг), без сетевых providers. Настройки локальны транзакции и снимаются при commit/rollback. Nginx: connect 2s, read 15s; read timeout ограничивает ожидание upstream, не гарантирует остановки PHP. Подключение к БД зависит от конфигурации соединения; общего wall-clock deadline PHP этот срез не добавляет. Клиент ждёт каждый блок не более 20s, различает timeout/cancel и не повторяет автоматически. Бюджеты спутникового provider — §6, будущего provider воздуха — А12; abort fetch не гарантирует остановки сервера.
-3. Снимки фиксируются один раз на HTTP-запрос; независимые ответы сохраняют свои `dataset_import_id`/`calculated_at`, не общий атомарный snapshot. Изменившиеся координаты resolver того же ID не смешиваются со старым кругом: зависимые результаты неактуальны до явного обновления.
+2. Ошибка/повтор затрагивают только свой блок. Неожиданный отказ resolver/круга — 503 `SERVICE_UNAVAILABLE` данного запроса; предметные 404/503 адреса сохраняются. Бюджет А7: в транзакции resolver/круга `statement_timeout=2s`, `lock_timeout=500ms`; до трёх предметных SELECT (снимок адресов, объект, круг), без сетевых providers. Настройки локальны транзакции и снимаются при commit/rollback. Nginx: connect 2s, read 15s; read timeout ограничивает ожидание upstream, не гарантирует остановки PHP. Подключение к БД зависит от конфигурации соединения; общего wall-clock deadline PHP этот срез не добавляет. Клиент ждёт каждый блок не более 20s, различает timeout/cancel и не повторяет автоматически. Бюджеты спутникового provider — §6, воздуха — в [описании хранения](../data/air.md#обновление-и-хранение-а12); abort fetch не гарантирует остановки сервера.
+3. Снимки фиксируются один раз на HTTP-запрос; независимые ответы сохраняют свои версии данных и `calculated_at`, не общий атомарный snapshot. Изменившиеся координаты resolver того же ID не смешиваются со старым кругом: зависимые результаты неактуальны до явного обновления.
 4. Зависимости: `poi` — место/радиус; `satellite` — место/радиус/дата; `air` — место/радиус/selection. Дата инвалидирует только satellite, selection — только air, сохраняя остальные результаты и pending-запросы. Место/радиус инвалидируют все три; старые показатели не показываются текущими. Экран запускает анализ при подтверждении места и через 350ms после изменения радиуса. До нового ответа остаётся серверный контур прежнего радиуса с явной пометкой «предыдущий»; при смене места он удаляется. Дата — только satellite; станции — явно.
 5. Запуск/повтор/инвалидация увеличивает epoch только затронутого блока и отменяет его запрос. Приём ответа требует эха своего запроса (§3), текущего epoch и неизменных зависимостей. А→Б→А не оживляет старый ответ А. `date=D1` у pending POI допустима после выбора D2. После смены места/unmount старые response/error/finally не меняют данные/loading/карту.
 6. Хранение/обмен и восстановление после reload/Back/Forward не реализованы: решение владельца открыто. Новый ввод живёт только в памяти экрана; URL с координатами не создаётся, старые ссылки/records не мигрируются. Сервер результаты не хранит.
@@ -254,7 +241,7 @@ API и клиентский lifecycle А7 реализованы без мигр
 
 ### 11.2. Frontend
 
-В `resources/js`: `types/placeAnalysis.ts` — типы; `api/placeAnalysis.ts` — POST/schema/эхо; `composables/usePlaceAnalysis.ts` — lifecycle §8. `PlaceAnalysisPage` выбирает объект/точку, `PlaceAnalysisResults` показывает состояния/POI/выбор даты и станций, `PlaceAnalysisMap` получает серверный круг/bbox и проверенные списки. При открытии реального экрана метки места нет до выбора. TCI/NDVI подключены через raster-source descriptors API. Наблюдения воздуха пока недоступны (А11–А12), без синтетической замены.
+В `resources/js`: `types/placeAnalysis.ts` — типы; `api/placeAnalysis.ts` — клиенты и проверка эха; `composables/usePlaceAnalysis.ts` — lifecycle §8. `PlaceAnalysisPage` выбирает объект/точку, `PlaceAnalysisResults` показывает состояния/POI/выбор даты и станций, `PlaceAnalysisMap` получает серверный круг/bbox и проверенные списки. При открытии реального экрана метки места нет до выбора. TCI/NDVI подключены через raster-source descriptors API. История станции читается из локального выпуска по §7.
 
 ### 11.3. Проверки
 
