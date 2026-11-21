@@ -3,6 +3,7 @@
 use App\Http\Middleware\LimitGeocodingRequest;
 use App\Http\Middleware\PrivateGeocodingCors;
 use App\Services\Geocoding\GeocodingFailure;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -19,6 +20,11 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
+    ->withSchedule(function (Schedule $schedule): void {
+        if (config('air.schedule_enabled') && config('air.schedule_cron')) {
+            $schedule->command('air:refresh')->cron(config('air.schedule_cron'))->timezone('UTC');
+        }
+    })
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->prepend(PrivateGeocodingCors::class);
     })
