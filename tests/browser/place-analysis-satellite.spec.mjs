@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { responseFor } from '../frontend/fixtures/place-analysis.mjs'
+import { markSelectedSatelliteUnusable, responseFor } from '../frontend/fixtures/place-analysis.mjs'
 
 const tilePng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
 const card = page => page.locator('[data-analysis-block="satellite"]')
@@ -12,7 +12,7 @@ async function pickPoint(page) {
     await page.keyboard.press('Enter')
     await expect(page.locator('.pa-map')).toBeFocused()
     await page.keyboard.press('Enter')
-    await page.getByRole('button', { name: 'Анализировать', exact: true }).press('Enter')
+    await page.getByRole('button', { name: 'Анализировать точку', exact: true }).press('Enter')
 }
 async function openSatellite(page) {
     await page.getByRole('tab', { name: 'Спутник', exact: true }).click()
@@ -49,6 +49,7 @@ async function setup(page, options = {}) {
             response.blocks.satellite.data.delivery_status = 'UNAVAILABLE'
             response.blocks.satellite.data.selected.layers = null
         }
+        if (request.blocks[0] === 'satellite' && request.date) options.changeSatellite?.(response.blocks.satellite)
         return route.fulfill({ json: response })
     })
     await page.goto('/analysis')
@@ -67,7 +68,13 @@ async function chooseDate(page, date) {
     await page.getByLabel('Дата снимка', { exact: true }).selectOption(date)
 }
 async function expectReady(page) {
-    await expect(card(page).getByRole('status')).toHaveText('Наблюдение готово')
+    await expect(page.locator('[data-satellite-coverage]')).toBeVisible()
+    await expect(page.locator('.pa-sat-meta')).toContainText('Copernicus Sentinel-2 L2A')
+}
+async function refreshFromOverview(page) {
+    await page.getByRole('tab', { name: 'Обзор', exact: true }).click()
+    await page.getByRole('button', { name: 'Обновить спутник', exact: true }).click()
+    await openSatellite(page)
 }
 async function setOpacity(page, slider, value) {
     await slider.evaluate((element, next) => {
@@ -80,7 +87,8 @@ async function setOpacity(page, slider, value) {
 test('two dates, TCI/NDVI, legend, coverage scope, opacity 0/100%, order and persistence across tabs', async ({ page }) => {
     const state = await setup(page)
     await openSatellite(page)
-    await expect(card(page).getByRole('status')).toHaveText('Дата не выбрана')
+    await expect(page.getByLabel('Дата снимка').locator('option:checked')).toHaveText('Выберите дату')
+    await expect(card(page)).toHaveCount(0)
     const options = page.getByLabel('Дата снимка', { exact: true }).locator('option')
     await expect(options).toHaveCount(3)
     await expect(options.nth(1)).toContainText('07.05.2024')
@@ -90,17 +98,19 @@ test('two dates, TCI/NDVI, legend, coverage scope, opacity 0/100%, order and per
     await expect.poll(() => state.calls.length).toBe(4)
     expect(state.calls[3].blocks).toEqual(['satellite'])
     expect(state.calls[3].date).toBe('2024-05-07')
-    await expect(card(page)).toHaveClass(/is-partial/)
+    await expect(card(page)).toHaveCount(0)
     await expect(page.locator('[data-satellite-coverage]')).toContainText('87,5')
     await expect(page.locator('[data-satellite-coverage]')).toContainText('пригодно для NDVI')
-    await expect(page.locator('[data-satellite-scope]')).toHaveText('Слой показан на всей подготовленной территории. Показатели рассчитаны для выбранного круга.')
-    await expect(page.locator('.pa-layers').getByText('Слой показан на всей подготовленной территории')).toHaveCount(0)
+    await expect(page.getByLabel('Область спутникового слоя').locator('option:checked')).toHaveText('Вся подготовленная территория')
+    await expect(page.getByText('Версии', { exact: true })).toHaveCount(0)
     await expect(page.getByText('Synthetic early-spring snow and phenology note; not a summer state.')).toBeVisible()
     await expect(page.locator('.pa-sat-meta > div').filter({ hasText: 'Средний NDVI' }).locator('dd')).toContainText('0,31')
-    await expect(page.getByText('MGRS-46VDH')).toBeVisible()
     await expect(page.getByText('Неизвестно / исключено маской')).toBeVisible()
     await expect(page.getByText('NDVI 0.8 … 1')).toBeVisible()
-    await expect(page.getByText('NDVI безразмерен и не равен доле растительности.', { exact: false })).toBeVisible()
+    const guide = page.locator('.pa-guide summary')
+    await guide.click()
+    await expect(page.getByText(/Прозрачные пиксели означают пропуск/)).toBeVisible()
+    await guide.click()
     await expect.poll(() => visibility(page, ndviLayer)).toBe('visible')
     await expect.poll(() => visibility(page, tciLayer)).toBe('none')
     await expect.poll(() => state.tiles.length).toBeGreaterThan(0)
@@ -152,7 +162,7 @@ test('a late reply for an old date cannot replace the current observation and hi
     await expectReady(page)
     await expect.poll(() => sourceTiles(page, 'pa-satellite-ndvi-raster')).toContain('2024-08-15')
     await chooseDate(page, '2024-05-07')
-    await expect(card(page).getByRole('status')).toHaveText('Загрузка…')
+    await expect(page.getByText('Загрузка спутниковых данных…')).toBeVisible()
     await expect.poll(() => !!state.held()).toBe(true)
     await expect.poll(() => page.evaluate(() => window.__smokeMapIn('.pa-map')?.getStyle().layers.some(layer => layer.id.startsWith('pa-satellite-')))).toBe(false)
     await chooseDate(page, '2024-08-15')
@@ -171,9 +181,8 @@ test('image delivery failure is explicit and retries only the satellite block', 
     const state = await setup(page, options)
     await openSatellite(page)
     await chooseDate(page, '2024-05-07')
-    await expect(card(page).getByRole('status')).toHaveText('Изображения недоступны')
-    await expect(page.locator('.pa-alert--warning strong', { hasText: 'Изображения недоступны' })).toBeVisible()
-    await expect(page.locator('.pa-alert--warning').filter({ hasText: 'Изображения недоступны' }).locator('p')).toContainText('Аналитика по кругу сохранена')
+    await expect(page.locator('.pa-alert--retry strong', { hasText: 'Изображения недоступны' })).toBeVisible()
+    await expect(page.locator('.pa-alert--retry').filter({ hasText: 'Изображения недоступны' }).locator('p')).toContainText('Аналитика по кругу сохранена')
     await expect.poll(() => page.evaluate(() => window.__smokeMapIn('.pa-map')?.getStyle().layers.some(layer => layer.id.startsWith('pa-satellite-')))).toBe(false)
     const before = state.calls.length
     options.deliveryDown = false
@@ -184,11 +193,94 @@ test('image delivery failure is explicit and retries only the satellite block', 
     await expect.poll(() => visibility(page, ndviLayer)).toBe('visible')
 })
 
+test('satellite read errors, absent NDVI and corrupt replies preserve the selected POI', async ({ page }) => {
+    const options = {
+        changeSatellite(block) {
+            Object.assign(block, { status: 'ERROR', code: 'SATELLITE_READ_FAILED', message: 'Не удалось прочитать спутниковые данные.', data: null })
+        },
+    }
+    const state = await setup(page, options)
+    await page.getByRole('tab', { name: 'Объекты', exact: true }).click()
+    await page.getByRole('button', { name: 'Все', exact: true }).click()
+    const pharmacy = page.locator('.pa-objects').getByRole('button', { name: /Synthetic API pharmacy/ })
+    await pharmacy.click()
+
+    await openSatellite(page)
+    await chooseDate(page, '2024-05-07')
+    await expect(page.locator('.pa-alert--retry').getByRole('button')).toHaveText('Повторить')
+    await expect(page.getByText('Не удалось прочитать спутниковые данные', { exact: true })).toBeVisible()
+    await expect.poll(() => sourceTiles(page, tciLayer)).toBeUndefined()
+
+    options.changeSatellite = block => markSelectedSatelliteUnusable(block.data)
+    await page.getByRole('button', { name: 'Повторить загрузку спутника' }).click()
+    await expect(page.getByText('Средний NDVI недоступен. Нет пригодных пикселей NDVI.', { exact: true })).toBeVisible()
+    await expect(page.getByLabel('Дата снимка').locator('option:checked')).toHaveText('07.05.2024')
+    await page.getByRole('button', { name: 'Снимок', exact: true }).click()
+    await expect.poll(() => visibility(page, tciLayer)).toBe('visible')
+    await expect.poll(() => state.tiles.some(tile => tile.path.includes('/2024-05-07/true-color/'))).toBe(true)
+
+    options.deliveryDown = true
+    await refreshFromOverview(page)
+    await expect(page.getByText('Изображения недоступны', { exact: true })).toBeVisible()
+    await expect.poll(() => sourceTiles(page, tciLayer)).toBeUndefined()
+
+    options.deliveryDown = false
+    options.changeSatellite = block => {
+        const data = block.data
+        markSelectedSatelliteUnusable(data)
+        const coverage = data.selected.coverage
+        Object.assign(coverage, {
+            prepared_pixels: 0, prepared_fraction: 0, geographic_pixels: 0, geographic_fraction: 0,
+            inside_rectangle_outside_target_pixels: coverage.circle_pixels, source_pixels: {},
+        })
+        coverage.reason_counts.cloud_or_cirrus = 0
+        coverage.reason_counts.outside_target = coverage.circle_pixels
+        const noPreparedData = { reason: 'NO_PREPARED_DATA', mean_ndvi_reason: 'NO_PREPARED_DATA' }
+        Object.assign(data.selected, noPreparedData, { layers: null })
+        Object.assign(data.releases.find(release => release.date === data.selected.date), noPreparedData)
+    }
+    await page.getByRole('button', { name: 'Повторить загрузку изображений' }).click()
+    await expect(page.getByText('Средний NDVI недоступен. Для круга нет подготовленных пикселей.', { exact: true })).toBeVisible()
+    await expect(page.getByText('Изображения недоступны', { exact: true })).toHaveCount(0)
+    await expect.poll(() => sourceTiles(page, tciLayer)).toBeUndefined()
+
+    options.changeSatellite = block => {
+        markSelectedSatelliteUnusable(block.data)
+        block.data.selected.layers.ndvi.tileSize = 512
+    }
+    await refreshFromOverview(page)
+    await expect(page.locator('.pa-alert--retry').getByRole('status')).toHaveText('Получен несогласованный ответ')
+    await expect.poll(() => sourceTiles(page, tciLayer)).toBeUndefined()
+
+    await page.getByRole('tab', { name: 'Объекты', exact: true }).click()
+    await expect(pharmacy).toBeVisible()
+    await expect(pharmacy).toHaveAttribute('aria-pressed', 'true')
+    expect(state.calls.filter(call => call.blocks.includes('poi'))).toHaveLength(1)
+})
+
 test('keyboard controls, short screens and narrow layout keep the satellite UI usable', async ({ page }) => {
-    await setup(page)
+    await setup(page, { changeSatellite(block) {
+        const reasons = block.data.selected.coverage.reason_counts
+        reasons.nodata -= 50
+        reasons.SCL2_dark_or_shadow = 50
+    } })
     await openSatellite(page)
     await chooseDate(page, '2024-05-07')
     await expectReady(page)
+    const coverage = page.getByText('Покрытие круга и причины исключений', { exact: true })
+    await coverage.focus(); await page.keyboard.press('Enter')
+    const darkReason = page.locator('.pa-sat-reasons li').filter({ hasText: 'Тёмная поверхность или тень' })
+    await expect(darkReason).toBeVisible()
+    const aligned = row => row.evaluate(element => {
+        const [label, value] = Array.from(element.children, child => child.getBoundingClientRect())
+        return Math.abs(label.top - value.top) <= 1 && label.right <= value.left
+            && value.right <= element.getBoundingClientRect().right + 1
+    })
+    expect(await aligned(darkReason)).toBe(true)
+    expect(await aligned(page.locator('.pa-sat-meta > div').filter({ hasText: 'Средний NDVI' }))).toBe(true)
+    await page.getByText('Ограничения набора', { exact: true }).click()
+    await expect(page.getByText('Точность маски облаков и теней отдельно не проверялась.')).toBeVisible()
+    await expect(page.getByText('Synthetic fixture limitation, not a real dataset.')).toHaveCount(0)
     const mode = page.getByRole('button', { name: 'NDVI', exact: true })
     await mode.focus(); await page.keyboard.press('Enter')
     await expect(mode).toHaveAttribute('aria-pressed', 'true')
@@ -200,7 +292,7 @@ test('keyboard controls, short screens and narrow layout keep the satellite UI u
     const opacityBefore = Number(await slider.inputValue())
     await slider.focus(); await page.keyboard.press('ArrowLeft')
     expect(Number(await slider.inputValue())).toBeLessThan(opacityBefore)
-    await expect(page.locator('[data-satellite-scope]')).toBeVisible()
+    await expect(page.getByLabel('Область спутникового слоя')).toBeVisible()
     await page.getByLabel('Дата снимка', { exact: true }).scrollIntoViewIfNeeded()
     await expect(page.getByLabel('Дата снимка', { exact: true })).toBeVisible()
     const fits = await page.evaluate(() => {
@@ -264,7 +356,7 @@ test('circle display masks raster pixels only, follows camera, and survives mode
     const city = await pixels()
     const requests = state.calls.length
     await scope.selectOption('circle')
-    await expect(page.locator('[data-satellite-scope]')).toContainText('только в круге анализа')
+    await expect(page.getByLabel('Область спутникового слоя').locator('option:checked')).toHaveText('Только круг анализа')
     const circle = await pixels()
     expect(circle[0]).toEqual(city[0])
     expect(circle[1]).not.toEqual(city[1])
@@ -287,7 +379,7 @@ test('circle display masks raster pixels only, follows camera, and survives mode
     await expect(scope).toHaveValue('circle')
     expect(state.calls).toHaveLength(requests)
     await scope.selectOption('territory')
-    await expect(page.locator('[data-satellite-scope]')).toContainText('всей подготовленной территории')
+    await expect(page.getByLabel('Область спутникового слоя').locator('option:checked')).toHaveText('Вся подготовленная территория')
     const restored = await pixels()
     expect(restored[0]).toEqual(restored[1])
 })
@@ -318,7 +410,7 @@ test('satellite controls have one owner and NDVI legend preserves manual state a
     await expect(satellite.getByLabel('Непрозрачность спутникового слоя')).toHaveCount(1)
     const requests = state.calls.length
     await page.getByLabel('Область спутникового слоя').selectOption('circle')
-    await expect(page.locator('[data-satellite-scope]')).toContainText('только в круге анализа')
+    await expect(page.getByLabel('Область спутникового слоя').locator('option:checked')).toHaveText('Только круг анализа')
     expect(state.calls).toHaveLength(requests)
     await legend.scrollIntoViewIfNeeded()
     await page.screenshot({ path: testInfo.outputPath('satellite-controls-ndvi.png') })
@@ -365,13 +457,14 @@ test('satellite controls have one owner and NDVI legend preserves manual state a
         map.jumpTo({ center: [center.lng + .01, center.lat] })
     })
     await page.locator('.pa-map').press('Enter')
-    await page.getByRole('button', { name: 'Анализировать', exact: true }).click()
+    await page.getByRole('button', { name: 'Анализировать точку', exact: true }).click()
     await expect(card(page).getByRole('status')).toHaveText('Наблюдение готово')
     await expect(legend).toHaveAttribute('aria-expanded', 'false')
     await openSatellite(page)
     await expect(page.getByLabel('Область спутникового слоя')).toHaveValue('circle')
     await chooseDate(page, '')
-    await expect(card(page).getByRole('status')).toHaveText('Дата не выбрана')
+    await expect(page.getByLabel('Дата снимка').locator('option:checked')).toHaveText('Выберите дату')
+    await expect(card(page)).toHaveCount(0)
     await expect(legend).toHaveCount(0)
     await chooseDate(page, '2024-05-07')
     await expectReady(page)

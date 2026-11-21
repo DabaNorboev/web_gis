@@ -3,6 +3,7 @@
 namespace Tests\Integration;
 
 use App\Services\Addresses\AddressResolverService;
+use App\Services\Air\AirStationDistances;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -11,6 +12,25 @@ use Tests\PostgisTestCase;
 class PlaceAnalysisTest extends PostgisTestCase
 {
     protected const READ_ONLY = true;
+
+    public function test_air_stations_are_ordered_by_geography_distance_from_the_analysis_point(): void
+    {
+        $stations = [
+            ['id' => '1003', 'lon' => null, 'lat' => null, 'crs' => null],
+            ['id' => '1001', 'lon' => 92.90, 'lat' => 56.00, 'crs' => 'EPSG:4326'],
+            ['id' => '1002', 'lon' => 92.92, 'lat' => 56.04, 'crs' => 'EPSG:4326'],
+        ];
+        $distance = app(AirStationDistances::class);
+        $first = $distance->nearestFirst($stations, ['lon' => 92.92, 'lat' => 56.04]);
+        $second = $distance->nearestFirst($stations, ['lon' => 92.90, 'lat' => 56.00]);
+
+        $this->assertSame(['1002', '1001', '1003'], array_column($first, 'id'));
+        $this->assertSame(['1001', '1002', '1003'], array_column($second, 'id'));
+        $this->assertSame(0.0, $first[0]['distance_m']);
+        $this->assertGreaterThan(4000, $first[1]['distance_m']);
+        $this->assertSame($first[1]['distance_m'], $second[1]['distance_m']);
+        $this->assertNull($first[2]['distance_m']);
+    }
 
     public function test_read_budget_expires_safely_and_does_not_leak_to_the_next_transaction(): void
     {

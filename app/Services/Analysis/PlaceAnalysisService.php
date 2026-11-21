@@ -3,6 +3,8 @@
 namespace App\Services\Analysis;
 
 use App\Services\Addresses\AddressResolverService;
+use App\Services\Air\AirProvider;
+use App\Services\Geocoding\GeocodingTokens;
 use App\Services\Gis\AnalysisArea;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -19,20 +21,22 @@ class PlaceAnalysisService
     {
         $radius = $input['radius_m'] ?? 500;
         $place = $input['place'];
+        $version = $input['analysis_version'] ?? 1;
+        $selection = $version === 2 ? app(GeocodingTokens::class)->selection($place['selection_token'])['place'] : null;
         // Address identity is checked before any source read.
-        if ($place['kind'] === 'address') {
+        if ($place['kind'] === 'address' && $version === 1) {
             $this->resolver->validateId($place['address_id']);
         }
-        [$address, $point, $map] = DB::transaction(function () use ($place, $radius) {
+        [$address, $point, $map] = DB::transaction(function () use ($place, $radius, $version, $selection) {
             if (DB::getDriverName() === 'pgsql') {
                 // Transaction-local budgets do not change pooled connection defaults.
                 DB::statement("SET LOCAL statement_timeout = '2s'");
                 DB::statement("SET LOCAL lock_timeout = '500ms'");
             }
-            $address = $place['kind'] === 'address'
+            $address = $place['kind'] === 'address' && $version === 1
                 ? $this->resolver->resolve($place['address_id'], $this->resolver->snapshots(true)) : null;
-            $point = $address ? ['lon' => $address['object']['lon'], 'lat' => $address['object']['lat']]
-                : ['lon' => $place['lon'], 'lat' => $place['lat']];
+            $point = $selection !== null ? $selection['point'] : ($address ? ['lon' => $address['object']['lon'], 'lat' => $address['object']['lat']]
+                : ['lon' => $place['lon'], 'lat' => $place['lat']]);
 
             return [$address, $point, $this->area->forPoint($point['lon'], $point['lat'], $radius)];
         });
@@ -40,7 +44,12 @@ class PlaceAnalysisService
         $blocks = [];
         foreach ($input['blocks'] ?? self::BLOCKS as $key) {
             try {
-                $blocks[$key] = $this->calculateBlock($key, $key === 'satellite' ? $point + ['satellite_date' => $input['date'] ?? null] : $point, $radius);
+                $blockInput = match ($key) {
+                    'satellite' => $point + ['satellite_date' => $input['date'] ?? null],
+                    'air' => $point + ['selected_station_ids' => $input['stations']['selected_ids'] ?? []],
+                    default => $point,
+                };
+                $blocks[$key] = $this->calculateBlock($key, $blockInput, $radius);
             } catch (Throwable $error) {
                 Log::error('Place analysis block failed.', ['exception_type' => get_class($error), 'block' => $key]);
                 $blocks[$key] = ['status' => 'ERROR', 'code' => 'BLOCK_CALCULATION_FAILED',
@@ -50,7 +59,7 @@ class PlaceAnalysisService
             }
         }
 
-        return ['analysis_version' => 1, 'place' => ['kind' => $place['kind'], 'label' => $address['label'] ?? null,
+        return ['analysis_version' => $version, 'place' => $selection ?? ['kind' => $place['kind'], 'label' => $address['label'] ?? null,
             'address' => $address, 'point' => $point], 'radius_m' => $radius] + $map + [
                 'date' => $input['date'] ?? null,
                 'station_selection' => ['selected_ids' => $input['stations']['selected_ids'] ?? [], 'radius_m' => $input['stations']['radius_m'] ?? 5000],
@@ -66,15 +75,6 @@ class PlaceAnalysisService
         if ($key === 'satellite') {
             return app(SatelliteProvider::class)->analyze($point, $radius, $point['satellite_date'] ?? null);
         }
-        $reason = match ($key) {
-            'air' => 'Provider справочника и наблюдений станций анализа места ещё не реализован (А11–А12).',
-        };
-
-        $completeness = ['status' => 'UNKNOWN', 'reason' => $reason];
-
-        return ['status' => 'UNAVAILABLE', 'code' => 'BLOCK_NOT_AVAILABLE', 'message' => $reason,
-            'calculated_at' => CarbonImmutable::now('UTC')->toISOString(),
-            'coverage' => null,
-            'completeness' => $key === 'satellite' ? null : $completeness, 'data' => null];
+        return app(AirProvider::class)->analyze($point['selected_station_ids'], $point);
     }
 }

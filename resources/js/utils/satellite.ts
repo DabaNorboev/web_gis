@@ -44,7 +44,7 @@ const coverageReasonLabels: Record<string, string> = {
     cloud_shadow: 'тень облаков',
     cloud_or_cirrus: 'облака и перистые',
     unclassified: 'не классифицировано',
-    SCL2_dark_or_shadow: 'тёмная поверхность или тень',
+    SCL2_dark_or_shadow: 'Тёмная поверхность или тень',
     snow: 'снег',
     defective: 'дефект',
     numerical: 'числовая ошибка',

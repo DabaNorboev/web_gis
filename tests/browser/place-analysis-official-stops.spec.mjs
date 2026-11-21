@@ -24,7 +24,7 @@ for(const mode of ['ready','zero','partial','limited','error'])test(`official st
     await page.goto('/analysis')
     await expect.poll(()=>page.evaluate(()=>!!window.__smokeMapIn('.pa-map')?.isStyleLoaded())).toBe(true)
     await page.getByRole('button',{name:'Точка на карте',exact:true}).focus();await page.keyboard.press('Enter');await page.keyboard.press('Enter')
-    await page.getByRole('button',{name:'Анализировать',exact:true}).click()
+    await page.getByRole('button',{name:'Анализировать точку',exact:true}).click()
     await expect(page.locator('[data-analysis-block="poi"] [role="status"]')).toHaveText('Готово')
     await page.getByRole('tab',{name:'Объекты',exact:true}).click()
     await page.getByRole('button',{name:`Остановки (${mode==='error'?'—':mode==='zero'?'0':mode==='limited'?'7':'2'})`,exact:true}).click()
@@ -59,7 +59,7 @@ test('official found count follows radius and place; failed category never becom
     await page.route('**/api/v1/place-analysis',route=>{const r=route.request().postDataJSON();return route.fulfill({json:officialResponse(r,fail?'error':r.place.lon>93?'zero':r.radius_m===1000?'limited':'ready')})})
     await page.goto('/analysis')
     await expect.poll(()=>page.evaluate(()=>!!window.__smokeMapIn('.pa-map')?.isStyleLoaded())).toBe(true)
-    async function choose(center){await page.getByRole('button',{name:'Точка на карте',exact:true}).focus();await page.keyboard.press('Enter');if(center)await page.evaluate(async center=>{await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));window.__smokeMapIn('.pa-map').jumpTo({center})},center);await page.keyboard.press('Enter');await page.getByRole('button',{name:'Анализировать',exact:true}).click();await expect(page.locator('[data-analysis-block="poi"] [role="status"]')).toHaveText('Готово');await page.getByRole('tab',{name:'Объекты',exact:true}).click()}
+    async function choose(center){await page.getByRole('button',{name:'Точка на карте',exact:true}).focus();await page.keyboard.press('Enter');if(center)await page.evaluate(async center=>{await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));window.__smokeMapIn('.pa-map').jumpTo({center})},center);await page.keyboard.press('Enter');await page.getByRole('button',{name:'Анализировать точку',exact:true}).click();await expect(page.locator('[data-analysis-block="poi"] [role="status"]')).toHaveText('Готово');await page.getByRole('tab',{name:'Объекты',exact:true}).click()}
     await choose();await page.getByRole('button',{name:'Остановки (2)',exact:true}).click()
     await expect(page.locator('.pa-stop-found')).toHaveText('Найдено 2 остановочных точек')
     await page.locator('#pa-radius-number').fill('1000');await page.locator('#pa-radius-number').press('Tab')

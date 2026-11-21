@@ -1,3 +1,4 @@
+import { geocodingModule } from './support/geocoding.mjs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -12,7 +13,7 @@ test('real prepared grocery API responses pass the actual TS runtime contract', 
         const errors = loadModule(new URL('../../resources/js/api/errors.ts', import.meta.url), {}, {
             fetch: async () => new Response(JSON.stringify(fixture.response)),
         })
-        const api = loadModule(new URL('../../resources/js/api/placeAnalysis.ts', import.meta.url), { './errors': errors })
+        const api = loadModule(new URL('../../resources/js/api/placeAnalysis.ts', import.meta.url), { './errors': errors, './geocoding': geocodingModule(errors) })
         const result = await api.fetchPlaceAnalysis(fixture.request)
         assert.equal(result.blocks.poi.status, 'READY')
         assert.ok(result.blocks.poi.data.items.length > 0)

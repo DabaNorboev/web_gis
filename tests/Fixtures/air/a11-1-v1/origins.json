@@ -1,0 +1,61 @@
+[
+  {
+    "name": "air-project9-api.json",
+    "branch": "air",
+    "url": "https://air.krasn.ru/api/2.0/projects/9",
+    "params": {},
+    "retrieved_at": "2026-11-03T03:44:32.142642+00:00",
+    "status": 200,
+    "content_type": "application/json; charset=UTF-8",
+    "date": "Tue, 03 Nov 2026 03:44:32 GMT",
+    "bytes": 5229,
+    "sha256": "af9dbf67d2065b408d4fcc9c496a5b1b59acbf9eab28e4bfde09fe000a187451",
+    "duration_seconds": 0.515
+  },
+  {
+    "name": "air-2026-week.json",
+    "branch": "air",
+    "url": "https://air.krasn.ru/api/2.0/data",
+    "params": {
+      "time_begin": "2026-08-09 00:00:00",
+      "time_end": "2026-08-16 00:00:00",
+      "time_interval": "hour",
+      "sites": "4228,3846,3858",
+      "projects": "9"
+    },
+    "retrieved_at": "2026-11-03T03:45:25.281968+00:00",
+    "status": 200,
+    "content_type": "application/json; charset=UTF-8",
+    "date": "Tue, 03 Nov 2026 03:45:25 GMT",
+    "bytes": 62145,
+    "sha256": "6f2f3fd6d2f3ebe01a97e63493f871e15f03341790c94c09cd40cd731ca9548f",
+    "duration_seconds": 0.291
+  },
+  {
+    "name": "air-help.html",
+    "branch": "air",
+    "url": "https://air.krasn.ru/help.html",
+    "params": null,
+    "retrieved_at": "2026-11-03T03:40:47.818794+00:00",
+    "status": 200,
+    "content_type": "text/html",
+    "final_url": "https://air.krasn.ru/help.html",
+    "date": "Tue, 03 Nov 2026 03:40:47 GMT",
+    "bytes": 50901,
+    "sha256": "e3b53725d4626ec811fbaf70db99240b568154b16dd6b0a7691d1635f83aef72",
+    "duration_seconds": 0.122
+  },
+  {
+    "name": "air-data-app.js",
+    "branch": "air",
+    "url": "https://air.krasn.ru/main.fca7b180469196f9de30.js",
+    "params": {},
+    "retrieved_at": "2026-11-03T03:43:57.325504+00:00",
+    "status": 200,
+    "content_type": "text/javascript",
+    "date": "Tue, 03 Nov 2026 03:43:57 GMT",
+    "bytes": 2626909,
+    "sha256": "52dcf09a7de7c152f9499cd5b21b31af6700fef525c6cd40e62fe79fac0fcc30",
+    "duration_seconds": 0.293
+  }
+]

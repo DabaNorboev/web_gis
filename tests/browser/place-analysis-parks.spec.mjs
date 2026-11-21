@@ -21,7 +21,7 @@ for(const mode of ['ready','zero','partial','error','unavailable'])test(`park ${
     let fixture
     await page.route('**/api/v1/place-analysis',route=>{const r=parkResponse(route.request().postDataJSON(),mode);if(r.blocks.poi)fixture=r;return route.fulfill({json:r})})
     await page.goto('/analysis');await expect.poll(()=>page.evaluate(()=>!!window.__smokeMapIn('.pa-map')?.isStyleLoaded())).toBe(true)
-    await page.getByRole('button',{name:'Точка на карте',exact:true}).focus();await page.keyboard.press('Enter');await page.keyboard.press('Enter');await page.getByRole('button',{name:'Анализировать',exact:true}).click()
+    await page.getByRole('button',{name:'Точка на карте',exact:true}).focus();await page.keyboard.press('Enter');await page.keyboard.press('Enter');await page.getByRole('button',{name:'Анализировать точку',exact:true}).click()
     await expect(page.locator('[data-analysis-block="poi"] [role="status"]')).toHaveText('Готово');await page.getByRole('tab',{name:'Объекты',exact:true}).click()
     await page.getByRole('button',{name:`Парки (${mode==='ready'?'2':mode==='zero'?'0':'—'})`,exact:true}).click()
     if(mode==='ready'||mode==='partial'){

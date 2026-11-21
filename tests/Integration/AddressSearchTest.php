@@ -66,6 +66,27 @@ class AddressSearchTest extends TestCase
         $this->search('Леннина 10')->assertOk()->assertJsonPath('data.0.objects.0.id', 'osm:node:2')->assertJsonPath('data.0.match_type', 'approximate');
     }
 
+    public function test_display_fields_keep_full_number_and_explicit_district_for_the_same_object(): void
+    {
+        $number = '10/2А к3 стр4';
+        $district = 'Условный район';
+        $this->import([$this->node(1, [
+            'addr:housenumber' => $number,
+            'addr:city' => 'Красноярск',
+            'addr:district' => $district,
+        ])]);
+        $display = ['address_line' => 'проспект Мира', 'house_number' => $number, 'district' => $district];
+        $original = 'Красноярск, проспект Мира, '.$number;
+
+        $this->search('Мира')->assertOk()->assertJsonPath('data.0.label', $original)
+            ->assertJsonPath('data.0.objects.0.id', 'osm:node:1')->assertJsonPath('data.0.objects.0.display', $display);
+        $this->getJson('/api/v1/addresses/osm:node:1')->assertOk()->assertJsonPath('address.id', 'osm:node:1')
+            ->assertJsonPath('address.label', $original)->assertJsonPath('address.display', $display);
+        $this->postJson('/api/v1/addresses/resolve-point', ['lon' => 92.9, 'lat' => 56])->assertOk()
+            ->assertJsonPath('data.candidates.0.id', 'osm:node:1')->assertJsonPath('data.candidates.0.label', $original)
+            ->assertJsonPath('data.candidates.0.display', $display);
+    }
+
     public function test_only_contained_matching_points_are_hidden_and_distinct_buildings_remain(): void
     {
         $tags = $this->node(1)['tags'] + ['building' => 'yes', 'addr:city' => 'Красноярск'];

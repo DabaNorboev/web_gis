@@ -28,14 +28,19 @@ class SatelliteProviderApiTest extends TestCase
             mkdir($this->root.'/cells/'.$date, 0777, true);
             $raw = str_repeat(pack('gCCCC', 0, 0, 1, 1, 1), 128 * 128);
             file_put_contents($this->root.'/cells/'.$date.'/0-0.bin', $raw);
+            $scene = ['product_uri' => 'synthetic.SAFE', 'tile' => '46VDH', 'platform' => 'sentinel-2a', 'baseline' => '05.10',
+                'datatake' => 'synthetic', 'acquired_at_catalog' => $date.'T00:00:00Z', 'acquired_at_granule' => $date.'T00:00:00Z'];
             $this->catalog['releases'][] = ['date' => $date, 'release_id' => 'fixture-'.$date, 'manifest_sha256' => str_repeat('b', 64),
-                'scenes' => [['scene_id' => 'synthetic-left'], ['scene_id' => 'synthetic-right']],
+                'scenes' => [['scene_id' => 'synthetic-left'] + $scene, ['scene_id' => 'synthetic-right'] + $scene],
                 'source_footprints' => array_fill(0, 2, ['type' => 'Polygon', 'coordinates' => [[[493000, 6212000], [496000, 6212000], [496000, 6215000], [493000, 6212000]]]]),
-                'warnings' => $date === '2024-05-07' ? [['code' => 'EARLY_SPRING_SNOW']] : [], 'limitations' => ['Synthetic'],
+                'warnings' => $date === '2024-05-07' ? [['code' => 'EARLY_SPRING_SNOW', 'message' => 'Synthetic snow warning']] : [], 'limitations' => ['Synthetic'],
                 'tiles' => ['0-0' => ['path' => 'cells/'.$date.'/0-0.bin', 'bytes' => strlen($raw), 'sha256' => hash('sha256', $raw)]]];
         }
         $this->pin();
-        $this->mock(AnalysisArea::class, fn ($m) => $m->shouldReceive('forPoint')->andReturn(['analysis_area' => null, 'analysis_bounds' => null]));
+        $this->mock(AnalysisArea::class, fn ($m) => $m->shouldReceive('forPoint')->andReturn([
+            'analysis_area' => ['type' => 'Polygon', 'coordinates' => [[[92.89, 55.99], [92.91, 55.99], [92.91, 56.01], [92.89, 56.01], [92.89, 55.99]]]],
+            'analysis_bounds' => [92.89, 55.99, 92.91, 56.01],
+        ]));
         $this->app->instance(SatelliteProvider::class, new class extends SatelliteProvider
         {
             protected function read(array $point, int $radius): array
@@ -100,9 +105,10 @@ class SatelliteProviderApiTest extends TestCase
     {
         config(['app.debug' => true]);
         $this->mock(RetailPoiProvider::class, fn ($m) => $m->shouldReceive('analyze')->once()->andReturn(['status' => 'READY', 'data' => ['synthetic' => true]]));
-        file_put_contents($this->root.'/catalog.json', 'corrupt');
+        config(['satellite.runtime' => $this->root.'/missing']);
         $this->requestDate('2024-05-07')->assertOk()->assertJsonPath('blocks.poi.status', 'READY')
-            ->assertJsonPath('blocks.satellite.status', 'UNAVAILABLE')->assertJsonPath('blocks.air.status', 'UNAVAILABLE')->assertDontSee($this->root);
+            ->assertJsonPath('blocks.satellite.status', 'ERROR')->assertJsonPath('blocks.satellite.code', 'SATELLITE_READ_FAILED')
+            ->assertJsonPath('blocks.satellite.data', null)->assertJsonPath('blocks.air.status', 'UNAVAILABLE')->assertDontSee($this->root);
     }
 
     public function test_catalog_and_public_response_have_finite_size_limits(): void
@@ -124,7 +130,40 @@ class SatelliteProviderApiTest extends TestCase
         file_put_contents($this->root.'/cells/2024-05-07/0-0.bin', $raw);
         $this->catalog['releases'][0]['tiles']['0-0']['sha256'] = hash('sha256', $raw);
         $this->pin();
-        $this->requestDate('2024-05-07')->assertJsonPath('blocks.satellite.status', 'READY')->assertJsonPath('blocks.satellite.data.selected.reason', 'NO_USABLE_NDVI')
-            ->assertJsonPath('blocks.satellite.data.selected.mean_ndvi', null)->assertJsonPath('blocks.satellite.data.selected.coverage.usable_pixels', 0);
+        $date = '2024-05-07';
+        $withoutDelivery = $this->requestDate($date)->assertOk()->assertJsonPath('blocks.satellite.status', 'READY')
+            ->assertJsonPath('blocks.satellite.data.selected.status', 'UNAVAILABLE')->assertJsonPath('blocks.satellite.data.selected.reason', 'NO_USABLE_NDVI')
+            ->assertJsonPath('blocks.satellite.data.selected.mean_ndvi', null)->assertJsonPath('blocks.satellite.data.selected.mean_ndvi_reason', 'NO_USABLE_NDVI')
+            ->assertJsonPath('blocks.satellite.data.selected.coverage.usable_pixels', 0)
+            ->assertJsonPath('blocks.satellite.data.delivery_status', 'UNAVAILABLE')->assertJsonPath('blocks.satellite.data.selected.layers', null);
+
+        $delivery = ['schema_version' => 1, 'reader_sha256' => config('satellite.sha256'), 'legend_version' => 'ndvi-fixed-v2',
+            'legend' => config('satellite.legend'), 'bounds' => [92.8, 55.9, 93.0, 56.1],
+            'releases' => array_column($this->catalog['releases'], null, 'date')];
+        $path = $this->root.'/delivery';
+        mkdir($path);
+        file_put_contents($path.'/catalog.json', json_encode($delivery));
+        $pin = hash_file('sha256', $path.'/catalog.json');
+        config(['satellite.delivery' => $path, 'satellite.delivery_sha256' => $pin]);
+        $withDelivery = $this->requestDate($date)->assertOk()->assertJsonPath('blocks.satellite.data.delivery_status', 'READY')
+            ->assertJsonPath('blocks.satellite.data.selected.reason', 'NO_USABLE_NDVI')
+            ->assertJsonPath('blocks.satellite.data.selected.mean_ndvi', null);
+        foreach (['true-color', 'ndvi'] as $layer) {
+            $withDelivery->assertJsonPath("blocks.satellite.data.selected.layers.$layer.tiles.0", "/api/v1/satellite/$pin/$date/$layer/{z}/{x}/{y}.png");
+        }
+        $ready = $this->requestDate('2026-06-06')->assertOk()
+            ->assertJsonPath('blocks.satellite.data.selected.status', 'READY')
+            ->assertJsonPath('blocks.satellite.data.selected.mean_ndvi', 0);
+        config(['satellite.runtime' => $this->root.'/missing']);
+        $error = $this->requestDate($date)->assertOk()->assertJsonPath('blocks.satellite.code', 'SATELLITE_READ_FAILED');
+
+        if ($file = getenv('SATELLITE_API_FIXTURES_FILE')) {
+            $stream = fopen($file, 'x');
+            fwrite($stream, json_encode([
+                'unusable' => $withDelivery->getContent(), 'withoutDelivery' => $withoutDelivery->getContent(),
+                'ready' => $ready->getContent(), 'readError' => $error->getContent(),
+            ], JSON_THROW_ON_ERROR));
+            fclose($stream);
+        }
     }
 }

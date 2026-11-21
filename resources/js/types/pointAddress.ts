@@ -1,4 +1,7 @@
+import type { LocalAddressDisplay } from './address'
+
 export interface PointAddressCandidate {
+    display?: LocalAddressDisplay
     id: string
     label: string
     object_type: 'building' | 'address_point' | 'address_area'

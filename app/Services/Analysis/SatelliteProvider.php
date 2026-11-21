@@ -54,6 +54,7 @@ class SatelliteProvider
         } catch (Throwable) {
             $block['status'] = 'ERROR';
             $block['code'] = 'SATELLITE_READ_FAILED';
+            $block['message'] = 'Не удалось прочитать спутниковые данные.';
         }
 
         return $block;

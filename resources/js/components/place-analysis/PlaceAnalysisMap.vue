@@ -24,12 +24,12 @@ import {
     type SatelliteMode,
 } from '@/place-analysis'
 import { satelliteClipLayers } from '@/utils/satelliteClip'
-import { addressFeatures, type AddressMapState } from '@/utils/addressMap'
+import { addressFeatures, type AddressSearchPreview } from '@/utils/addressMap'
 import type { Feature, FeatureCollection, Polygon, MultiPolygon, Point } from 'geojson'
 import type { SatelliteLayerKey, SatelliteRasterSource } from '@/types/placeAnalysis'
 
 const props = withDefaults(defineProps<{
-    addressPreview?: AddressMapState | null
+    addressPreview?: AddressSearchPreview | null
     showPlacePin?: boolean
     geometryStale?: boolean
     center: AnalysisPoint
@@ -37,7 +37,7 @@ const props = withDefaults(defineProps<{
     pois: { id: string; category: PoiCategory; name: string; lon: number; lat: number; distance_m: number; geometry?: Point | Polygon | MultiPolygon }[]
     analysisArea?: Polygon | null
     analysisBounds?: [number, number, number, number] | null
-    stations?: { id: string; name: string; lon: number; lat: number; number: number; distance_km: number }[]
+    stations?: { id: string; name: string; lon: number; lat: number; number: number }[]
     poiDistancesKnown: boolean
     tab: AnalysisTab
     showObjects: boolean
@@ -52,14 +52,15 @@ const props = withDefaults(defineProps<{
     categoryFilter: PoiCategory | null
     selectedPoi: string | null
     selectedStation: string | null
-    stationFocusRequest: number
+    stationContext: AnalysisPoint | null
+    pendingDraggable?: boolean
     pendingPoint: AnalysisPoint | null
     pickMode: boolean
-}>(), { satelliteOpacity: .75, showPlacePin: true, geometryStale: false, analysisArea: null, analysisBounds: null, stations: () => [], addressPreview: null })
+}>(), { satelliteOpacity: .75, showPlacePin: true, geometryStale: false, analysisArea: null, analysisBounds: null, stations: () => [], addressPreview: null, pendingDraggable: false })
 
 const stations = computed(() => props.stations)
 
-const emit = defineEmits<{ 'select-point': [point: AnalysisPoint]; 'select-station': [id: string]; 'select-poi': [id: string]; 'cancel-pick': []; 'highlight-address': [id: string | null]; 'select-address': [id: string]; 'retry-satellite': [] }>()
+const emit = defineEmits<{ 'select-point': [point: AnalysisPoint]; 'select-station': [id: string]; 'select-poi': [id: string]; 'cancel-pick': []; 'highlight-address': [id: string | null, source: 'pointer' | 'focus']; 'select-address': [id: string]; 'retry-satellite': [] }>()
 const { theme } = useMapTheme()
 const categoryIcons: Record<PoiCategory, Component> = {
     grocery: ShoppingBasket, pharmacy: Pill, official_stop: BusFront, park: Trees,
@@ -70,6 +71,7 @@ const mapStatusText = ref('Загрузка карты…')
 let map: MapLibreMap | null = null
 let ready = false
 let addressMarkers: Marker[] = []
+let renderedAddressGroup: AddressSearchPreview['groups'][number] | undefined
 let poiMarkers: Marker[] = []
 let stationMarkers: Marker[] = []
 let pinMarker: Marker | null = null
@@ -77,7 +79,6 @@ let pendingMarker: Marker | null = null
 let radiusLabel: Marker | null = null
 let resizeObserver: ResizeObserver | null = null
 let statusTimer: ReturnType<typeof setTimeout> | null = null
-let focusedStation: string | null = null
 let markerSyncBusy = false
 let markerSyncQueued = false
 let rasterSourceRef: Partial<Record<SatelliteLayerKey, SatelliteRasterSource>> | null = null
@@ -357,7 +358,8 @@ function syncMarkersNow() {
             element.type = 'button'
             element.className = `pa-map-station${station.id === props.selectedStation ? ' is-selected' : ''}`
             element.textContent = String(station.number)
-            element.setAttribute('aria-label', `${station.name} · ${station.distance_km} км`)
+            element.setAttribute('aria-label', `${station.name} · Местоположение по данным источника`)
+            element.setAttribute('aria-pressed', String(station.id === props.selectedStation))
             element.addEventListener('click', event => {
                 event.stopPropagation()
                 emit('select-station', station.id)
@@ -375,8 +377,11 @@ function syncMarkersNow() {
     if (props.pendingPoint) {
         const pendingElement = document.createElement('div')
         pendingElement.className = 'pa-map-pending'
-        pendingMarker = new Marker({ element: pendingElement, anchor: 'center' })
+        pendingMarker = new Marker({ element: pendingElement, anchor: 'center', draggable: props.pendingDraggable })
             .setLngLat([props.pendingPoint.lon, props.pendingPoint.lat]).addTo(instance)
+        if (props.pendingDraggable) pendingMarker.on('dragend', () => {
+            const p = pendingMarker?.getLngLat(); if (p) emit('select-point', { lon: p.lng, lat: p.lat })
+        })
     }
 
     if (props.showRadius && !!props.analysisArea) {
@@ -394,30 +399,60 @@ function syncAddressPreview() {
     const state = props.addressPreview
     const source = map.getSource('pa-address-preview') as GeoJSONSource | undefined
     source?.setData(state ? addressFeatures(state) : { type: 'FeatureCollection', features: [] })
-    const objects = state?.groups.flatMap(group => group.objects) ?? []
-    if (addressMarkers.map(marker => marker.getElement().dataset.addressId).join('|') !== objects.map(o => o.id).join('|')) {
+    const group = state?.groups[0]
+    if (renderedAddressGroup !== group) {
+        renderedAddressGroup = group
         clearMarkers(addressMarkers)
         addressMarkers = []
-        for (const group of state?.groups ?? []) for (const [index, object] of group.objects.entries()) {
+        const objects = group?.objects ?? []
+        for (const [index, object] of objects.entries()) {
             const element = document.createElement('button')
             element.type = 'button'
-            element.className = 'pa-address-marker'
-            element.textContent = String(index + 1)
+            element.className = objects.length === 1 ? 'pa-address-marker pa-address-marker--single' : 'pa-address-marker'
+            if (objects.length > 1) element.textContent = String(index + 1)
             element.dataset.addressId = object.id
-            element.setAttribute('aria-label', `${group.label} · объект ${index + 1}`)
+            const label = state?.labels.get(object.id) ?? ''
+            element.setAttribute('aria-label', `${label} · на карте`)
+            element.title = label
             element.addEventListener('pointerdown', event => event.preventDefault())
-            element.addEventListener('pointerenter', () => emit('highlight-address', object.id))
-            element.addEventListener('pointerleave', () => emit('highlight-address', null))
-            element.addEventListener('focus', () => emit('highlight-address', object.id))
+            element.addEventListener('pointerenter', () => emit('highlight-address', object.id, 'pointer'))
+            element.addEventListener('pointerleave', () => emit('highlight-address', null, 'pointer'))
+            element.addEventListener('focus', () => emit('highlight-address', object.id, 'focus'))
+            element.addEventListener('blur', () => emit('highlight-address', null, 'focus'))
             element.addEventListener('click', event => { event.stopPropagation(); emit('select-address', object.id) })
             addressMarkers.push(new Marker({ element }).setLngLat([object.lon, object.lat]).addTo(map))
         }
+        spaceAddressMarkers()
     }
     for (const marker of addressMarkers) {
         const element = marker.getElement()
         const highlighted = element.dataset.addressId === state?.highlightedId
         element.classList.toggle('is-highlighted', highlighted)
-        element.setAttribute('aria-pressed', String(highlighted))
+    }
+}
+
+function spaceAddressMarkers() {
+    if (!map || !addressMarkers.length) return
+    const occupied: { x: number; y: number }[] = []
+    const spacing = 36
+    for (const marker of addressMarkers) {
+        const point = map.project(marker.getLngLat())
+        const available = (x: number, y: number) =>
+            occupied.every(other => Math.abs(other.x - point.x - x) >= spacing || Math.abs(other.y - point.y - y) >= spacing)
+        // Keep each marker anchored to the API point. Move only the numbered button
+        // in screen pixels when a previous button would cover it.
+        let x = 0, y = 0
+        for (let step = spacing; !available(x, y); step += spacing) {
+            const offsets: [number, number][] = [[step, 0], [-step, 0], [0, -step], [0, step],
+                [step, -step], [-step, -step], [step, step], [-step, step]]
+            const offset = offsets.find(([dx, dy]) => available(dx, dy))
+            if (offset) [x, y] = offset
+        }
+        occupied.push({ x: point.x + x, y: point.y + y })
+        marker.setOffset([x, y])
+        const style = marker.getElement().style
+        style.setProperty('--pa-address-leader', `${Math.max(0, Math.hypot(x, y) - 15)}px`)
+        style.setProperty('--pa-address-leader-rotation', `${Math.atan2(-y, -x)}rad`)
     }
 }
 
@@ -434,10 +469,8 @@ function fitContext() {
     } else {
         return
     }
-    if (!previewBounds && props.showStations) {
-        for (const station of stations.value) {
-            bounds.extend([station.lon, station.lat])
-        }
+    if (!previewBounds && props.stationContext) {
+        bounds.extend([props.stationContext.lon, props.stationContext.lat])
     }
     const area = container.value.getBoundingClientRect()
     if (!area.width || !area.height) return
@@ -447,19 +480,7 @@ function fitContext() {
     const padding = stacked
         ? { top: 24, left: 24, right: 24, bottom: Math.min((layers?.height ?? area.height * .42) + 56, area.height - 100) }
         : { top: 40, left: 40, bottom: 40, right: Math.min((layers?.width ?? 300) + 32, area.width - 120) }
-    map.fitBounds(bounds, { padding, maxZoom: 15.15, duration: 0 })
-}
-
-function centerStation() {
-    if (!map || !ready || !props.showStations) return
-    const station = stations.value.find(value => value.id === focusedStation)
-    if (!station) return
-    // fitBounds retains its asymmetric padding. Clear it for an actual canvas center.
-    map.easeTo({
-        center: [station.lon, station.lat],
-        padding: { top: 0, bottom: 0, left: 0, right: 0 },
-        duration: 0,
-    })
+    map.fitBounds(bounds, { padding, maxZoom: previewBounds ? 16.5 : 15.15, duration: 0 })
 }
 
 function baseStyle(): StyleSpecification {
@@ -487,7 +508,17 @@ function initMap() {
     map.addControl(new NavigationControl({ showCompass: false }), 'top-right')
     map.addControl(new ScaleControl({ maxWidth: 90, unit: 'metric' }), 'bottom-left')
     map.on('move', clipPoiMarkers)
+    map.on('moveend', spaceAddressMarkers)
     map.on('click', event => {
+        if (!props.pickMode && props.addressPreview && map?.getLayer('pa-address-fill')) {
+            const ids = new Set(map.queryRenderedFeatures(event.point, { layers: ['pa-address-fill', 'pa-address-point', 'pa-address-outline'] })
+                .map(feature => feature.properties?.id as string))
+            if (ids.size) {
+                const [id] = ids
+                if (ids.size === 1 && id) emit('select-address', id)
+                return
+            }
+        }
         if (!props.pickMode && !props.addressPreview && map?.getLayer('pa-poi-fill')) {
             const feature = map.queryRenderedFeatures(event.point, { layers: ['pa-poi-fill'] })[0]
             if (typeof feature?.properties?.id === 'string') { emit('select-poi', feature.properties.id); return }
@@ -505,8 +536,7 @@ function initMap() {
         syncLayers()
         syncMarkers()
         syncAddressPreview()
-        if (focusedStation) centerStation()
-        else fitContext()
+        fitContext()
     })
     map.on('error', event => {
         const sourceId = String((event as unknown as { sourceId?: string }).sourceId ?? '')
@@ -523,8 +553,7 @@ function initMap() {
     if (typeof ResizeObserver !== 'undefined') {
         resizeObserver = new ResizeObserver(() => {
             map?.resize()
-            if (focusedStation && props.showStations && !props.addressPreview) centerStation()
-            else fitContext()
+            fitContext()
         })
         resizeObserver.observe(container.value)
     }
@@ -537,15 +566,17 @@ watch(theme, value => {
 })
 
 watch(() => [props.center.lon, props.center.lat], () => {
-    focusedStation = null
     map?.jumpTo({ center: [props.center.lon, props.center.lat] })
     syncLayers()
     syncMarkers()
     fitContext()
 })
 
+watch(() => props.pendingPoint, p => {
+    if (p && props.pendingDraggable && map) map.easeTo({ center: [p.lon, p.lat], duration: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 } })
+})
+
 watch(() => props.radius, () => {
-    focusedStation = null
     syncLayers()
     syncMarkers()
     fitContext()
@@ -554,29 +585,23 @@ watch(() => props.radius, () => {
 watch(() => props.addressPreview, (next, previous) => {
     syncAddressPreview()
     if (next?.groups[0] !== previous?.groups[0]) fitContext()
-}, { deep: true })
-
-watch(() => props.analysisBounds, () => {
-    syncLayers()
-    syncMarkers()
-    fitContext()
 })
+
+watch([
+    () => props.analysisBounds?.[0], () => props.analysisBounds?.[1],
+    () => props.analysisBounds?.[2], () => props.analysisBounds?.[3],
+], fitContext)
 
 watch(() => props.selectedPoi, () => syncPoiSelection())
 watch(() => props.layerOrder, () => applyLayerOrder(), { deep: true })
-watch(() => props.showStations, () => {
-    focusedStation = null
-    fitContext()
-})
-watch(() => props.stationFocusRequest, () => {
-    focusedStation = props.selectedStation
-    centerStation()
+watch(() => props.stationContext, point => {
+    if (point) fitContext()
 })
 
 watch(
     () => [
         props.showPlacePin, props.geometryStale, props.tab, props.showObjects, props.showSatellite, props.showStations, props.showRadius,
-        props.satelliteMode, props.satelliteScope, props.satelliteOpacity, props.satelliteLayers, props.categoryFilter, props.selectedStation, props.pendingPoint, props.pois, props.poiDistancesKnown, props.analysisArea, props.stations,
+        props.satelliteMode, props.satelliteScope, props.satelliteOpacity, props.satelliteLayers, props.categoryFilter, props.selectedStation, props.pendingPoint, props.pendingDraggable, props.pois, props.poiDistancesKnown, props.analysisArea, props.stations,
     ],
     () => {
         syncLayers()
@@ -588,7 +613,7 @@ function focusMap() {
     container.value?.focus()
 }
 
-defineExpose({ focusMap })
+defineExpose({ focusMap, fitContext })
 
 onMounted(initMap)
 onBeforeUnmount(() => {

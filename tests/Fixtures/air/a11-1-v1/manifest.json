@@ -1,0 +1,75 @@
+{
+  "schema": "placelens.air-input.v1",
+  "purpose": "development input; no runtime activation",
+  "prepared_at": "2026-11-13T06:39:56.728048+00:00",
+  "source_run": "data/reports/source-feasibility/2026-11-03-a2-01",
+  "access_run": "data/air/access/2026-11-13-a11-1-02",
+  "window_raw": {
+    "begin_inclusive": "2026-08-09 00:00:00",
+    "end_exclusive": "2026-08-16 00:00:00"
+  },
+  "timezone": null,
+  "utc_offset": null,
+  "files": [
+    {
+      "path": "access/one-hour.json",
+      "bytes": 417,
+      "sha256": "349d7a84741c352213e7f868d51e0b4910806cd360556f4bf830dde3fc15605f"
+    },
+    {
+      "path": "access/project9.json",
+      "bytes": 5229,
+      "sha256": "af9dbf67d2065b408d4fcc9c496a5b1b59acbf9eab28e4bfde09fe000a187451"
+    },
+    {
+      "path": "access/requests.jsonl",
+      "bytes": 1008,
+      "sha256": "4cb7fb6d41abcef36fc9cd0c8500cd7499abfd757505114568ca327b1d318652"
+    },
+    {
+      "path": "checks.json",
+      "bytes": 846,
+      "sha256": "5bb66095bfaf7a5871aa70addc41953b1c080a08e968566626d60bf98c268250"
+    },
+    {
+      "path": "client-excerpt.json",
+      "bytes": 248,
+      "sha256": "f70a10dcdedc6724a97712e077be98bc337eda5362b0cf76ca9fe68283161fa6"
+    },
+    {
+      "path": "observations.jsonl",
+      "bytes": 245321,
+      "sha256": "389320aaffa7f03c276e6b8492f1eb1a1d95fcf85678c67c969fa24cc6f2942d"
+    },
+    {
+      "path": "origins.json",
+      "bytes": 1956,
+      "sha256": "07578c3e8331abcae47fba0cc84bbbc4f21f1ba58bb8a7841964034a7cfb1f02"
+    },
+    {
+      "path": "raw/air-2026-week.json",
+      "bytes": 62145,
+      "sha256": "6f2f3fd6d2f3ebe01a97e63493f871e15f03341790c94c09cd40cd731ca9548f"
+    },
+    {
+      "path": "raw/air-help.html",
+      "bytes": 50901,
+      "sha256": "e3b53725d4626ec811fbaf70db99240b568154b16dd6b0a7691d1635f83aef72"
+    },
+    {
+      "path": "raw/air-project9-api.json",
+      "bytes": 5229,
+      "sha256": "af9dbf67d2065b408d4fcc9c496a5b1b59acbf9eab28e4bfde09fe000a187451"
+    },
+    {
+      "path": "raw/client-pm25-excerpt.js.txt",
+      "bytes": 74,
+      "sha256": "9673ecdd899a5c785f166a0bc88b52e7bbde3dfc9783161b9e4c621fd20a0ae1"
+    },
+    {
+      "path": "stations.json",
+      "bytes": 2078,
+      "sha256": "191688dacf995f7f6dfea68c34e135860d8d0716e872d446bcd26b3a54f3c253"
+    }
+  ]
+}

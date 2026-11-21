@@ -17,6 +17,11 @@ class LimitPlaceAnalysisRequest
             abort(422);
         }
         abort_unless($body instanceof \stdClass, 422);
+        abort_if($request->query->count() !== 0, 422);
+        if (isset($body->analysis_version)) {
+            abort_unless(strtolower(trim(explode(';', $request->header('Content-Type', ''))[0])) === 'application/json'
+                && in_array('application/json', $request->getAcceptableContentTypes(), true), 415);
+        }
 
         return $next($request);
     }

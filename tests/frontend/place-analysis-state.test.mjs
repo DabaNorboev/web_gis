@@ -1,10 +1,11 @@
+import { geocodingModule } from './support/geocoding.mjs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import * as vue from 'vue'
 import { loadModule } from './support/vue-component.mjs'
 import { input, responseFor, normalized } from './fixtures/place-analysis.mjs'
 const errors = loadModule(new URL('../../resources/js/api/errors.ts', import.meta.url))
-const api = loadModule(new URL('../../resources/js/api/placeAnalysis.ts', import.meta.url), { './errors': errors })
+const api = loadModule(new URL('../../resources/js/api/placeAnalysis.ts', import.meta.url), { './errors': errors, './geocoding': geocodingModule(errors) })
 function setup(timeoutMs = 1000) {
     const pending = []; let cleanup
     const { usePlaceAnalysis } = loadModule(new URL('../../resources/js/composables/usePlaceAnalysis.ts', import.meta.url), {
@@ -63,4 +64,32 @@ test('changed resolver origin invalidates all dependent results until explicit u
     finish(pending[2]); await all
     assert.equal(state.blocks.poi.phase, 'idle'); assert.equal(state.blocks.satellite.error.code, 'ADDRESS_POINT_CHANGED'); assert.equal(state.map.value, null)
     cleanup()
+})
+test('renewed authorization preserves ready blocks and rejects late replies from the old token', async () => {
+    const { state, pending, cleanup } = setup()
+    const c = { kind: 'address', selection_id: '12345678-1234-4234-8234-123456789012', label: 'Synthetic', point: { lon: .4, lat: .5 }, building: null,
+        address: { provider_id: 'fixture', components: { country_code: 'ru', locality: null, street: 'Synthetic', number: { raw: '10', key: '10', base: '10', fraction: null, letter: null, corpus: null, structure: null, parse_status: 'COMPLETE' } },
+            precision: { level: 'house', reason: null, accuracy_m: null, accuracy_reason: 'NOT_VALIDATED' }, number_match: 'EXACT',
+            source: { provider: 'geoapify', provider_result_type: 'building', observed_at: null, source_updated_at: null, received_at: '2026-11-15T00:00:00Z', normalization_version: 1,
+                attribution: [{ text: 'Powered by Geoapify', url: 'https://www.geoapify.com/' }] }, scope_id: 'scope', scope_sha256: 'a'.repeat(64) } }
+    const external = token => ({ analysis_version: 2, place: { kind: 'address', selection_token: token }, expected_place: c })
+    const reply = p => ({ ...responseFor({ ...p.request, place: { kind: 'point', ...c.point } }), analysis_version: 2, place: structuredClone(c) })
+    try {
+        state.setInput(external('old')); const all = state.loadAll()
+        pending[0].resolve(reply(pending[0])); await Promise.resolve(); await Promise.resolve()
+        const ready = state.blocks.poi.response
+        state.setInput(external('new'))
+        assert.equal(state.blocks.poi.response, ready); assert.equal(state.blocks.poi.phase, 'unavailable')
+        assert.equal(pending[1].signal.aborted, true)
+        pending[1].reject(new errors.ApiRequestError('http', 410, 'SELECTION_EXPIRED'))
+        pending[2].resolve(reply(pending[2])); await all
+        assert.equal(state.blocks.satellite.error, null); assert.equal(state.blocks.air.phase, 'idle')
+        const reload = state.load('satellite')
+        state.retireSelection(); assert.equal(state.input.value.place.selection_token, '')
+        assert.equal(state.blocks.poi.response, ready)
+        assert.equal(state.blocks.satellite.phase, 'error'); assert.equal(state.blocks.satellite.error.code, 'SNAPSHOT_EXPIRED')
+        pending[3].resolve(reply(pending[3])); await reload
+        assert.equal(state.blocks.satellite.phase, 'error')
+        await state.load('poi'); assert.equal(pending.length, 4)
+    } finally { cleanup() }
 })

@@ -1,0 +1,50 @@
+{
+  "rows": 504,
+  "unique_keys": 504,
+  "duplicates": 0,
+  "out_of_scope": 0,
+  "stations": [
+    {
+      "station_id": "4228",
+      "rows": 168,
+      "missing_hour_bins": 0,
+      "null_values": 0,
+      "zero_values": 3,
+      "min": 0,
+      "max": 30.8
+    },
+    {
+      "station_id": "3846",
+      "rows": 168,
+      "missing_hour_bins": 0,
+      "null_values": 0,
+      "zero_values": 6,
+      "min": 0,
+      "max": 30.3
+    },
+    {
+      "station_id": "3858",
+      "rows": 168,
+      "missing_hour_bins": 0,
+      "null_values": 0,
+      "zero_values": 1,
+      "min": 0,
+      "max": 37
+    }
+  ],
+  "raw_fields": [
+    "aqi",
+    "h",
+    "iaqi",
+    "p",
+    "pm10",
+    "pm25",
+    "pm25_mcp",
+    "site",
+    "t",
+    "time"
+  ],
+  "qc_fields_found": [],
+  "value_comparison_count": 504,
+  "temperature_minus_42_5_rows": 336
+}

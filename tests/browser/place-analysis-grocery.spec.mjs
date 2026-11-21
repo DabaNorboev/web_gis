@@ -5,7 +5,7 @@ async function choosePoint(page) {
     await expect.poll(() => page.evaluate(() => !!window.__smokeMapIn('.pa-map')?.isStyleLoaded())).toBe(true)
     await page.getByRole('button', { name: 'Точка на карте', exact: true }).focus()
     await page.keyboard.press('Enter'); await page.keyboard.press('Enter')
-    await page.getByRole('button', { name: 'Анализировать', exact: true }).click()
+    await page.getByRole('button', { name: 'Анализировать точку', exact: true }).click()
 }
 function groceryResponse(request, mode = 'objects') {
     const response = responseFor(request, { poi: mode === 'error' ? 'ERROR' : 'READY' })

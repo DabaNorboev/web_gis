@@ -71,12 +71,31 @@ export function satelliteDataFor(date) {
         status: 'READY', reason: null, catalog_sha256: 'b'.repeat(64), source_index_sha256: 'c'.repeat(64),
         method_version: 'placelens-s2-date-v1', mask_version: 'scl456-dn-city-v1', legend_version: 'ndvi-fixed-v2',
         available_dates: releases.map(({ date: value, release_id, manifest_sha256, scenes, warnings, limitations }) => ({ date: value, release_id, manifest_sha256, scenes, warnings, limitations })),
-        releases, delivery_status: 'READY', legend: satelliteLegend, selected,
+        releases, delivery_status: 'READY', legend: structuredClone(satelliteLegend), selected,
     }
+}
+export function markSelectedSatelliteUnusable(data) {
+    const coverage = satelliteCoverage(1600, 0)
+    coverage.reason_counts.nodata = 0
+    coverage.reason_counts.cloud_or_cirrus = coverage.circle_pixels
+    const unavailable = {
+        status: 'UNAVAILABLE', reason: 'NO_USABLE_NDVI', mean_ndvi: null, mean_ndvi_reason: 'NO_USABLE_NDVI',
+        coverage,
+    }
+    const date = data.selected.date
+    Object.assign(data.selected, unavailable)
+    Object.assign(data.releases.find(release => release.date === date), unavailable)
+    data.available_dates = data.available_dates.filter(release => release.date !== date)
 }
 export function normalized(request) {
     return { ...structuredClone(request), radius_m: request.radius_m ?? 500, date: request.date ?? null,
         stations: { selected_ids: [...(request.stations?.selected_ids ?? [])], radius_m: request.stations?.radius_m ?? 5000 }, blocks: request.blocks ?? keys }
+}
+export const airSnapshot = {
+    snapshot_version: 'e'.repeat(64), window_raw: { begin_inclusive: '2026-08-09 00:00:00', end_exclusive: '2026-08-09 03:00:00' },
+    last_success_at: timestamp, last_observed_at_raw: null, timezone: null, utc_offset: null,
+    time_reason: 'SOURCE_TIMEZONE_UNCONFIRMED', freshness: 'UNKNOWN', scope: 'STATION_OBSERVATIONS',
+    indicator: 'pm2_5', unit: 'µg/m³', aggregation: 'hourly',
 }
 export function responseFor(request = input, statuses = {}) {
     const r = normalized(request)
@@ -99,7 +118,7 @@ export function responseFor(request = input, statuses = {}) {
             block.data = key === 'poi' ? { items: [{ id: 'osm:node:1', category: 'pharmacy', name: 'Synthetic API pharmacy', address: null,
                 geometry: { type: 'Point', coordinates: [point.lon, point.lat] }, point, distance_m: 0, access: null, source: 'Synthetic', dataset_import_id: 1,
                 observed_at: null, source_updated_at: null }], count: 1, counts_by_category: { grocery: 0, pharmacy: 1, official_stop: 0, park: 0 } }
-                : key === 'satellite' ? satelliteDataFor(r.date) : { stations: [], missing_selected_ids: [], counts: { selected: 0, nearest: 0, other: 0 } }
+                : key === 'satellite' ? satelliteDataFor(r.date) : { ...airSnapshot, stations: [], missing_selected_ids: [...r.stations.selected_ids], counts: { selected: 0, unlocated: 0 } }
             if (key === 'poi') block.method_version = 'synthetic-1'
         }
         return [key, block]

@@ -9,6 +9,7 @@ RUN apt-get update \
         libpq-dev \
         libzip-dev \
         git \
+        python3 \
         unzip \
     && docker-php-ext-install -j$(nproc) \
         intl \

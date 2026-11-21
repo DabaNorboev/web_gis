@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-11-13
+updated: 2026-11-22
 verified: not verified
 ---
 
@@ -64,7 +64,7 @@ API в изолированном окружении; выполненный п�
 |---|---|---|
 | Представление адресного поиска | `docker compose exec --user node node node --test tests/frontend/address-search-presentation.test.mjs` | Без backend/БД; добавить typecheck для TS, browser-сценарий при изменении подключения/взаимодействия |
 | Grocery А8 | `docker compose exec php composer test:postgis -- --filter=GroceryPoiTest`; `tests/etl/test_prepare_osm_grocery.py` в существующем ETL-образе; browser `place-analysis-grocery.spec.mjs` | Только защищённая `web_gis_test`; fixtures и транзакционный импорт; v2 rules/categories/scope через PostGIS, учёт/исключения relations, отказ старого формата и поздний отказ после деактивации. ETL: node-only/nested-only запрещают публикацию; внешнее исключение только по полным координатам. `A8_LEGACY_GROCERY_FILE` включает проверку сохранённого v1, `A8_GROCERY_FILE` явно включает тест подготовленного реального файла, `A8_GROCERY_QA_DIR` — запись новых QA-ответов в отдельный каталог и opt-in Node `grocery-real-response.test.mjs`; рабочие данные не меняются. ETL без сети/БД, временный output; browser — синтетические API/временная сборка |
-| Анализ места `/analysis` и демо `/analysis?demo=1` | `docker compose exec --user node node node --test tests/frontend/place-analysis-demo.test.mjs`; `docker compose exec --user node node npm run test:smoke -- tests/browser/place-analysis.spec.mjs`; `docker compose exec php php artisan test --filter=PlaceAnalysisPageTest` | Демо и API fixtures без рабочей БД/HTTP; `place-analysis-api.test.mjs` и `place-analysis-state.test.mjs` проверяют эхо, независимость, epochs/abort/timeout; browser `place-analysis-api.spec.mjs` — независимую доставку/ошибки/unavailable/контур и выбор объекта/станций; `place-analysis-point-address.test.mjs` и browser `place-analysis-point-address.spec.mjs` — независимый ориентир, точные координаты, явный переход/ошибка resolver, отсутствие результата и поздние ответы; `place-analysis-address.spec.mjs` — группы/единственный адрес, этажность, отсутствие начальной метки, автозапуск, камеру, hover/focus и позднюю выдачу; typecheck и сборка в отдельный каталог. Browser требует Chromium и проверяет экран, компоновку шапки и поиска, единые кнопки карточек/точки, сохранение настроек и порядка слоёв, связанный выбор POI списком/маркером, keyboard-only точку, тему подложки, сворачивание слоёв, радиус/неизвестный набор, станции, атрибуцию и адрес на четырёх viewport, не заменяя A6-приёмку |
+| Анализ места `/analysis` и демо `/analysis?demo=1` | `docker compose exec --user node node node --test tests/frontend/place-analysis-demo.test.mjs`; `docker compose exec --user node node npm run test:smoke -- tests/browser/place-analysis.spec.mjs`; `docker compose exec php php artisan test --filter=PlaceAnalysisPageTest` | Демо и API fixtures без рабочей БД/HTTP; `place-analysis-api.test.mjs` и `place-analysis-state.test.mjs` проверяют эхо, независимость, epochs/abort/timeout; browser `place-analysis-api.spec.mjs` — независимую доставку/ошибки/unavailable/контур и выбор объекта/станций; `place-analysis-point-address.test.mjs` — legacy resolver, browser `place-analysis-point-address.spec.mjs` — явный внешний reverse; `place-analysis-search-modes.spec.mjs` — локальный старт, переключение, общая карточка точки/локальный resolver и сохранность результатов; `place-analysis-address.spec.mjs` и `place-analysis-geocoding.spec.mjs` — preview/confirm/reconfirm, точность, сроки, клавиатура и отсутствие начальной метки; typecheck и сборка в отдельный каталог. Browser требует Chromium и проверяет экран, компоновку шапки и поиска, единые кнопки карточек/точки, сохранение настроек и порядка слоёв, связанный выбор POI списком/маркером, keyboard-only точку, тему подложки, сворачивание слоёв, радиус/неизвестный набор, станции, атрибуцию и адрес на четырёх viewport, не заменяя A6-приёмку |
 | Состояние самостоятельных поездок | `docker compose exec --user node node node --test tests/frontend/trips.test.mjs tests/frontend/walking-contract.test.mjs` | Без backend/БД; добавить typecheck и browser для URL/history, фокуса или подключения к странице; при общей логике — регрессии сравнения/ссылки |
 | Пеший UI | `docker compose exec --user node node npm run test:smoke -- tests/browser/walking-trips.spec.mjs` | Временная сборка и browser-отчёты, все четыре viewport; API синтетический. Дополнить frontend/typecheck по таблице выше; ORS/доступ этим не проверяются |
 | Пеший API | `docker compose exec php composer test -- --filter=WalkingTripAnalysisTest` | Очищает config cache, синтетические snapshot/HTTP и временные файлы; добавить затронутые unit/privacy и GIS-проверки при изменении соответствующих границ |
@@ -147,7 +147,7 @@ docker compose exec php composer test:postgis -- --testsuite=PostGISWrite
 
 `npm test` проверяет настоящие TS-модули/composables/API/storage через `tests/frontend/support/vue-component.mjs`. После удаления прежних UI сохранены headless-части смешанных тестов; SSR/browser-сценарии удалённых страниц сняты. Loader по-прежнему отклоняет неизвестные модули/экспорты.
 
-`PlaceAnalysisPageTest` проверяет `/` и redirects старых страниц без query/session. `place-analysis.spec.mjs` проверяет единственный экран, отсутствие демо и сохранность browser records. Остальные `place-analysis-*.spec.mjs` проверяют независимость блоков, ошибки/поздние ответы, адресные группы и ориентир, круг, категории POI, счётчики, связанный выбор, слои, клавиатуру и desktop/mobile.
+`PlaceAnalysisPageTest` проверяет `/` и redirects старых страниц без query/session. `place-analysis.spec.mjs` проверяет единственный экран, отсутствие демо и сохранность browser records. Остальные `place-analysis-*.spec.mjs` проверяют независимость блоков, ошибки/поздние ответы, подтверждение адреса и явный reverse, круг, категории POI, счётчики, связанный выбор, слои, клавиатуру и desktop/mobile.
 
 `playwright.config.mjs` задаёт четыре viewport. `tests/browser/server.mjs` собирает настоящий entry во временный каталог, не читает `.env`, не меняет `public/build`, не проксирует к backend; API синтетические, MapLibre/DOM настоящие. Browser-артефакты пишутся в test-results/playwright-report. Это не рабочий HTTP smoke. Node-команды выполняются в node-контейнере пользователем node. [Общие ограничения](browser-smoke.md).
 
@@ -253,6 +253,8 @@ docker compose exec -T php php vendor/bin/phpunit tests/Feature/SatelliteProvide
 scripts/satellite-python tests/etl/test_prepare_satellite_delivery.py -v
 ```
 
+Для проверки контракта PHP и TS задать `SATELLITE_API_FIXTURES_FILE` с путём к новому файлу в доступном обоим тестовым контейнерам временном каталоге. `SatelliteProviderApiTest` сохраняет тела четырёх синтетических HTTP-ответов. `node --test tests/frontend/place-analysis-api.test.mjs` с тем же путём прогоняет их через клиентский валидатор и проверяет отказ при повреждённом URL тайла. `tests/browser/place-analysis-satellite.spec.mjs` проверяет состояния блока, доступность слоя и сохранение выбранного POI на offline-стенде.
+
 Реальные PNG отдельно: `scripts/satellite-python tests/Satellite/check_delivery.py --delivery <delivery> --sha256 <delivery-pin> --index data/satellite/krasnoyarsk-2024-2026-city-v1.json --output <новый-файл.json>`. Проверяются все hashes/типы/alpha/палитра, независимые inverse-projected центры z13 и соответствие manifest даты; ETL/радиометрия заново не проверяются.
 
 Реальный HTTP: `php tests/Satellite/check_http_satellite.php` в одноразовом `docker compose run --rm --no-deps -T ... php` с mounts `-v <runtime>:/satellite/runtime:ro -v <delivery>:/satellite/delivery:ro`; явно передать `APP_ENV=testing`, `APP_DEBUG=false`, `DB_CONNECTION=pgsql`, `DB_DATABASE=web_gis_test`, `DB_URL=`, `CACHE_STORE=array`, `SESSION_DRIVER=array`, четыре SATELLITE-переменные из [активации](data/satellite.md#доставка-и-активация-а102). Задать новые `SATELLITE_HTTP_REPORT` и `SATELLITE_HTTP_METRICS` в writable каталоге свидетельств. Harness проверяет существующие PostGIS guards/read-only mounts и запускает PHP HTTP server только на loopback:18765, затем останавливает его. Круги 200/1000 м, облака июня, край и отсутствие данных сверяются с reader, PNG запрашиваются по выданным URL. Отчёты содержат synthetic case labels, ресурсы и coverage, без личных координат/тел запросов. Метрики PHP/RSS/rchar тестовые; Nginx/FPM/UI не проверяются.
@@ -267,3 +269,127 @@ SATELLITE_RUNTIME_SHA256=<pin> php vendor/bin/phpunit -c phpunit.postgis.xml tes
 # Python-зависимости А9, новый output; читает releases и пишет свидетельства:
 scripts/satellite-python tests/Satellite/check_real_satellite.py --runtime <runtime> --sha256 <pin> --output <новый-каталог>
 ```
+
+### Плановое обновление и локальная история воздуха А12
+
+Python использует подставной транспорт и временные каталоги. PHPUnit запускается в окружении с Python 3 и PDO SQLite, использует `sqlite::memory:` и свои временные деревья. Для проверки настоящих PHP-ответов в TypeScript нужен новый временный каталог, видимый из PHP и Node. При локальном PHP и Node в Compose путь PHP начинается с корня checkout, путь Node с `/var/www/html`.
+
+```bash
+python3 -B tests/air/test_import_snapshot.py -v
+python3 -B tests/air/test_refresh.py -v
+air_exchange=$(mktemp -d storage/framework/testing/air-a12.XXXXXX)
+APP_CONFIG_CACHE="$PWD/$air_exchange/config.php" DB_CONNECTION=sqlite DB_DATABASE=:memory: DB_URL= CACHE_STORE=array \
+  AIR_API_TEST_EXCHANGE="$PWD/$air_exchange" php vendor/bin/phpunit --do-not-cache-result \
+  tests/Feature/AirRefreshScheduleTest.php tests/Feature/AirSnapshotApiTest.php tests/Feature/PlaceAnalysisApiTest.php
+docker compose exec -T --user node -e AIR_API_TEST_EXCHANGE="/var/www/html/$air_exchange" node \
+  node --test tests/frontend/place-analysis-api.test.mjs tests/frontend/place-analysis-state.test.mjs tests/frontend/place-analysis-point-address.test.mjs
+docker compose exec -T --user node node npm run typecheck
+scripts/check-docs
+git diff --check
+```
+
+На А11 сверяются 504 значения и исходных времён трёх станций, 10 нулей. Синтетика проверяет ноль, пустое значение, отсутствующую строку, неизвестные QC, время и CRS, повреждение, повтор, исправление, срок хранения, один активный процесс и сохранение истории при ошибке публикации. До и после сбоя ответы POI и satellite независимы, их providers подставлены в этом наборе. Управляемые часы проверяют включение, UTC-выражение и границу окна той же команды. Проверка не запускает рабочее расписание и не использует PostGIS. Для представления сводки есть сценарий выбора станции в `tests/browser/place-analysis-api.spec.mjs` с временной сборкой.
+
+Регрессия publisher проверяет пропуск более старого окна даже при пропусках наблюдений в активном выпуске. После пропуска сохраняются версия, время последнего успеха, строки истории и просроченный выпуск. Следующее более новое окно успешно публикуется и запускает обычную уборку. PHPUnit проверяет сообщение Artisan о пропуске.
+
+### Станции и график PM2.5 И3
+
+`tests/browser/place-analysis-api.spec.mjs` проверяет выбор станций клавиатурой, ноль, два вида пропусков и доступ к таблице на экране 320×500. В тестах на смену станции и версии подставной транспорт игнорирует отмену и доставляет старый ответ после нового графика. Отдельный сценарий проверяет обновление сводки при 409, повтор GET при отказе ряда и сохранение готовых POI и спутникового наблюдения. Для проверки закреплённого А11 передать браузерному стенду `AIR_API_TEST_EXCHANGE` из прогона А12 выше. Сценарий использует сводку и три ряда из PHP. Он сверяет положение всех маркеров, включая станцию за кругом, проверяет один и тот же ID и версию при выборе с карты и из списка, сохранность POI и спутника, 168 часов, фактический период и числовой ноль. В синтетическом сценарии со сменой станции поздний ответ приходит после выбора другой станции на карте. Станция с неизвестными координатами участвует только в списке.
+
+## Внешний поиск Г4
+
+Frontend fixtures без ключей/сети/БД: `docker compose run --rm --no-deps --pull never --user node node npm run typecheck`; тем же способом `node --test tests/frontend/geocoding-api.test.mjs tests/frontend/geocoding-state.test.mjs tests/frontend/place-analysis-state.test.mjs` либо полный `npm test`. Проверяются echo/immutable snapshot, v2 wire без клиентских полей, очередь/ABA/abort/timeout, cooldown, поздний confirm, reconfirm и абсолютный expiry с готовым либо загружающимся блоком. Legacy v1 остаётся отдельной регрессией.
+
+Browser: `npm run test:smoke -- tests/browser/place-analysis-geocoding.spec.mjs tests/browser/place-analysis-address.spec.mjs tests/browser/place-analysis-point-address.spec.mjs tests/browser/place-analysis-review-ui.spec.mjs --output=<новый-каталог>`. Выполнять от `node` с Node 22 и Chromium версии lockfile. `PLAYWRIGHT_HTML_OUTPUT_DIR` также направить в новый каталог, сохраняя прежние артефакты. Стенд собирает frontend во временный каталог, использует offline-подложку и синтетические POST/ответы, не читает рабочий `.env` и не меняет `public/build`. При отсутствии запущенного node-сервиса достаточно одноразового контейнера; браузерные библиотеки должны быть подготовлены заранее, без установки пакетов в этом прогоне.
+
+Проверка 15.11.2026: полный frontend — 236 pass / 4 прежних skip; typecheck — pass. Полный browser smoke — 192 pass на четырёх viewport; после исправления pending-expiry отдельно 8 pass. После окончательных исправлений — typecheck, 15 целевых frontend и 68 browser pass. Подробности компоновки и жизненного цикла — в локальных свидетельствах `data/reports/geocoding-ui-g4-2026-11-15-01/verification.json`. Browser выполнялся в одноразовом network-none Playwright-контейнере с Node 22, без внешнего API/PHP/БД. Это не проверка Geoapify, его координат или рабочей активации Г5.
+
+## Внешний поиск Г3
+
+`GeocodingApiTest`, `GeocodingTokensTest` — SQLite/fixtures, без сети: строгие POST и request_id, приватные ошибки/debug/CORS, номер/уровень/территория, candidate/selection/reconfirm, фиксированные часы и предел 7 суток, ключи/previous_keys, три блока v2 и совместимость v1 (`PlaceAnalysisApiTest`). `GeocodingTransportTest` запускает отдельный PHP TLS-peer только на loopback с временным self-signed CA; PHP запускать с `-d curl.cainfo=/tmp/placelens-g3-ca.pem`. Проверяет сертификат, handshake 2 с, headers/body/чанки 8 с, redirect, gzip >1 MiB и остановку при отказе locks. Файлы сертификата/ключа — только `/tmp`, peer не журналирует запросы. Изолированный DNS-тест включается `G3_ISOLATED_DNS=1` исключительно в network-none контейнере с отдельным `/etc/resolv.conf` (`nameserver 127.0.0.1`, `options timeout:10 attempts:1`); хостовый DNS не менять. В неподдержанном runtime тест проверяет 503 до DNS/HTTP, в c-ares — реальный stall/deadline. Заявленный ASYNCHDNS без c-ares недостаточен: PHP 8.4.26/libcurl 7.88.1 дал около 10 с вместо 2/8 с на stalled DNS и теперь отвергается.
+
+`GeocodingStateTest` — только `phpunit.postgis.xml`/существующие guards `web_gis_test`: новая уникальная схема и миграция up/down, encrypted cache/TTL/eviction, граница/отверстия, квоты/четыре slots/частота, отдельные PDO-сессии и конкурентные процессы PHP, смерть worker и разрыв HTTP-клиента. Все создаваемые схемы и процессы удаляет сам стенд; рабочие данные/volumes не используются. Запуск: `php vendor/bin/phpunit -c phpunit.postgis.xml --do-not-cache-result --no-logging --no-coverage --filter GeocodingStateTest` в подготовленном защищённом окружении. Тест client abort использует локальный PHP HTTP-server и незавершённый TLS-handshake, не Geoapify. TLS/Nginx не подтверждают рабочий FPM/browser. `tests/security/test_trip_nginx.py` дополнен четырьмя geocoding-путями: 8 KiB/8 KiB+1, Content-Length/chunked, безопасные ошибки, no-store/no-referrer и отсутствие ввода в logs/spool.
+
+Для изолированных запусков использовать PHP-образ проекта с read-only checkout, writable `/tmp`, временными config/packages/services caches и пустым файлом поверх `.env`; synthetic APP_KEY/GEOAPIFY key, без файла реальных API-ключей. PostGIS можно запустить отдельно в tmpfs с `POSTGRES_DB=web_gis_test`, без рабочей сети/volumes; PHP присоединяется только к его network namespace. Эти тесты не выполняют реальную активацию, сборку frontend, импорт или запрос Geoapify.
+
+Воспроизводимый opt-in runtime и отдельная рабочая активация — [runbook](runbook-local.md#php-runtime-с-c-ares). Проверка уже собранного образа:
+
+```bash
+python3 -B tests/environment/check_geocoding_runtime.py --image placelens-php:cares-g3-20261115-verified
+```
+
+Стенд требует локальных `postgis/postgis:16-3.4` и `nginx:1.27-alpine`, создаёт только собственные контейнеры без опубликованных портов в одном network-none namespace и удаляет их при завершении; PostgreSQL — tmpfs. Checkout read-only, `.env` закрыт пустым файлом, caches и сертификаты — `/tmp`. Логи, `curl_version()` PHP, список расширений, APK manifest и JUnit сохраняются в напечатанном новом `/tmp/placelens-g3-runtime-*`. CLI transport включает реальный DNS stall; callback отмены проверяется при чтении тела, поскольку частота progress callbacks во время TLS зависит от libcurl. Backend — Unit, `GeocodingApiTest`, `GeocodingTokensTest`, `PlaceAnalysisApiTest`; SQLite использует `:memory:`, PostGIS suite принудительно выбирает `web_gis_test` с существующими guards.
+
+`GeocodingFpmRuntimeTest` включается только стендом (`G3_FPM_HTTP=1`): настоящий Nginx → FPM, отдельный синтетический endpoint вне routes приложения, DNS/TLS/body stall и разрыв HTTP-клиента. Проверяются время transfer и HTTP, завершение операции, две advisory locks во время stall, отказ повторного допуска того же клиента, отсутствие locks после transfer и повторное получение слота. FPM вызывает текущие `GeoapifyTransport`/`GeocodingState`, runtime guard сохранён. Для целевого повтора после исправления стенда есть `--checks cli backend state fpm` (указать только нужные группы). Это не проверка рабочего FPM, реального Geoapify или браузерного бюджета Г2.
+
+Приёмка кандидата 2026-11-15 (`linux/amd64`, image ID — в [runbook](runbook-local.md#php-runtime-с-c-ares)): CLI — 5 tests / 67 assertions, backend — 106 / 856, state — 9 / 99, FPM — 1 / 59, без пропусков. CLI stalled DNS — 2,002 с, connect/TLS — 2,003 с; headers/body/медленные чанки — 8,001–8,002 с. Redirect/retry, TLS verify, gzip >1 MiB и отмена при потере locks прошли. FPM transfer / HTTP: DNS — 2,005 / 2,148 с, connect/TLS — 2,003 / 2,030 с, body — 8,004 / 8,021 с; после разрыва клиента DNS завершился за 2,002 с (наблюдение завершения — 2,040 с). Во всех FPM-случаях проверены удержание двух locks, отказ конкурентного допуска, освобождение и повторный допуск. Миллисекундные накладные расходы наблюдения не меняют настроенные 2000/8000 мс; это не жёсткая realtime-гарантия и не проверка UI-бюджета Г2.
+
+Свидетельства этого запуска: `/tmp/placelens-g3-runtime-ibwsqpij` (временные локальные logs/JUnit/manifest, не переносимый артефакт репозитория). Набор PHP extensions совпал с исходным образом; `composer check-platform-reqs`, `php-fpm -t` и синтаксис штатного `start.sh` проверены также от `www` (UID/GID 1000). Root-стенд вывел Git dubious ownership при Composer, но platform check и тесты успешны; отдельный запуск от `www` прошёл без этого сообщения. Переход musl меняет дополнительные возможности libcurl (в частности, отсутствуют SSH/SFTP и GSSAPI/NTLM); приложение использует HTTPS, его целевые проверки прошли. Полный GIS suite, рабочие mounts/спутниковые данные и внешние сервисы этим прогоном не проверены. APK-пакеты требуют новой приёмки при пересборке, готовый образ сохраняется по ID.
+
+Конфигурация Г3: `GEOCODING_ENABLED=false` по умолчанию, серверный `GEOAPIFY_API_KEY`, `GEOAPIFY_DAILY_LIMIT` ограничен сверху 2000; таблицы создаёт новая миграция `2026_11_15_000001_create_geocoding_state`. Стенд Г3 не применяет рабочую миграцию/Nginx; локальная активация описана ниже в Г5. Квота upstream распознаётся только по явному machine code `QUOTA_EXCEEDED`/`DAILY_QUOTA_EXCEEDED`, generic 403 отключает сеть; unknown reset даёт защитный cooldown 1 час без обещания восстановления. Эти ветви проверены синтетически. Рабочий прогон Г5 не проверял формат ответа при исчерпании квоты Geoapify.
+
+
+## Локальная проверка Г5
+
+2026-11-15: [локальная активация](runbook-local.md#локальное-геокодирование-г5) проверена через рабочие Nginx/FPM и Chromium 1.64.1, с manifest/build. Серверный счётчик — 8 внешних попыток Geoapify из разрешённых 20, включая незавершённое браузерное ожидание; cache HIT/confirm/анализ к этому числу не добавляются. Benchmark не повторялся, автоматических upstream-retries нет. Без traces, тел запросов, токенов, координат и URL поставщика в артефактах; внешняя подложка в браузерном стенде блокировалась, её доступность не проверена.
+
+Проверены search → кандидаты → отдельный preview → confirm → v2, полный номер/серверная территория/неизмеренная точность/атрибуция; улица и неизвестный уровень не становятся домом. Точка анализируется по v1 без geocoding, reverse только явный и с точным echo, PostGIS geography ≤100 м, затем явный адресный confirm/v2. Смена адреса/точки/радиуса, быстрый ввод, задержанный реальный ответ после очистки; 1280×720/560, mobile 390×844 и 320×740, доступность подтверждения и отсутствие горизонтального overflow. Cache HIT сохраняет received_at. На рабочем API проверены POST-only, 422, 413, outside-scope без сети и no-store/no-referrer; синтетический marker, bearer-поля и apiKey URL отсутствуют в новых контейнерных logs.
+
+POI и спутник вернули READY независимо от UNAVAILABLE воздуха; доступны шесть дат, смена даты сохраняет POI, реальные PNG — HTTP 200. Количества grocery/pharmacy/park/stops/imports неизменны, оба спутниковых pins совпали, mounts read-only; `.env` и `public/hot` побайтно сохранены. Измерение координатной точности, повтор радиометрии и восстановление полного дампа не выполнялись.
+
+Приёмка обнаружила отсутствие reference_distance_m/100-м фильтра в backend reverse. Исправлены PostGIS-фильтрация до cache/token, версия ключа только reverse-кэша и исключение origin-distance из адресного токена. В изолированном network-none `web_gis_test` с synthetic keys/управляемыми часами: tokens/API — 9 tests, 199 assertions; state quota/cache/error/outside-scope — 4 tests, 52 assertions; после исправления — reverse/filter/cache/confirm 2 tests, 41 assertions и повтор затронутых tokens/API 9 tests, 199 assertions. Рабочие часы/квоты ради отказов не менялись. Прежние Г3/Г4 fixtures остаются отдельными свидетельствами, полный набор не повторялся.
+
+Локальные безопасные свидетельства: `data/reports/geocoding-g5-2026-11-15-01/verification.json` и связанные safe summaries/logs. Сохраняются также неполные прогоны: исправлены допущения стенда о числе options, обязательном Accept, loopback secure context и времени ожидания. Для Карла Маркса, 93 Geoapify дал неизвестный уровень, поэтому подтверждение дома ожидаемо запрещено; Мира, 106 и Ленина, 127 дали подтверждаемые дома. Малый набор не доказывает покрытие города; владельческая приёмка Г5/А13/ядра остаётся открытой.
+
+
+## План проверок Г6
+
+**План, не результаты запуска.** [Требования](features/address-search.md#план-два-режима-поиска-г6), [точка/адрес](features/point-address.md#план-единая-карточка-точки-г6), последовательность и сетевые границы — [roadmap](plans/roadmap.md#г6-два-режима-поиска-и-выбор-точки).
+
+- Диагностика на малом наборе публичных адресов: различать raw-выдачу, нормализацию/территориальный фильтр и отображение; измерять debounce/очередь, внешний HTTP, серверную обработку и отображение, отдельно подтверждение и анализ. Измерения не пишут ключи, bearer, личные координаты или тела запросов в журналы. Сохранённые ответы и cache HIT не считать новыми внешними измерениями.
+- Локальный поиск: нормализация, полный номер/корпус, группы с несколькими OSM-объектами и явный выбор. Компактная подпись не теряет номер, не выдумывает район и не меняет идентичность; ограничения результата по-прежнему влияют на доступные действия.
+- Переключение режимов: локальный старт, отсутствие внешнего запроса от самой кнопки, сохранение текста/подтверждённого места/готовой аналитики. Search/reverse/confirm, отмена, А→Б→А и поздний finally не восстанавливают черновик другого режима. Сроки/reconfirm внешнего выбора действуют и при открытом локальном поиске.
+- Одна карточка точки в обоих режимах: локальный resolve-point без внешней сети, анализ исходной точки, выбор адресного объекта через resolver/v1. Проверить неоднозначность, пустоту, сбой, отмену и поздний ответ; внешний reverse только явно. Не повторять пространственный стенд, если прежний GIS-контракт не меняется; при изменении GIS — только защищённый web_gis_test.
+- Typecheck и затронутые frontend/browser: адресные подписи, keyboard/focus, 320/390 px и короткий экран, компактная справка/атрибуция, независимые блоки. Сборка для проверок — временная; рабочую public/build сохранять до отдельной локальной активации.
+- Финальная рабочая проверка обоих режимов через Nginx/FPM/browser и владельческая приёмка отделяются от fixtures и диагностики provider. Успешные проверки того же diff не повторять без нового изменения/сбоя/риска. После правок docs — scripts/check-docs и git diff --check.
+
+
+### Проверка реализации Г6.2 на fixtures — 20.11.2026
+
+Typecheck успешен. Целевые frontend-наборы поиска, geocoding API/state, point resolver и analysis state: 26 различных тестов успешны (исходный набор 22 и четыре добавленные регрессии режима). Browser-наборы address/geocoding/point-address/review-ui/search-modes: 128 успешных проверок на четырёх viewport; после добавления отмены локального resolver при постановке точки и дополнительных регрессий финальный `place-analysis-search-modes.spec.mjs` — 76 успешных проверок. Проверены локальный старт, сохранение текста/выбора/готовых блоков, ABA search/reverse/confirm и локального search/resolver, expiry/reconfirm в локальном режиме, исходные координаты точки, явные OSM-объекты и неоднозначные группы, пустой/ошибочный ориентир.
+
+Browser использовал имеющийся Playwright v1.64.1 образ с добавленным пользователем node, временные build и отчёты в `/tmp`; первый запуск в обычном node-образе не стартовал из-за отсутствия Chromium. Установка пакетов и внешние запросы не выполнялись. API/GIS/backend не изменены; PostGIS, рабочие Nginx/FPM, доступность Geoapify и владельческая приёмка этим прогоном не проверены. Рабочие assets/config сохранены; компактные подписи и рабочая активация остаются следующим этапом.
+
+### Проверка Г6.3 на fixtures — 20.11.2026
+
+Прошли typecheck, 30 разных frontend-тестов, 34 целевых backend-теста и 160 разных browser-проверок. Первый browser-прогон выявил два устаревших ожидания в тестах: число объектов в группе и текст ошибки подтверждения. После исправлений прошли целевые повторы на четырёх viewport. Клавиатурные сценарии обоих режимов дополнительно проверены при 320×568 и 390×640. Проверены полный номер с дробью, литерой, корпусом и строением, отсутствующие поля, раздельный выбор одинаковых подписей, справка о точности и недоступное подтверждение улицы.
+
+Backend-проверки покрыли поля поиска, resolver и ориентира OSM, новый и старый кэш Geoapify, подтверждение, неизменность при переподтверждении и запас размера токена. Использовались отдельная `web_gis_test` на tmpfs, синтетические ответы поставщика и временная сборка браузерного стенда.
+
+После исправления Enter прошли typecheck на Node 22 и 160 браузерных проверок на четырёх размерах экрана. Обе новые регрессии выявляли оставшийся `aria-activedescendant` до исправления. После исправления проверены один явный поиск по сохранённому тексту после смены режима или отмены предпросмотра, а также открытие предпросмотра актуальной подсказки.
+
+### Рабочая проверка Г6.4 — 20.11.2026
+
+Проверены новый manifest/build, запуск обычным Compose, Nginx/FPM с c-ares и оба спутниковых pin. В Chromium локальный поиск был стартовым. OSM-выбор, анализ точки и явный выбор локального адреса из карточки в обоих режимах дали готовые POI через v1. Для 06.06 и 09.09.2026 получены реальные PNG и готовые спутниковые наблюдения. Смена даты сохранила готовые POI. Внешняя подложка в контрольном браузере была заблокирована.
+
+На одном публичном адресе проверены отсутствие запроса от переключения, повторный поиск Enter после возврата в Geoapify и отмены предпросмотра, отдельное подтверждение и готовый анализ v2. Из 7 lookup POST четыре получили cache HIT. Сервер учёл 3 из 8 разрешённых внешних попыток, включая первый `504 PROVIDER_TIMEOUT`. Повторный автокомплит прошёл.
+
+Время от действия до подсказки в этом прогоне составило 427 мс для локального ввода, 3,52 с для Geoapify-автокомплита при MISS, 2,69 с для явного поиска при MISS и 99–111 мс при HIT. От подтверждения до готового POI прошло 196–211 мс. Первичный тайм-аут вернулся за 2,08 с от начала HTTP-запроса. Это наблюдения браузера и рабочего HTTP для одного адреса. Отдельные фазы DNS/внешнего HTTP/нормализации и полнота покрытия не измерялись.
+
+Сведения о запуске, возврате сборки и сценарий ручной приёмки — в [runbook](runbook-local.md#локальная-активация-г64). Владельческая приёмка остаётся открытой.
+
+### Проверка спутникового контракта — 20.11.2026
+
+До исправления клиент отклонял `ERROR / SATELLITE_READ_FAILED` и выбранную дату `NO_USABLE_NDVI` с готовыми тайлами. После исправления проверены четыре ответа PHP через TS-валидатор, отказ на повреждённом URL тайла и сохранение выбранного POI при смене состояния спутника. Прошли SatelliteProviderApiTest (5 тестов, 66 assertions), frontend place-analysis-api (11 тестов), спутниковые browser-проверки (32 на четырёх размерах экрана) и typecheck.
+
+Отдельная локальная активация проверена через Nginx/FPM и Chromium: локальный поиск, анализ точки, реальные PNG TCI и NDVI для обеих дат 2026 года и сохранение POI при смене даты. Ошибочные состояния проверены на fixtures. Внешняя подложка на стенде была заблокирована. Владелец принял спутниковую правку 20.11.2026. Приёмка Г6 и А13 отслеживается отдельно в [roadmap](plans/roadmap.md#ближайшая-очередь).
+
+### Повторная проверка экрана MVP — 21.11.2026
+
+Typecheck и девять целевых frontend-тестов прошли. Целевые проверки Chromium с fixtures на 320×740, 320×500, 1280×720 и 1280×560 покрыли одиночный OSM-адрес, нумерацию группы, клавиатуру и мышь, оба действия карточки точки, поздние ответы воздуха, обновление сводки и повтор истории, перенос графика и ширину панели. Для спутника проверены пустой селектор даты, готовое наблюдение, отказ чтения и тайлов, сохранность POI, выравнивание среднего NDVI и причин исключений. Геокодирование и ошибки поставщиков проверены на fixtures.
+
+Через рабочие Nginx/FPM в Chromium на 1280×720 и 320×500 проверены новый JS `app-BZ0mPIOu.js`, «Киренского 3», группа на улице Ленина, POI для адреса и точки и четыре комбинации даты и режима для 06.06 и 09.09.2026 с ответами PNG 200. На десктопе в предпросмотре «Киренского 3» видны улица и соседние дома. Все три станции и 504 отображённых значения, включая 10 нулей, совпали с закреплённым выпуском А11. Перенос графика и обновление той же версии сводки сохранили ряд без нового запроса истории. [Запуск и возврат](runbook-local.md#ручная-приёмка-mvp).
+
+### Расстояния и подсказка графика — 22.11.2026
+
+В изолированной read-only `web_gis_test` прошли три теста (105 проверок), включая сортировку с двумя точками анализа, нулевое и неизвестное расстояния. Прошли typecheck, 12 целевых тестов frontend API и 12 браузерных проверок с fixtures. Два опциональных теста обмена фикстурами PHP пропущены. Chromium на рабочем Nginx/FPM получил `app-Uy23S1yF.js`, три отсортированные станции А11 и 168 часов ряда выбранной станции. На 1280×720 проверено наведение, на 320×500 касание. В обоих размерах подсказки совпали с архивным рядом в боковой и нижней панели. Geoapify проверен на fixtures. [Локальный запуск и возврат](runbook-local.md#ручная-приёмка-mvp).

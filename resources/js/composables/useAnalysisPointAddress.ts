@@ -68,5 +68,5 @@ export function useAnalysisPointAddress(point: MaybeRefOrGetter<AnalysisPoint | 
         }
     }
     function retry() { resetTransition(); void reference.retry() }
-    return { candidates, status: reference.status, result: reference.result, transitionPending, transitionError, analyzeAddress, retry }
+    return { candidates, status: reference.status, result: reference.result, transitionPending, transitionError, analyzeAddress, retry, cancelTransition: resetTransition }
 }

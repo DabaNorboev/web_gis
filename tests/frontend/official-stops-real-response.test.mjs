@@ -1,3 +1,4 @@
+import { geocodingModule } from './support/geocoding.mjs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -8,7 +9,7 @@ test('actual official CSV API responses pass runtime with names/source/version a
         const f=JSON.parse(readFileSync(`${directory}/test-api-${radius}.json`,'utf8'));assert.equal(f.environment,'web_gis_test_rolled_back')
         let response=f.response
         const errors=loadModule(new URL('../../resources/js/api/errors.ts',import.meta.url),{},{fetch:async()=>new Response(JSON.stringify(response))})
-        const api=loadModule(new URL('../../resources/js/api/placeAnalysis.ts',import.meta.url),{'./errors':errors})
+        const api=loadModule(new URL('../../resources/js/api/placeAnalysis.ts',import.meta.url),{'./errors':errors,'./geocoding':geocodingModule(errors)})
         const r=await api.fetchPlaceAnalysis(f.request),b=r.blocks.poi,stops=b.data.items.filter(i=>i.category==='official_stop')
         assert.ok(stops.length>=2);assert.ok(stops.some(i=>i.id==='official-stop:3965'));assert.ok(stops.some(i=>i.id==='official-stop:3966'))
         assert.equal(b.data.counts_by_category.official_stop,null);assert.equal(b.completeness.by_category.official_stop.status,'PARTIAL')
@@ -30,7 +31,7 @@ test('found count is independent of list length; malformed or error counts are r
     b.data.official_stop_summary={found_count:7,source_without_coordinates:2}
     let response=fixture
     const errors=loadModule(new URL('../../resources/js/api/errors.ts',import.meta.url),{},{fetch:async()=>new Response(JSON.stringify(response))})
-    const api=loadModule(new URL('../../resources/js/api/placeAnalysis.ts',import.meta.url),{'./errors':errors})
+    const api=loadModule(new URL('../../resources/js/api/placeAnalysis.ts',import.meta.url),{'./errors':errors,'./geocoding':geocodingModule(errors)})
     const result=await api.fetchPlaceAnalysis(input)
     assert.equal(result.blocks.poi.data.official_stop_summary.found_count,7)
     assert.equal(result.blocks.poi.data.items.length,1)

@@ -1,9 +1,8 @@
-import { onBeforeUnmount, ref, shallowRef, watch } from 'vue'
+import { onBeforeUnmount, ref, shallowRef, watch, toValue, type Ref, type MaybeRefOrGetter } from 'vue'
 import { searchAddresses } from '@/api/addresses'
 import type { AddressResult, AddressSearchResponse } from '@/types/address'
 
-export function useAddressSearch() {
-    const query = ref('')
+export function useAddressSearch(query: Ref<string> = ref(''), enabled: MaybeRefOrGetter<boolean> = true) {
     const results = shallowRef<AddressResult[]>([])
     const meta = shallowRef<AddressSearchResponse['meta'] | null>(null)
     const status = ref<'idle' | 'loading' | 'ready' | 'error'>('idle')
@@ -22,6 +21,7 @@ export function useAddressSearch() {
     }
     async function search() {
         cancel()
+        if (!toValue(enabled)) return
         const text = query.value.trim()
         if ([...text].length < 3) return
         const version = generation
@@ -43,7 +43,7 @@ export function useAddressSearch() {
         }
     }
     watch(query, () => {
-        if (committing) return
+        if (committing || !toValue(enabled)) return
         cancel()
         results.value = []
         meta.value = null
@@ -80,6 +80,8 @@ export function useAddressSearch() {
         status.value = 'idle'
         activeIndex.value = -1
     }
+    function resetDraft() { close(); results.value = []; meta.value = null }
+    watch(() => toValue(enabled), resetDraft, { flush: 'sync' })
     onBeforeUnmount(cancel)
-    return { query, results, meta, status, open, activeIndex, search, choose, clear, close }
+    return { query, results, meta, status, open, activeIndex, search, choose, clear, close, resetDraft }
 }

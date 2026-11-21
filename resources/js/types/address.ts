@@ -1,7 +1,14 @@
 import type { Point, Polygon, MultiPolygon } from 'geojson'
 import type { Coordinates } from '@/types/transport'
 
+export interface LocalAddressDisplay {
+    address_line?: string | null
+    house_number?: string | null
+    district?: string | null
+}
+
 export interface AddressObject extends Coordinates {
+    display?: LocalAddressDisplay
     id: string
     point_method: 'osm_node' | 'point_on_surface'
     object_type: 'building' | 'address_point' | 'address_area'

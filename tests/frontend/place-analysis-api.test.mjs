@@ -1,12 +1,14 @@
+import { geocodingModule } from './support/geocoding.mjs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { loadModule } from './support/vue-component.mjs'
-import { input, keys, responseFor } from './fixtures/place-analysis.mjs'
+import { airSnapshot, input, keys, markSelectedSatelliteUnusable, responseFor } from './fixtures/place-analysis.mjs'
 const errorsUrl = new URL('../../resources/js/api/errors.ts', import.meta.url)
 const apiUrl = new URL('../../resources/js/api/placeAnalysis.ts', import.meta.url)
 function setup(fetch) {
     const errors = loadModule(errorsUrl, {}, { fetch })
-    return { ...errors, ...loadModule(apiUrl, { './errors': errors }) }
+    return { ...errors, ...loadModule(apiUrl, { './errors': errors, './geocoding': geocodingModule(errors) }) }
 }
 test('POST defaults, exact point echo, separate block selection and privacy options', async () => {
     const calls = []
@@ -136,5 +138,175 @@ test('malformed satellite descriptors, legend, selected release and coverage fra
         const response = responseFor(request, { satellite: 'READY' }); change(response)
         const api = setup(async () => new Response(JSON.stringify(response)))
         await assert.rejects(api.fetchPlaceAnalysis(request), e => e.kind === 'invalid_response')
+    }
+})
+
+test('only the satellite block accepts SATELLITE_READ_FAILED and leaves READY POI available', async () => {
+    const response = responseFor(input, { satellite: 'ERROR', poi: 'READY' })
+    response.blocks.satellite.code = 'SATELLITE_READ_FAILED'
+    const api = setup(async () => new Response(JSON.stringify(response)))
+    const result = await api.fetchPlaceAnalysis(input)
+    assert.equal(result.blocks.satellite.status, 'ERROR')
+    assert.equal(result.blocks.poi.data.count, 1)
+
+    response.blocks.satellite.code = 'UNKNOWN_FAILURE'
+    await assert.rejects(api.fetchPlaceAnalysis(input), e => e.kind === 'invalid_response')
+    for (const key of ['poi', 'air']) {
+        const invalid = responseFor(input, { [key]: 'ERROR' })
+        invalid.blocks[key].code = 'SATELLITE_READ_FAILED'
+        await assert.rejects(setup(async () => new Response(JSON.stringify(invalid))).fetchPlaceAnalysis(input), e => e.kind === 'invalid_response')
+    }
+})
+
+test('a selected date without usable NDVI can carry valid imagery independently', async () => {
+    const request = { ...input, date: '2024-05-07', blocks: ['satellite'] }
+    const response = responseFor(request, { satellite: 'READY' })
+    const data = response.blocks.satellite.data
+    markSelectedSatelliteUnusable(data)
+    const api = setup(async () => new Response(JSON.stringify(response)))
+    const selected = (await api.fetchPlaceAnalysis(request)).blocks.satellite.data.selected
+    assert.equal(selected.mean_ndvi, null)
+    assert.equal(selected.mean_ndvi_reason, 'NO_USABLE_NDVI')
+    assert.ok(selected.layers['true-color'])
+
+    for (const corrupt of [
+        d => d.selected.mean_ndvi = 0,
+        d => d.selected.mean_ndvi_reason = null,
+        d => d.selected.manifest_sha256 = 'f'.repeat(64),
+        d => d.selected.layers.ndvi.tiles[0] = d.selected.layers.ndvi.tiles[0].replace('2024-05-07', '2024-08-15'),
+        d => d.selected.layers.ndvi.tiles[0] = d.selected.layers.ndvi.tiles[0].replace('/ndvi/', '/true-color/'),
+        d => d.selected.layers.ndvi.tileSize = 512,
+        d => d.delivery_status = 'UNAVAILABLE',
+        d => d.selected.coverage = d.releases[0].coverage = { ...d.selected.coverage, prepared_pixels: 0 },
+    ]) {
+        const invalid = structuredClone(response)
+        corrupt(invalid.blocks.satellite.data)
+        await assert.rejects(setup(async () => new Response(JSON.stringify(invalid))).fetchPlaceAnalysis(request), e => e.kind === 'invalid_response')
+    }
+    data.delivery_status = 'UNAVAILABLE'
+    data.selected.layers = null
+    assert.equal((await api.fetchPlaceAnalysis(request)).blocks.satellite.data.selected.layers, null)
+})
+
+const satelliteApiFixturesFile = process.env.SATELLITE_API_FIXTURES_FILE
+test('PHP satellite API responses pass through the production TS validator', { skip: !satelliteApiFixturesFile }, async () => {
+    const bodies = JSON.parse(readFileSync(satelliteApiFixturesFile, 'utf8'))
+    const request = { place: { kind: 'point', lon: 92.9, lat: 56 }, radius_m: 1000, date: '2024-05-07' }
+    const fetchResponse = (body, input = request) => setup(async () => new Response(body)).fetchPlaceAnalysis(input)
+    const unusable = (await fetchResponse(bodies.unusable)).blocks.satellite.data.selected
+    assert.equal(unusable.mean_ndvi, null)
+    assert.equal(unusable.mean_ndvi_reason, 'NO_USABLE_NDVI')
+    assert.ok(unusable.layers['true-color'])
+
+    const withoutDelivery = (await fetchResponse(bodies.withoutDelivery)).blocks.satellite.data
+    assert.equal(withoutDelivery.delivery_status, 'UNAVAILABLE')
+    assert.equal(withoutDelivery.selected.layers, null)
+    const ready = (await fetchResponse(bodies.ready, { ...request, date: '2026-06-06' })).blocks.satellite.data.selected
+    assert.equal(ready.mean_ndvi, 0)
+    assert.ok(ready.layers.ndvi)
+    assert.equal((await fetchResponse(bodies.readError)).blocks.satellite.code, 'SATELLITE_READ_FAILED')
+
+    const corrupt = JSON.parse(bodies.unusable)
+    corrupt.blocks.satellite.data.selected.layers.ndvi.tiles[0] += '?unexpected=1'
+    await assert.rejects(fetchResponse(JSON.stringify(corrupt)), e => e.kind === 'invalid_response')
+})
+
+test('air history validates hourly gaps, literal source time, zero and unknown QC', async () => {
+    const request = { snapshot_version: airSnapshot.snapshot_version, station_id: '1001' }
+    const date = '2026-08-09'
+    const row = { observed_at_utc: null, qc: 'UNKNOWN' }
+    const data = {
+        ...airSnapshot, ...request, source: 'air.krasn.ru/project/9', last_observed_at_raw: `${date} 02:00:00`,
+        rows: [
+            { ...row, observed_at_raw: `${date} 00:00:00`, row_present: true, value: 0, missing_reason: null, qc_reason: 'SOURCE_QC_NOT_PROVIDED' },
+            { ...row, observed_at_raw: `${date} 01:00:00`, row_present: false, value: null, missing_reason: 'SOURCE_ROW_MISSING', qc_reason: 'SOURCE_ROW_MISSING' },
+            { ...row, observed_at_raw: `${date} 02:00:00`, row_present: true, value: null, missing_reason: 'SOURCE_VALUE_NULL_OR_ABSENT', qc_reason: 'SOURCE_QC_NOT_PROVIDED' },
+        ],
+    }
+    let calls = 0
+    const { fetchAirStationHistory, validateAirStationHistory } = setup(async (path, options) => {
+        calls++
+        assert.equal(path, `/api/v1/air/snapshots/${request.snapshot_version}/stations/1001/history`)
+        assert.equal(options.cache, 'no-store')
+        assert.equal(options.mode, 'same-origin')
+        return Response.json(data)
+    })
+    assert.deepEqual(await fetchAirStationHistory(request), data)
+    await assert.rejects(fetchAirStationHistory({ ...request, station_id: '1001/../../evil' }), { code: 'INVALID_REQUEST' })
+    assert.equal(calls, 1)
+    for (const change of [
+        v => v.snapshot_version = 'f'.repeat(64), v => v.station_id = '1002', v => v.timezone = 'UTC',
+        v => v.freshness = 'CURRENT', v => v.rows[0].qc = 'VALID', v => v.rows[0].value = '0',
+        v => v.rows[1].value = 0, v => v.rows[1].observed_at_utc = '2026-08-09T01:00:00Z',
+        v => v.rows[2].missing_reason = 'SOURCE_ROW_MISSING', v => v.rows.pop(),
+        v => v.rows[1].observed_at_raw = v.rows[0].observed_at_raw,
+    ]) {
+        const invalid = structuredClone(data)
+        change(invalid)
+        assert.throws(() => validateAirStationHistory(invalid, request), { kind: 'invalid_response' })
+    }
+})
+
+test('station distances accept zero with verified coordinates and reject invented distances', () => {
+    const request = { ...input, blocks: ['air'] }
+    const response = responseFor(request, { air: 'READY' })
+    const data = response.blocks.air.data
+    const located = {
+        id: '1001', name: 'Synthetic station', source: 'air.krasn.ru/project/9', selected: false, group: 'unlocated', status: 'UNKNOWN',
+        lon: 1, lat: 2, crs: 'EPSG:4326', coordinate_reason: 'A11_OPERATOR_MAP_INTERPRETATION',
+        coordinate_provenance: { raw_file: 'raw/air-project9-api.json', source_id: '1001' }, distance_m: 0,
+        latest: null, history: { status: 'UNAVAILABLE', reason: 'SOURCE_ROW_MISSING', first_observed_at_raw: null,
+            last_observed_at_raw: null, row_count: 0, null_values: 0, missing_hour_bins: 3 },
+    }
+    data.stations = [located]
+    data.counts.unlocated = 1
+    const api = setup(() => assert.fail('No HTTP needed'))
+    const check = () => api.validateAnalysisResponse(response, api.normalizeAnalysisInput(request)).blocks.air.data.stations[0]
+    assert.equal(check().distance_m, 0)
+    located.distance_m = null
+    assert.equal(check().distance_m, null)
+    for (const value of [-1, '0', Infinity]) {
+        located.distance_m = value
+        assert.throws(check, { kind: 'invalid_response' })
+    }
+    Object.assign(located, { lon: null, lat: null, crs: null, coordinate_reason: 'SOURCE_DATUM_CRS_UNCONFIRMED', distance_m: 0 })
+    delete located.coordinate_provenance
+    assert.throws(check, { kind: 'invalid_response' })
+})
+
+const airExchange = process.env.AIR_API_TEST_EXCHANGE
+test('actual PHP summaries and histories pass the TypeScript validators', { skip: !airExchange }, () => {
+    const api = setup(() => assert.fail('The exchange uses captured responses only'))
+    for (const name of ['a11', 'synthetic', 'unavailable']) {
+        const { request, summary, histories } = JSON.parse(readFileSync(`${airExchange}/${name}.json`, 'utf8'))
+        const block = api.validateAnalysisResponse(summary, api.normalizeAnalysisInput(request)).blocks.air
+        if (block.status === 'UNAVAILABLE') {
+            assert.equal(name, 'unavailable')
+            assert.equal(block.code, 'AIR_SOURCE_UNAVAILABLE')
+            continue
+        }
+        assert.equal(block.status, 'READY')
+        for (const history of histories) {
+            const checked = api.validateAirStationHistory(history, {
+                snapshot_version: block.data.snapshot_version, station_id: history.station_id,
+            })
+            assert.equal(checked.freshness, 'UNKNOWN')
+            assert.equal(checked.timezone, null)
+            if (name === 'synthetic') assert.deepEqual(checked.rows.map(row => [row.value, row.row_present]), [
+                [0, true], [null, true], [null, false], [null, true],
+            ])
+        }
+        const legacy = structuredClone(summary)
+        for (const station of legacy.blocks.air.data.stations) {
+            for (const key of ['lon', 'lat', 'crs', 'coordinate_reason', 'coordinate_provenance']) delete station[key]
+        }
+        const normalized = api.normalizeAnalysisInput(request)
+        assert.equal(api.validateAnalysisResponse(legacy, normalized).blocks.air.status, 'READY')
+        for (const [key, value] of [['lon', 181], ['lat', -91], ['distance_m', -1], ['distance_m', '0'], ['crs', 'EPSG:3857'],
+            ['coordinate_reason', null], ['coordinate_provenance', { raw_file: 'raw/air-project9-api.json', source_id: '9999' }]]) {
+            const invalid = structuredClone(summary)
+            invalid.blocks.air.data.stations[0][key] = value
+            assert.throws(() => api.validateAnalysisResponse(invalid, normalized), { kind: 'invalid_response' })
+        }
     }
 })

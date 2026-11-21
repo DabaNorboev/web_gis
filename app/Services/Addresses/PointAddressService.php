@@ -44,6 +44,8 @@ class PointAddressService
         $base = <<<'SQL'
             WITH p AS (SELECT ST_SetSRID(ST_MakePoint(?,?),4326) AS geom)
             SELECT a.osm_type,a.osm_id,a.label,GeometryType(a.source_geom) AS geometry_type,
+                coalesce(nullif(btrim(a.street),''), a.place) AS address_line, a.house_number,
+                a.raw_data->'tags'->>'addr:district' AS district,
                 CASE WHEN coalesce(a.raw_data->'tags'->>'building','') NOT IN ('','no') THEN 'building'
                     WHEN a.osm_type='node' THEN 'address_point' ELSE 'address_area' END AS object_type,
                 ST_Distance(a.source_geom::geography,p.geom::geography) AS distance_m
@@ -73,6 +75,7 @@ class PointAddressService
         $response['data'] = ['match' => $match, 'requires_choice' => count($rows) > 1,
             'candidates' => array_map(fn ($row) => [
                 'id' => 'osm:'.$row->osm_type.':'.$row->osm_id, 'label' => $row->label,
+                'display' => ['address_line' => $row->address_line, 'house_number' => $row->house_number, 'district' => $row->district],
                 'object_type' => $row->object_type, 'geometry_type' => $row->geometry_type,
                 'distance_m' => (float) $row->distance_m,
             ], $rows)];

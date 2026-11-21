@@ -1,3 +1,4 @@
+import { geocodingModule } from './support/geocoding.mjs'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { h } from 'vue'
@@ -21,7 +22,7 @@ test('runtime accepts bounded scope exclusions and rejects inconsistent values',
     let response = fixture(2)
     const globals = { fetch: async () => new Response(JSON.stringify(response)) }
     const errors = loadModule(new URL('../../resources/js/api/errors.ts', import.meta.url), {}, globals)
-    const api = loadModule(new URL('../../resources/js/api/placeAnalysis.ts', import.meta.url), { './errors': errors })
+    const api = loadModule(new URL('../../resources/js/api/placeAnalysis.ts', import.meta.url), { './errors': errors, './geocoding': geocodingModule(errors) })
     assert.equal((await api.fetchPlaceAnalysis(input)).blocks.poi.data.official_stop_summary.excluded_outside_scope, 2)
     for (const value of [-1, 3, 1.5, '2', null]) {
         response = fixture(value)

@@ -7,6 +7,10 @@ export interface AddressMapState {
     highlightedId: string | null
     highlightedGroupId: string | null
 }
+
+export interface AddressSearchPreview extends AddressMapState {
+    labels: ReadonlyMap<string, string>
+}
 export function addressFeatures(state: AddressMapState): FeatureCollection {
     const objects = new Map<string, FeatureCollection['features'][number]>()
     for (const group of state.groups) for (const [index, object] of group.objects.entries()) {

@@ -101,6 +101,8 @@ class AddressSearchService
                 ST_X(a.geom) AS lon, ST_Y(a.geom) AS lat, ST_AsGeoJSON(a.source_geom) AS geometry,
                 ST_XMin(Box3D(a.source_geom)) AS xmin, ST_YMin(Box3D(a.source_geom)) AS ymin,
                 ST_XMax(Box3D(a.source_geom)) AS xmax, ST_YMax(Box3D(a.source_geom)) AS ymax,
+                coalesce(nullif(btrim(a.street),''), a.place) AS address_line, a.house_number,
+                a.raw_data->'tags'->>'addr:district' AS district,
                 a.raw_data->'tags'->>'building:levels' AS levels,
                 CASE WHEN coalesce(a.raw_data->'tags'->>'building','') NOT IN ('','no') THEN 'building'
                     WHEN a.osm_type='node' THEN 'address_point' ELSE 'address_area' END AS object_type")
@@ -114,6 +116,7 @@ class AddressSearchService
                 'bounds' => [(float) $objects->min('xmin'), (float) $objects->min('ymin'), (float) $objects->max('xmax'), (float) $objects->max('ymax')],
                 'objects' => $objects->map(fn ($object) => [
                     'id' => 'osm:'.$object->osm_type.':'.$object->osm_id,
+                    'display' => ['address_line' => $object->address_line, 'house_number' => $object->house_number, 'district' => $object->district],
                     'lon' => (float) $object->lon, 'lat' => (float) $object->lat,
                     'geometry' => json_decode($object->geometry, true),
                     'point_method' => $object->point_method, 'object_type' => $object->object_type, 'levels' => $object->levels,

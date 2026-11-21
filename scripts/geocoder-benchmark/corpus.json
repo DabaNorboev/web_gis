@@ -1,0 +1,913 @@
+{
+  "schema": 1,
+  "frozen_before_api": true,
+  "prepared_at": "2026-11-15",
+  "sources": {
+    "municipal-housing": {
+      "url": "https://www.admkrsk.ru/citytoday/municipal/fond/Pages/000/institutions.aspx?RecordID=106",
+      "locator": "Список файлов по домам; историческая публикация, не свидетельство текущего состояния здания",
+      "kind": "municipal_address_list"
+    },
+    "municipal-izhs": {
+      "url": "https://www.admkrsk.ru/citytoday/property/Documents/%D0%94%D0%BE%D1%81%D0%BA%D0%B0%20%D0%BE%D0%B1%D1%8A%D1%8F%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B9/%D0%92%D1%8B%D1%8F%D0%B2%D0%BB%D0%B5%D0%BD%D0%BD%D1%8B%D0%B5%20%D0%97%D0%A3/%D0%97%D0%B5%D0%BC%D0%B5%D0%BB%D1%8C%D0%BD%D1%8B%D0%B5%20%D1%83%D1%87%D0%B0%D1%81%D1%82%D0%BA%D0%B8%20%D0%BF%D0%BE%D0%B4%20%D0%B8%D0%BD%D0%B4%D0%B8%D0%B2%D0%B8%D0%B4%D1%83%D0%B0%D0%BB%D1%8C%D0%BD%D0%BE%D0%B5%20%D0%B6%D0%B8%D0%BB%D0%B8%D1%89%D0%BD%D0%BE%D0%B5%20%D1%81%D1%82%D1%80%D0%BE%D0%B8%D1%82%D0%B5%D0%BB%D1%8C%D1%81%D1%82%D0%B2%D0%BE.pdf",
+      "locator": "Таблица: адрес земельного участка; ИЖС, не подтверждение существования дома",
+      "kind": "municipal_land_register"
+    },
+    "municipal-snt": {
+      "url": "https://www.admkrsk.ru/citytoday/property/Documents/%D0%94%D0%BE%D1%81%D0%BA%D0%B0%20%D0%BE%D0%B1%D1%8A%D1%8F%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B9/%D0%92%D1%8B%D1%8F%D0%B2%D0%BB%D0%B5%D0%BD%D0%BD%D1%8B%D0%B5%20%D0%97%D0%A3/%D0%97%D0%B5%D0%BC%D0%B5%D0%BB%D1%8C%D0%BD%D1%8B%D0%B5%20%D1%83%D1%87%D0%B0%D1%81%D1%82%D0%BA%D0%B8%20%D0%B4%D0%BB%D1%8F%20%D0%B2%D0%B5%D0%B4%D0%B5%D0%BD%D0%B8%D1%8F%20%D1%81%D0%B0%D0%B4%D0%BE%D0%B2%D0%BE%D0%B4%D1%81%D1%82%D0%B2%D0%B0.pdf",
+      "locator": "Таблица: адрес земельного участка; не дом и не вход",
+      "kind": "municipal_land_register"
+    },
+    "sfu-pay": {
+      "url": "https://pay.sfu-kras.ru/contacts",
+      "locator": "Контакты: Свободный 79/10",
+      "kind": "institution_contacts"
+    },
+    "sfu-net": {
+      "url": "https://billing.sfu-kras.ru/",
+      "locator": "Киренского 26, корпус 1",
+      "kind": "institution_contacts"
+    },
+    "canteen-thesis": {
+      "url": "https://elib.sfu-kras.ru/bitstream/handle/2311/125748/vkr_tokareva_a.yu_._ub15-09b.pdf?sequence=1",
+      "locator": "Адрес столовой: Телевизорная 1 строение 7в; ВКР 2019, требуется актуальное подтверждение",
+      "kind": "historical_public_research"
+    },
+    "new-vverh": {
+      "url": "https://www.sm-city.ru/news/novosti-kompanii/v-siti-kvartale-vverkh-c-16-noyabrya-nachnetsya-peredacha-kvartir/",
+      "locator": "Адрес выдачи ключей Взлётная 46, начало передачи 16 ноября; не номер помещения",
+      "kind": "developer"
+    },
+    "new-1": {
+      "url": "https://www.sibdom.ru/novostroyki/krasnoyarsk/790-Kvadro/",
+      "locator": "Почтовый адрес; указанный ввод 2024-06",
+      "kind": "public_property_catalog"
+    },
+    "new-2": {
+      "url": "https://www.sibdom.ru/novostroyki/krasnoyarsk/1819-Preobrazhenskijj-dom-11/",
+      "locator": "Почтовый адрес; указанный ввод 2024-06",
+      "kind": "public_property_catalog"
+    },
+    "new-3": {
+      "url": "https://www.sibdom.ru/novostroyki/krasnoyarsk/9982-Myata-Svetlova-12/",
+      "locator": "Почтовый адрес; указанный ввод 2025-12",
+      "kind": "public_property_catalog"
+    },
+    "new-4": {
+      "url": "https://www.sibdom.ru/novostroyki/krasnoyarsk/4314-YUzhnyjj-bereg-dom-24/",
+      "locator": "Почтовый адрес; указанный ввод 2025-09",
+      "kind": "public_property_catalog"
+    },
+    "new-5": {
+      "url": "https://www.sibdom.ru/novostroyki/krasnoyarsk/9147-Kedr-dom-2/",
+      "locator": "Почтовый адрес; указанный ввод 2025-12",
+      "kind": "public_property_catalog"
+    },
+    "new-6": {
+      "url": "https://www.sibdom.ru/novostroyki/krasnoyarsk/4299-Progress-kvartal-Peremeny-dom-2/",
+      "locator": "Почтовый адрес; указанный ввод 2025-02",
+      "kind": "public_property_catalog"
+    },
+    "new-7": {
+      "url": "https://www.sibdom.ru/novostroyki/krasnoyarsk/9133-Novye-CHerjomushki-dom-1-korpus-1/",
+      "locator": "Почтовый адрес; указанный ввод 2025-11",
+      "kind": "public_property_catalog"
+    }
+  },
+  "addresses": [
+    {
+      "id": "A01",
+      "group": "ordinary",
+      "query": "Красноярск, улица Вавилова, 94",
+      "prefix": "Красноярск, улица Вавилова, 9",
+      "variants": [
+        "Краснояркс, улица Вавилова, 94"
+      ],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Вавилова, 94",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": ""
+      }
+    },
+    {
+      "id": "A02",
+      "group": "ordinary",
+      "query": "Красноярск, улица Вильского, 10",
+      "prefix": "Красноярск, улица Вильского, 1",
+      "variants": [
+        "г. Красноярск, ул. Вильского, 10"
+      ],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Вильского, 10",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": ""
+      }
+    },
+    {
+      "id": "A03",
+      "group": "ordinary",
+      "query": "Красноярск, улица Калинина, 12",
+      "prefix": "Красноярск, улица Калинина, 1",
+      "variants": [],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Калинина, 12",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": ""
+      }
+    },
+    {
+      "id": "A04",
+      "group": "ordinary",
+      "query": "Красноярск, улица Курчатова, 6",
+      "prefix": "Красноярск, улица Курчатова, 6",
+      "variants": [],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Курчатова, 6",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": ""
+      }
+    },
+    {
+      "id": "A05",
+      "group": "ordinary",
+      "query": "Красноярск, улица Кутузова, 21",
+      "prefix": "Красноярск, улица Кутузова, 2",
+      "variants": [],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Кутузова, 21",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": ""
+      }
+    },
+    {
+      "id": "A06",
+      "group": "ordinary",
+      "query": "Красноярск, улица Можайского, 21",
+      "prefix": "Красноярск, улица Можайского, 2",
+      "variants": [],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Можайского, 21",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": ""
+      }
+    },
+    {
+      "id": "A07",
+      "group": "ordinary",
+      "query": "Красноярск, улица Семафорная, 183",
+      "prefix": "Красноярск, улица Семафорная, 18",
+      "variants": [],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Семафорная, 183",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": ""
+      }
+    },
+    {
+      "id": "A08",
+      "group": "ordinary",
+      "query": "Красноярск, улица Тельмана, 24",
+      "prefix": "Красноярск, улица Тельмана, 2",
+      "variants": [],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Тельмана, 24",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": ""
+      }
+    },
+    {
+      "id": "A09",
+      "group": "suffix",
+      "query": "Красноярск, улица Автомобилистов, 70а, корпус 1",
+      "prefix": "Красноярск, улица Автомобилистов, 70а, корпус ",
+      "variants": [
+        "Краснояркс, улица Автомобилистов, 70а, корпус 1"
+      ],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Автомобилистов, 70а, корпус 1",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Не объединять с основным номером; корпус/строение/литера/дробь значимы"
+      }
+    },
+    {
+      "id": "A10",
+      "group": "suffix",
+      "query": "Красноярск, улица Аэровокзальная, 8ж",
+      "prefix": "Красноярск, улица Аэровокзальная, 8",
+      "variants": [
+        "г. Красноярск, ул. Аэровокзальная, 8ж"
+      ],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Аэровокзальная, 8ж",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Не объединять с основным номером; корпус/строение/литера/дробь значимы"
+      }
+    },
+    {
+      "id": "A11",
+      "group": "suffix",
+      "query": "Красноярск, улица Воронова, 12б",
+      "prefix": "Красноярск, улица Воронова, 12",
+      "variants": [],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Воронова, 12б",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Не объединять с основным номером; корпус/строение/литера/дробь значимы"
+      }
+    },
+    {
+      "id": "A12",
+      "group": "suffix",
+      "query": "Красноярск, улица Ломоносова, 118а",
+      "prefix": "Красноярск, улица Ломоносова, 118",
+      "variants": [],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Ломоносова, 118а",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Не объединять с основным номером; корпус/строение/литера/дробь значимы"
+      }
+    },
+    {
+      "id": "A13",
+      "group": "suffix",
+      "query": "Красноярск, улица Северо-Енисейская, 48а",
+      "prefix": "Красноярск, улица Северо-Енисейская, 48",
+      "variants": [],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Северо-Енисейская, 48а",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Не объединять с основным номером; корпус/строение/литера/дробь значимы"
+      }
+    },
+    {
+      "id": "A14",
+      "group": "suffix",
+      "query": "Красноярск, улица Киренского, 26, корпус 1",
+      "prefix": "Красноярск, улица Киренского, 26, корпус ",
+      "variants": [],
+      "reference": {
+        "source": "sfu-net",
+        "expected_address": "улица Киренского, 26, корпус 1",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Не объединять с основным номером; корпус/строение/литера/дробь значимы"
+      }
+    },
+    {
+      "id": "A15",
+      "group": "suffix",
+      "query": "Красноярск, проспект Свободный, 79/10",
+      "prefix": "Красноярск, проспект Свободный, 79/1",
+      "variants": [],
+      "reference": {
+        "source": "sfu-pay",
+        "expected_address": "проспект Свободный, 79/10",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Не объединять с основным номером; корпус/строение/литера/дробь значимы"
+      }
+    },
+    {
+      "id": "A16",
+      "group": "suffix",
+      "query": "Красноярск, Телевизорная улица, 1, строение 7в",
+      "prefix": "Красноярск, Телевизорная улица, 1, строение 7",
+      "variants": [],
+      "reference": {
+        "source": "canteen-thesis",
+        "expected_address": "Телевизорная улица, 1, строение 7в",
+        "expected_level": "house",
+        "confidence": "low",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Не объединять с основным номером; корпус/строение/литера/дробь значимы"
+      }
+    },
+    {
+      "id": "A17",
+      "group": "private",
+      "query": "Красноярск, улица Чимжина, участок 19",
+      "prefix": "Красноярск, улица Чимжина, участок 1",
+      "variants": [
+        "Краснояркс, улица Чимжина, участок 19"
+      ],
+      "reference": {
+        "source": "municipal-izhs",
+        "expected_address": "улица Чимжина, участок 19",
+        "expected_level": "parcel",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Реестр ИЖС: номер участка не доказывает адрес/существование жилого дома"
+      }
+    },
+    {
+      "id": "A18",
+      "group": "private",
+      "query": "Красноярск, 2-я Таймырская улица, участок 21",
+      "prefix": "Красноярск, 2-я Таймырская улица, участок 2",
+      "variants": [
+        "г. Красноярск, 2-я Таймырская ул., участок 21"
+      ],
+      "reference": {
+        "source": "municipal-izhs",
+        "expected_address": "2-я Таймырская улица, участок 21",
+        "expected_level": "parcel",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Реестр ИЖС: номер участка не доказывает адрес/существование жилого дома"
+      }
+    },
+    {
+      "id": "A19",
+      "group": "private",
+      "query": "Красноярск, улица Чемпионов, участок 50",
+      "prefix": "Красноярск, улица Чемпионов, участок 5",
+      "variants": [],
+      "reference": {
+        "source": "municipal-izhs",
+        "expected_address": "улица Чемпионов, участок 50",
+        "expected_level": "parcel",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Реестр ИЖС: номер участка не доказывает адрес/существование жилого дома"
+      }
+    },
+    {
+      "id": "A20",
+      "group": "private",
+      "query": "Красноярск, Ярославская улица, участок 66",
+      "prefix": "Красноярск, Ярославская улица, участок 6",
+      "variants": [],
+      "reference": {
+        "source": "municipal-izhs",
+        "expected_address": "Ярославская улица, участок 66",
+        "expected_level": "parcel",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Реестр ИЖС: номер участка не доказывает адрес/существование жилого дома"
+      }
+    },
+    {
+      "id": "A21",
+      "group": "private",
+      "query": "Красноярск, улица Железнова, участок 67",
+      "prefix": "Красноярск, улица Железнова, участок 6",
+      "variants": [],
+      "reference": {
+        "source": "municipal-izhs",
+        "expected_address": "улица Железнова, участок 67",
+        "expected_level": "parcel",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Реестр ИЖС: номер участка не доказывает адрес/существование жилого дома"
+      }
+    },
+    {
+      "id": "A22",
+      "group": "private",
+      "query": "Красноярск, улица Станиславского, участок 67-в",
+      "prefix": "Красноярск, улица Станиславского, участок 67-",
+      "variants": [],
+      "reference": {
+        "source": "municipal-izhs",
+        "expected_address": "улица Станиславского, участок 67-в",
+        "expected_level": "parcel",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Реестр ИЖС: номер участка не доказывает адрес/существование жилого дома"
+      }
+    },
+    {
+      "id": "A23",
+      "group": "private",
+      "query": "Красноярск, 2-я Гипсовая улица, участок 7",
+      "prefix": "Красноярск, 2-я Гипсовая улица, участок ",
+      "variants": [],
+      "reference": {
+        "source": "municipal-izhs",
+        "expected_address": "2-я Гипсовая улица, участок 7",
+        "expected_level": "parcel",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Реестр ИЖС: номер участка не доказывает адрес/существование жилого дома"
+      }
+    },
+    {
+      "id": "A24",
+      "group": "private",
+      "query": "Красноярск, 2-я Полярная улица, участок 64",
+      "prefix": "Красноярск, 2-я Полярная улица, участок 6",
+      "variants": [],
+      "reference": {
+        "source": "municipal-izhs",
+        "expected_address": "2-я Полярная улица, участок 64",
+        "expected_level": "parcel",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Реестр ИЖС: номер участка не доказывает адрес/существование жилого дома"
+      }
+    },
+    {
+      "id": "A25",
+      "group": "snt",
+      "query": "Красноярск, садовое товарищество №2 Красноярец, участок 46",
+      "prefix": "Красноярск, садовое товарищество №2 Красноярец, участок 4",
+      "variants": [
+        "Краснояркс, садовое товарищество №2 Красноярец, участок 46"
+      ],
+      "reference": {
+        "source": "municipal-snt",
+        "expected_address": "садовое товарищество №2 Красноярец, участок 46",
+        "expected_level": "parcel",
+        "confidence": "low",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Публичный исторический реестр; современное написание/привязка неизвестны, дом не подтверждён"
+      }
+    },
+    {
+      "id": "A26",
+      "group": "snt",
+      "query": "Красноярск, садовое товарищество Победа, участок 4-76",
+      "prefix": "Красноярск, садовое товарищество Победа, участок 4-7",
+      "variants": [
+        "г. Красноярск, садовое товарищество Победа, участок 4-76"
+      ],
+      "reference": {
+        "source": "municipal-snt",
+        "expected_address": "садовое товарищество Победа, участок 4-76",
+        "expected_level": "parcel",
+        "confidence": "low",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Публичный исторический реестр; современное написание/привязка неизвестны, дом не подтверждён"
+      }
+    },
+    {
+      "id": "A27",
+      "group": "snt",
+      "query": "Красноярск, СНТ Здоровье ОАО Красфарма, участок 85а",
+      "prefix": "Красноярск, СНТ Здоровье ОАО Красфарма, участок 85",
+      "variants": [],
+      "reference": {
+        "source": "municipal-snt",
+        "expected_address": "СНТ Здоровье ОАО Красфарма, участок 85а",
+        "expected_level": "parcel",
+        "confidence": "low",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Публичный исторический реестр; современное написание/привязка неизвестны, дом не подтверждён"
+      }
+    },
+    {
+      "id": "A28",
+      "group": "snt",
+      "query": "Красноярск, садовое товарищество Склад топлива, участок 153",
+      "prefix": "Красноярск, садовое товарищество Склад топлива, участок 15",
+      "variants": [],
+      "reference": {
+        "source": "municipal-snt",
+        "expected_address": "садовое товарищество Склад топлива, участок 153",
+        "expected_level": "parcel",
+        "confidence": "low",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Публичный исторический реестр; современное написание/привязка неизвестны, дом не подтверждён"
+      }
+    },
+    {
+      "id": "A29",
+      "group": "snt",
+      "query": "Красноярск, СНТ Енисей-2, участок 81а",
+      "prefix": "Красноярск, СНТ Енисей-2, участок 81",
+      "variants": [],
+      "reference": {
+        "source": "municipal-snt",
+        "expected_address": "СНТ Енисей-2, участок 81а",
+        "expected_level": "parcel",
+        "confidence": "low",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Публичный исторический реестр; современное написание/привязка неизвестны, дом не подтверждён"
+      }
+    },
+    {
+      "id": "A30",
+      "group": "snt",
+      "query": "Красноярск, садовое товарищество Склад топлива ВСЖД, участок 34а",
+      "prefix": "Красноярск, садовое товарищество Склад топлива ВСЖД, участок 34",
+      "variants": [],
+      "reference": {
+        "source": "municipal-snt",
+        "expected_address": "садовое товарищество Склад топлива ВСЖД, участок 34а",
+        "expected_level": "parcel",
+        "confidence": "low",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Публичный исторический реестр; современное написание/привязка неизвестны, дом не подтверждён"
+      }
+    },
+    {
+      "id": "A31",
+      "group": "snt",
+      "query": "Красноярск, СНТ Гелиос-5, поляна 19, участок 57А",
+      "prefix": "Красноярск, СНТ Гелиос-5, поляна 19, участок 57",
+      "variants": [],
+      "reference": {
+        "source": "municipal-izhs",
+        "expected_address": "СНТ Гелиос-5, поляна 19, участок 57А",
+        "expected_level": "parcel",
+        "confidence": "low",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Публичный исторический реестр; современное написание/привязка неизвестны, дом не подтверждён"
+      }
+    },
+    {
+      "id": "A32",
+      "group": "snt",
+      "query": "Красноярск, садовое товарищество Здоровье, район горы Диван, участок 603-6",
+      "prefix": "Красноярск, садовое товарищество Здоровье, район горы Диван, участок 603-",
+      "variants": [],
+      "reference": {
+        "source": "municipal-snt",
+        "expected_address": "садовое товарищество Здоровье, район горы Диван, участок 603-6",
+        "expected_level": "parcel",
+        "confidence": "low",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Публичный исторический реестр; современное написание/привязка неизвестны, дом не подтверждён"
+      }
+    },
+    {
+      "id": "A33",
+      "group": "newbuild",
+      "query": "Красноярск, Караульная улица, 39/4",
+      "prefix": "Красноярск, Караульная улица, 39/",
+      "variants": [
+        "Краснояркс, Караульная улица, 39/4"
+      ],
+      "reference": {
+        "source": "new-1",
+        "expected_address": "Караульная улица, 39/4",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Независимый от трёх API вторичный каталог; ввод и адрес требуют первичного подтверждения"
+      }
+    },
+    {
+      "id": "A34",
+      "group": "newbuild",
+      "query": "Красноярск, улица Петра Подзолкова, 20",
+      "prefix": "Красноярск, улица Петра Подзолкова, 2",
+      "variants": [
+        "г. Красноярск, ул. Петра Подзолкова, 20"
+      ],
+      "reference": {
+        "source": "new-2",
+        "expected_address": "улица Петра Подзолкова, 20",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Независимый от трёх API вторичный каталог; ввод и адрес требуют первичного подтверждения"
+      }
+    },
+    {
+      "id": "A35",
+      "group": "newbuild",
+      "query": "Красноярск, улица Светлова, 12",
+      "prefix": "Красноярск, улица Светлова, 1",
+      "variants": [],
+      "reference": {
+        "source": "new-3",
+        "expected_address": "улица Светлова, 12",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Независимый от трёх API вторичный каталог; ввод и адрес требуют первичного подтверждения"
+      }
+    },
+    {
+      "id": "A36",
+      "group": "newbuild",
+      "query": "Красноярск, Регатная улица, 3",
+      "prefix": "Красноярск, Регатная улица, 3",
+      "variants": [],
+      "reference": {
+        "source": "new-4",
+        "expected_address": "Регатная улица, 3",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Независимый от трёх API вторичный каталог; ввод и адрес требуют первичного подтверждения"
+      }
+    },
+    {
+      "id": "A37",
+      "group": "newbuild",
+      "query": "Красноярск, Норильская улица, 64",
+      "prefix": "Красноярск, Норильская улица, 6",
+      "variants": [],
+      "reference": {
+        "source": "new-5",
+        "expected_address": "Норильская улица, 64",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Независимый от трёх API вторичный каталог; ввод и адрес требуют первичного подтверждения"
+      }
+    },
+    {
+      "id": "A38",
+      "group": "newbuild",
+      "query": "Красноярск, Апрельская улица, 9а",
+      "prefix": "Красноярск, Апрельская улица, 9",
+      "variants": [],
+      "reference": {
+        "source": "new-6",
+        "expected_address": "Апрельская улица, 9а",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Независимый от трёх API вторичный каталог; ввод и адрес требуют первичного подтверждения"
+      }
+    },
+    {
+      "id": "A39",
+      "group": "newbuild",
+      "query": "Красноярск, проспект Машиностроителей, 31",
+      "prefix": "Красноярск, проспект Машиностроителей, 3",
+      "variants": [],
+      "reference": {
+        "source": "new-7",
+        "expected_address": "проспект Машиностроителей, 31",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Независимый от трёх API вторичный каталог; ввод и адрес требуют первичного подтверждения"
+      }
+    },
+    {
+      "id": "A40",
+      "group": "newbuild",
+      "query": "Красноярск, Взлётная улица, 46",
+      "prefix": "Красноярск, Взлётная улица, 4",
+      "variants": [],
+      "reference": {
+        "source": "new-vverh",
+        "expected_address": "Взлётная улица, 46",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Адрес выдачи ключей; требуется подтвердить адрес всего нового дома, а не офиса"
+      }
+    },
+    {
+      "id": "A41",
+      "group": "ambiguous_edge",
+      "query": "Красноярск, Базайская улица, 357",
+      "prefix": "Красноярск, Базайская улица, 35",
+      "variants": [
+        "Краснояркс, Базайская улица, 357"
+      ],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "Базайская улица, 357",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Общая/окраинная улица; проверять Красноярск и номер, не соседний населённый пункт"
+      }
+    },
+    {
+      "id": "A42",
+      "group": "ambiguous_edge",
+      "query": "Красноярск, Базайская улица, 359",
+      "prefix": "Красноярск, Базайская улица, 35",
+      "variants": [
+        "г. Красноярск, Базайская ул., 359"
+      ],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "Базайская улица, 359",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Общая/окраинная улица; проверять Красноярск и номер, не соседний населённый пункт"
+      }
+    },
+    {
+      "id": "A43",
+      "group": "ambiguous_edge",
+      "query": "Красноярск, улица Новая, 10",
+      "prefix": "Красноярск, улица Новая, 1",
+      "variants": [],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Новая, 10",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Общая/окраинная улица; проверять Красноярск и номер, не соседний населённый пункт"
+      }
+    },
+    {
+      "id": "A44",
+      "group": "ambiguous_edge",
+      "query": "Красноярск, улица Новая, 34",
+      "prefix": "Красноярск, улица Новая, 3",
+      "variants": [],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Новая, 34",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Общая/окраинная улица; проверять Красноярск и номер, не соседний населённый пункт"
+      }
+    },
+    {
+      "id": "A45",
+      "group": "ambiguous_edge",
+      "query": "Красноярск, улица Норильская, 1",
+      "prefix": "Красноярск, улица Норильская, 1",
+      "variants": [],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Норильская, 1",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Общая/окраинная улица; проверять Красноярск и номер, не соседний населённый пункт"
+      }
+    },
+    {
+      "id": "A46",
+      "group": "ambiguous_edge",
+      "query": "Красноярск, улица Рейдовая, 74",
+      "prefix": "Красноярск, улица Рейдовая, 7",
+      "variants": [],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Рейдовая, 74",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Общая/окраинная улица; проверять Красноярск и номер, не соседний населённый пункт"
+      }
+    },
+    {
+      "id": "A47",
+      "group": "ambiguous_edge",
+      "query": "Красноярск, улица Ключевская, 59",
+      "prefix": "Красноярск, улица Ключевская, 5",
+      "variants": [],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Ключевская, 59",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Общая/окраинная улица; проверять Красноярск и номер, не соседний населённый пункт"
+      }
+    },
+    {
+      "id": "A48",
+      "group": "ambiguous_edge",
+      "query": "Красноярск, улица Западная, 3",
+      "prefix": "Красноярск, улица Западная, 3",
+      "variants": [],
+      "reference": {
+        "source": "municipal-housing",
+        "expected_address": "улица Западная, 3",
+        "expected_level": "house",
+        "confidence": "medium",
+        "coordinate": null,
+        "coordinate_reason": "Нет независимого измеренного ориентира/контура; текстовый источник не даёт ошибку в метрах",
+        "note": "Общая/окраинная улица; проверять Красноярск и номер, не соседний населённый пункт"
+      }
+    }
+  ],
+  "reverse": [
+    {
+      "id": "R01",
+      "coordinate": [
+        92.852,
+        56.01
+      ],
+      "context": "Публичная контрольная точка в центре, район площади Революции",
+      "expected": "Красноярск; не предписывать конкретный дом",
+      "confidence": "low"
+    },
+    {
+      "id": "R02",
+      "coordinate": [
+        92.945,
+        56.03
+      ],
+      "context": "Публичная контрольная точка в районе острова Татышев",
+      "expected": "Допустимо отсутствие дома; не менять исходную точку",
+      "confidence": "low"
+    },
+    {
+      "id": "R03",
+      "coordinate": [
+        92.758,
+        55.996
+      ],
+      "context": "Публичная контрольная точка в районе Академгородка",
+      "expected": "Красноярск; адрес поблизости, не принадлежность зданию",
+      "confidence": "low"
+    },
+    {
+      "id": "R04",
+      "coordinate": [
+        92.93,
+        56.115
+      ],
+      "context": "Публичная контрольная точка в районе Солнечного",
+      "expected": "Красноярск; адрес поблизости, не принадлежность зданию",
+      "confidence": "low"
+    }
+  ]
+}

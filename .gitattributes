@@ -6,6 +6,9 @@
 *.md diff=markdown
 *.php diff=php
 
+# The air input manifest verifies the original HTTP response byte for byte.
+/tests/Fixtures/air/a11-1-v1/raw/air-help.html -text -eol whitespace=cr-at-eol,-blank-at-eol
+
 /.github export-ignore
 docs/archive/laravel-skeleton-changelog.md export-ignore
 .styleci.yml export-ignore

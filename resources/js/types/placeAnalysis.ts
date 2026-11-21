@@ -1,11 +1,15 @@
+import type { LocalAddressDisplay } from './address'
+import type { GeocodedPlace } from './geocoding'
 import type { Point, Polygon, MultiPolygon } from 'geojson'
 
 export type AnalysisBlockKey = 'poi' | 'satellite' | 'air'
 export type PoiCategory = 'grocery' | 'pharmacy' | 'official_stop' | 'park'
 export interface AnalysisPoint { lon: number; lat: number }
-export type AnalysisPlace = { kind: 'address'; address_id: string } | ({ kind: 'point' } & AnalysisPoint)
+export type AnalysisPlace = { kind: 'address'; address_id: string } | ({ kind: 'point' } & AnalysisPoint) | { kind: 'address'; selection_token: string }
 export interface StationSelection { selected_ids: string[]; radius_m: number }
 export interface PlaceAnalysisInput {
+    analysis_version?: 2
+    expected_place?: GeocodedPlace
     place: AnalysisPlace
     radius_m?: number
     date?: string
@@ -13,6 +17,8 @@ export interface PlaceAnalysisInput {
     blocks?: AnalysisBlockKey[]
 }
 export interface AnalysisRequest {
+    analysis_version?: 2
+    expected_place?: GeocodedPlace
     place: AnalysisPlace
     radius_m: number
     date: string | null
@@ -20,7 +26,7 @@ export interface AnalysisRequest {
     blocks: AnalysisBlockKey[]
 }
 export interface AnalysisAddress {
-    id: string; label: string
+    id: string; label: string; display?: LocalAddressDisplay
     object: AnalysisPoint & { id: string; geometry: Point | Polygon | MultiPolygon; point_method: 'osm_node' | 'point_on_surface'; object_type: 'building' | 'address_point' | 'address_area'; levels: string | null }
     bounds: [number, number, number, number]
     source: string; dataset_import_id: number; observed_at: string | null; source_updated_at: string | null; reason: string
@@ -114,11 +120,71 @@ export interface SatelliteData {
     legend: SatelliteLegend
     selected: SatelliteSelected
 }
-export interface AnalysisStation extends AnalysisPoint {
-    id: string; name: string; source: string; dataset_import_id: number; distance_m: number
-    group: 'selected' | 'nearest' | 'other'; selected: boolean; status: 'ACTIVE' | 'INACTIVE' | 'UNKNOWN'
+export interface AirObservation {
+    observed_at_raw: string
+    observed_at_utc: null
+    value: number | null
+    row_present: boolean
+    missing_reason: 'SOURCE_ROW_MISSING' | 'SOURCE_VALUE_NULL_OR_ABSENT' | null
+    qc: 'UNKNOWN'
+    qc_reason: 'SOURCE_QC_NOT_PROVIDED' | 'SOURCE_ROW_MISSING'
 }
-export interface AirData { stations: AnalysisStation[]; missing_selected_ids: string[]; counts: { selected: number; nearest: number; other: number } }
+export interface AirSnapshotRef {
+    snapshot_version: string
+    window_raw: { begin_inclusive: string; end_exclusive: string }
+    last_success_at: string
+    last_observed_at_raw: string | null
+    timezone: null
+    utc_offset: null
+    time_reason: 'SOURCE_TIMEZONE_UNCONFIRMED'
+    freshness: 'UNKNOWN'
+    scope: 'STATION_OBSERVATIONS'
+    indicator: 'pm2_5'
+    unit: 'µg/m³'
+    aggregation: 'hourly'
+}
+export type AnalysisStation = {
+    id: string
+    name: string
+    source: 'air.krasn.ru/project/9'
+    group: 'selected' | 'unlocated'
+    selected: boolean
+    status: 'UNKNOWN'
+    latest: AirObservation | null
+    history: {
+        status: 'AVAILABLE' | 'UNAVAILABLE'
+        first_observed_at_raw: string | null
+        last_observed_at_raw: string | null
+        row_count: number
+        null_values: number
+        missing_hour_bins: number
+        reason: 'SOURCE_ROW_MISSING' | null
+    }
+} & (
+    | { lon?: null; lat?: null; crs?: null; coordinate_reason?: 'SOURCE_DATUM_CRS_UNCONFIRMED'; distance_m: null }
+    | {
+        lon: number
+        distance_m: number | null
+        lat: number
+        crs: 'EPSG:4326'
+        coordinate_reason: 'A11_OPERATOR_MAP_INTERPRETATION'
+        coordinate_provenance: { raw_file: 'raw/air-project9-api.json'; source_id: string }
+    }
+)
+export interface AirData extends AirSnapshotRef {
+    stations: AnalysisStation[]
+    missing_selected_ids: string[]
+    counts: { selected: number; unlocated: number }
+}
+export interface AirStationHistoryRequest {
+    snapshot_version: string
+    station_id: string
+}
+export interface AirStationHistory extends AirSnapshotRef {
+    station_id: string
+    source: 'air.krasn.ru/project/9'
+    rows: AirObservation[]
+}
 export interface BlockData { poi: PoiData; satellite: SatelliteData; air: AirData }
 export type AnalysisBlock<K extends AnalysisBlockKey = AnalysisBlockKey> = {
     availability_by_category?: Record<PoiCategory, { status: 'READY' | 'UNAVAILABLE' | 'ERROR'; code: string | null; message: string }>
@@ -127,8 +193,8 @@ export type AnalysisBlock<K extends AnalysisBlockKey = AnalysisBlockKey> = {
 } & ({ status: 'READY'; code: null; message: string | null; data: BlockData[K] }
     | { status: 'UNAVAILABLE' | 'ERROR'; code: string; message: string; data: null })
 export interface PlaceAnalysisResponse {
-    analysis_version: 1
-    place: { kind: 'address' | 'point'; label: string | null; address: AnalysisAddress | null; point: AnalysisPoint }
+    analysis_version: 1 | 2
+    place: { kind: 'address' | 'point'; label: string | null; address: AnalysisAddress | null; point: AnalysisPoint } | GeocodedPlace
     radius_m: number; date: string | null; station_selection: StationSelection
     analysis_area: Polygon; analysis_bounds: [number, number, number, number]; calculated_at: string
     blocks: Partial<{ [K in AnalysisBlockKey]: AnalysisBlock<K> }>
