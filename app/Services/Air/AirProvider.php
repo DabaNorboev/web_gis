@@ -14,14 +14,22 @@ class AirProvider
 
     private const A11_INPUT = '653e4e965868012260a6f2ca35f2cf7bae14fdab4f460b80005188b8d864ea82';
 
-    private const A11_CATALOG = 'af9dbf67d2065b408d4fcc9c496a5b1b59acbf9eab28e4bfde09fe000a187451';
+    private const OPERATOR_CATALOG = 'af9dbf67d2065b408d4fcc9c496a5b1b59acbf9eab28e4bfde09fe000a187451';
 
-    private const STATION_CATALOG = 'raw/air-project9-api.json';
+    private const A12_PILOT_RELEASE = '73d6a996a8fa0956ff34146a70cbadb1e5a1fa3b62c36a3741a370df8cb2692d';
 
     private const A11_POSITIONS = [
         '3846' => [92.910795, 56.024966],
         '3858' => [92.97329, 56.01204],
         '4228' => [92.943622, 56.022003],
+    ];
+
+    private const A12_ADDITIONAL_POSITIONS = [
+        '3837' => [92.762222, 55.986571],
+        '3851' => [92.854022, 55.976276],
+        '3854' => [92.677273, 55.978387],
+        '3859' => [92.958275, 55.994686],
+        '4325' => [92.871068, 56.018823],
     ];
 
     public function __construct(private AirStationDistances $distances) {}
@@ -52,7 +60,7 @@ class AirProvider
                         'reason' => $coverage['row_count'] ? null : 'SOURCE_ROW_MISSING',
                     ],
                     'latest' => $release['latest'][$id] ?? null,
-                ] + $this->mapPosition($station, $release['a11_catalog']);
+                ] + $this->mapPosition($station, $release['station_catalog']);
             }
             $stations = $this->distances->nearestFirst($stations, $point);
             $ids = array_column($stations, 'id');
@@ -72,36 +80,47 @@ class AirProvider
         ];
     }
 
-    private function mapPosition(array $station, bool $a11Catalog): array
+    private function mapPosition(array $station, ?string $catalog): array
     {
         $id = $station['station_id'];
         $position = [$station['lon'] ?? null, $station['lat'] ?? null];
-        if ($a11Catalog && $position === (self::A11_POSITIONS[$id] ?? null)
+        $positions = $catalog === 'raw/project.json'
+            ? self::A11_POSITIONS + self::A12_ADDITIONAL_POSITIONS
+            : self::A11_POSITIONS;
+        if ($catalog !== null && $position === ($positions[$id] ?? null)
             && ($station['source'] ?? null) === self::SOURCE
-            && ($station['coordinate_source'] ?? null) === self::STATION_CATALOG
+            && ($station['coordinate_source'] ?? null) === $catalog
             && ($station['coordinate_source_id'] ?? null) === (int) $id) {
             return [
                 'lon' => $position[0], 'lat' => $position[1], 'crs' => 'EPSG:4326',
-                'coordinate_reason' => 'A11_OPERATOR_MAP_INTERPRETATION',
-                'coordinate_provenance' => ['raw_file' => self::STATION_CATALOG, 'source_id' => $id],
+                'coordinate_reason' => $catalog === 'raw/project.json'
+                    ? 'A12_PILOT_OPERATOR_MAP_INTERPRETATION'
+                    : 'A11_OPERATOR_MAP_INTERPRETATION',
+                'coordinate_provenance' => ['raw_file' => $catalog, 'source_id' => $id],
             ];
         }
 
         return ['lon' => null, 'lat' => null, 'crs' => null, 'coordinate_reason' => 'SOURCE_DATUM_CRS_UNCONFIRMED'];
     }
 
-    private function hasA11Catalog(string $folder, array $manifest, array $inventory): bool
+    private function verifiedStationCatalog(string $folder, string $pin, array $manifest, array $inventory): ?string
     {
-        $path = 'input/'.self::STATION_CATALOG;
-        if (($manifest['input_manifest_sha256'] ?? null) !== self::A11_INPUT
-            || ($inventory[$path]['sha256'] ?? null) !== self::A11_CATALOG) {
-            return false;
+        if ($pin === self::A12_PILOT_RELEASE) {
+            $catalog = 'raw/project.json';
+        } elseif (($manifest['input_manifest_sha256'] ?? null) === self::A11_INPUT) {
+            $catalog = 'raw/air-project9-api.json';
+        } else {
+            return null;
+        }
+        $path = 'input/'.$catalog;
+        if (($inventory[$path]['sha256'] ?? null) !== self::OPERATOR_CATALOG) {
+            return null;
         }
 
         try {
-            return hash('sha256', $this->file($folder.'/'.$path, 8192)) === self::A11_CATALOG;
+            return hash('sha256', $this->file($folder.'/'.$path, 8192)) === self::OPERATOR_CATALOG ? $catalog : null;
         } catch (RuntimeException) {
-            return false;
+            return null;
         }
     }
 
@@ -190,8 +209,7 @@ class AirProvider
                 return ['snapshot_version' => $pin];
             }
             $inventory = array_column($manifest['files'], null, 'path');
-            // Only the pinned A11 input and catalog carry the owner-approved interpretation.
-            $a11Catalog = $stationId === null && $this->hasA11Catalog($folder, $manifest, $inventory);
+            $stationCatalog = $stationId === null ? $this->verifiedStationCatalog($folder, $pin, $manifest, $inventory) : null;
             $metadata = [];
             foreach (['stations.json' => 65536, 'coverage.json' => 65536, 'observations.jsonl' => 8 * 1024 * 1024] as $name => $limit) {
                 $product = $this->file($folder.'/'.$name, $limit);
@@ -241,7 +259,7 @@ class AirProvider
 
             return [
                 'snapshot_version' => $pin, 'last_success_at' => $lastSuccess, 'last_observed_at_raw' => $lastObserved,
-                'a11_catalog' => $a11Catalog,
+                'station_catalog' => $stationCatalog,
                 'window_raw' => $window, 'stations' => $stations, 'coverage' => $coverage, 'latest' => $latest, 'series' => $series,
             ];
         } catch (JsonException|RuntimeException) {

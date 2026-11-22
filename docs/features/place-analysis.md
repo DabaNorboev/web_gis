@@ -184,7 +184,7 @@ POST сохраняет no-store/no-referrer и безопасные ошибк�
 
 `data`: `snapshot_version` (SHA-256 готового manifest), `window_raw` (до 168 часов, `begin_inclusive` и `end_exclusive`), `last_success_at` (UTC), `last_observed_at_raw` (исходное время или `null`). `timezone` и `utc_offset` равны `null`, `time_reason: SOURCE_TIMEZONE_UNCONFIRMED`. `freshness: UNKNOWN`, `scope: STATION_OBSERVATIONS`, `indicator: pm2_5`, `unit: µg/m³`, `aggregation: hourly`.
 
-`stations`: `id`, `name`, `source: air.krasn.ru/project/9`, `status: UNKNOWN`. Для проверенных А11: `lon`, `lat`, `crs: EPSG:4326`, `coordinate_reason: A11_OPERATOR_MAP_INTERPRETATION`, `coordinate_provenance: {raw_file, source_id}`. Иначе координаты и CRS — `null`, причина `SOURCE_DATUM_CRS_UNCONFIRMED`. [А11](../data/air.md#основание-для-маркеров-и3). `distance_m` — метры по прямой от точки анализа (PostGIS geography) или `null`. Сортировка по возрастанию, `null` в конце. Допустимы ответы без полей координат.
+`stations`: `id`, `name`, `source: air.krasn.ru/project/9`, `status: UNKNOWN`. Проверенные позиции имеют `lon`, `lat`, `crs: EPSG:4326`, `coordinate_provenance: {raw_file, source_id}` и `coordinate_reason` для [А11](../data/air.md#основание-для-маркеров-и3) или [пилота А12](../data/air.md#пробный-выпуск-а12). Иначе координаты и CRS — `null` с `SOURCE_DATUM_CRS_UNCONFIRMED` или отсутствуют. `distance_m` — метры по прямой от точки анализа (PostGIS geography) или `null`. Сортировка по возрастанию, `null` в конце.
 
 Группы `selected` и `unlocated`, `selected`, `counts` и `missing_selected_ids` отражают явный выбор ID. `history` содержит статус `AVAILABLE|UNAVAILABLE`, фактические `first_observed_at_raw` и `last_observed_at_raw`, `row_count`, `null_values`, `missing_hour_bins` и `reason`. `latest` содержит последнюю строку или `null`.
 
@@ -192,7 +192,7 @@ POST сохраняет no-store/no-referrer и безопасные ошибк�
 
 При смене pin сервер отдаёт `409 AIR_SNAPSHOT_CHANGED`, для неизвестной станции `404 AIR_STATION_NOT_FOUND`, без доступного выпуска `503 AIR_SOURCE_UNAVAILABLE`. [Проверки PHP и TypeScript](../testing.md#плановое-обновление-и-локальная-история-воздуха-а12).
 
-Выбор строки или маркера, в том числе вне круга, открывает [историю станции из версии сводки](../frontend-structure.md#станции-и-история-воздуха). «Обновить» перечитывает сводку, повтор ошибки графика запрашивает историю выбранной станции.
+Выбор станции, в том числе вне круга, открывает ряд из версии сводки. Карточка показывает ссылку на оператора, исходный период и `last_success_at` в UTC. [Обновление и повтор](../frontend-structure.md#станции-и-история-воздуха).
 
 ## 8. Независимость и поздние ответы
 

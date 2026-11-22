@@ -130,6 +130,30 @@ docker compose up -d --no-deps --wait --wait-timeout 90 php node nginx
 
 Прежняя сборка и копия локального override лежат в приватном `data/backups/air-a12-i3-2026-11-21-01/`. Скрипт `return.sh` оттуда восстанавливает прежние assets и override и возвращает стенд в исходное остановленное состояние. Порядок описан в `RETURN.md` внутри каталога.
 
+### Пробный выпуск А12 на восемь станций
+
+Владелец принял пилот 22.11.2026. На [localhost](http://localhost/) после анализа точки открыть «Воздух» и выбрать станцию из списка или с карты. Период архива — 09–15.08.2026. [Выпуск и происхождение координат](data/air.md#пробный-выпуск-а12).
+
+Каталог `data/air/a12-pilot-2026-11-22/` содержит сырьё, проверки, `runtime/` и `build-final/`. Override подключает выпуск и сборку на чтение и отключает расписание. Запускать из корня проекта при работающем `db`.
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.override.yml \
+  -f data/air/a12-pilot-2026-11-22/compose.preview.yml up -d --no-deps --no-build --wait php
+docker compose -f docker-compose.yml -f docker-compose.override.yml \
+  -f data/air/a12-pilot-2026-11-22/compose.preview.yml up -d --no-deps --no-build --wait nginx
+```
+
+После запуска проверить восемь станций и время обновления в UTC.
+
+Для возврата к А11 использовать обычный Compose с прежними выпуском и `public/build/`.
+
+```sh
+docker compose up -d --no-deps --no-build --wait php
+docker compose up -d --no-deps --no-build --wait nginx
+```
+
+После возврата проверить три станции А11.
+
 ### Локальная активация Г6.4
 
 20.11.2026 новая сборка Г6 активирована на [локальном анализе](http://localhost/analysis). Обычный Compose с локальным override по-прежнему запускает режим `build` и подключает две даты спутника. Прежняя сборка и проверенный архив находятся в приватном `data/backups/geocoding-g6-4-2026-11-20.KcDnwd/`, инструкция возврата — в `RETURN.md` внутри каталога. Контейнеры, настройки и спутниковый набор сохранены. [Результаты проверок Г6.4](testing.md#рабочая-проверка-г64--20112026).
