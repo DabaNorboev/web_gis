@@ -167,9 +167,10 @@ export type AnalysisStation = {
         distance_m: number | null
         lat: number
         crs: 'EPSG:4326'
-        coordinate_reason: 'A11_OPERATOR_MAP_INTERPRETATION'
-        coordinate_provenance: { raw_file: 'raw/air-project9-api.json'; source_id: string }
-    }
+    } & (
+        | { coordinate_reason: 'A11_OPERATOR_MAP_INTERPRETATION'; coordinate_provenance: { raw_file: 'raw/air-project9-api.json'; source_id: string } }
+        | { coordinate_reason: 'A12_PILOT_OPERATOR_MAP_INTERPRETATION'; coordinate_provenance: { raw_file: 'raw/project.json'; source_id: string } }
+    )
 )
 export interface AirData extends AirSnapshotRef {
     stations: AnalysisStation[]

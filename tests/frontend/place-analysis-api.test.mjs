@@ -263,6 +263,13 @@ test('station distances accept zero with verified coordinates and reject invente
     const api = setup(() => assert.fail('No HTTP needed'))
     const check = () => api.validateAnalysisResponse(response, api.normalizeAnalysisInput(request)).blocks.air.data.stations[0]
     assert.equal(check().distance_m, 0)
+    located.coordinate_reason = 'A12_PILOT_OPERATOR_MAP_INTERPRETATION'
+    assert.throws(check, { kind: 'invalid_response' })
+    located.coordinate_provenance.raw_file = 'raw/project.json'
+    assert.equal(check().distance_m, 0)
+    located.coordinate_provenance.source_id = '1002'
+    assert.throws(check, { kind: 'invalid_response' })
+    located.coordinate_provenance.source_id = located.id
     located.distance_m = null
     assert.equal(check().distance_m, null)
     for (const value of [-1, '0', Infinity]) {

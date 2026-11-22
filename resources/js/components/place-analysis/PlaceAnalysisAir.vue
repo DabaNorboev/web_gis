@@ -11,6 +11,7 @@ const props = defineProps<{
 const emit = defineEmits<{ retry: []; 'toggle-dock': [] }>()
 const stationHeading = ref<HTMLHeadingElement | null>(null)
 const number = new Intl.NumberFormat('ru-RU', { maximumSignificantDigits: 15 })
+const updateTime = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short', timeZone: 'UTC' })
 
 const rows = computed(() => props.state.phase === 'ready' ? props.state.history.rows : [])
 const activeHour = ref<number | null>(null)
@@ -68,7 +69,7 @@ function retry() {
                 {{ docked ? 'Вернуть в боковую панель' : 'Открыть график внизу' }}
             </button>
         </div>
-        <p class="pa-note">Источник: {{ station.source }}</p>
+        <p class="pa-note">Источник: <a href="https://air.krasn.ru/" target="_blank" rel="noopener noreferrer">{{ station.source }}</a></p>
         <p v-if="station.crs !== 'EPSG:4326'" class="pa-note">Для этого выпуска положение станции неизвестно.</p>
         <p class="pa-note">Архивные измерения на станции. Часовой пояс исходных меток и контроль качества неизвестны.</p>
         <div class="pa-air-status" role="status">
@@ -80,6 +81,7 @@ function retry() {
         <section v-else-if="state.phase === 'ready'" class="pa-history" aria-labelledby="pa-air-history">
             <h3 id="pa-air-history">История PM2.5</h3>
             <p v-if="period" class="pa-note">Период наблюдений: {{ period }}</p>
+            <p class="pa-note">Локальный выпуск обновлён: <time :datetime="state.history.last_success_at">{{ updateTime.format(new Date(state.history.last_success_at)) }} UTC</time></p>
             <p v-if="!chart.hasValues" class="pa-note">В этом выпуске у станции нет часовых значений PM2.5.</p>
             <div v-if="rows.length" class="pa-chart" aria-hidden="true">
                 <div class="pa-chart__readout">

@@ -183,8 +183,9 @@ function airRow(v: any): boolean {
 function airPosition(station: Value): boolean {
     if (station.crs === 'EPSG:4326') {
         const provenance = station.coordinate_provenance
-        return point(station) && station.coordinate_reason === 'A11_OPERATOR_MAP_INTERPRETATION'
-            && record(provenance) && provenance.raw_file === 'raw/air-project9-api.json' && provenance.source_id === station.id
+        return point(station) && record(provenance) && provenance.source_id === station.id
+            && ((station.coordinate_reason === 'A11_OPERATOR_MAP_INTERPRETATION' && provenance.raw_file === 'raw/air-project9-api.json')
+                || (station.coordinate_reason === 'A12_PILOT_OPERATOR_MAP_INTERPRETATION' && provenance.raw_file === 'raw/project.json'))
     }
     return (station.lon === null || station.lon === undefined) && (station.lat === null || station.lat === undefined)
         && (station.crs === null || station.crs === undefined) && station.coordinate_provenance === undefined
