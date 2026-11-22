@@ -32,8 +32,8 @@ class GeoapifyTransport
         return $this->transfer($url, $state);
     }
 
-    /** Protected solely to allow an isolated loopback TLS fixture harness; no runtime URL override. */
-    protected function transfer(string $url, GeocodingState $state): array
+    /** The protected URL and optional CA file support isolated loopback TLS fixtures. */
+    protected function transfer(string $url, GeocodingState $state, ?string $caFile = null): array
     {
         $curl = curl_init();
         $body = '';
@@ -88,6 +88,9 @@ class GeoapifyTransport
                     }
                 },
             ]);
+            if ($caFile !== null) {
+                curl_setopt($curl, CURLOPT_CAINFO, $caFile);
+            }
             $state->alive();
             $ok = curl_exec($curl);
             $errno = curl_errno($curl); // Never retain/log curl_error or effective URL.

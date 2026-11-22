@@ -8,7 +8,7 @@ composer check-platform-reqs --no-interaction
 for step in ${G3_RUNTIME_CHECKS:-cli backend state fpm}; do
 case "$step" in
 cli)
-php -d curl.cainfo=/tmp/placelens-g3-ca.pem vendor/bin/phpunit --do-not-cache-result --no-logging --no-coverage \
+php vendor/bin/phpunit --do-not-cache-result --no-logging --no-coverage \
     --log-junit /evidence/cli.xml --testdox tests/Feature/GeocodingTransportTest.php
 ;;
 backend)
@@ -20,7 +20,7 @@ php vendor/bin/phpunit -c phpunit.postgis.xml --do-not-cache-result --no-logging
     --log-junit /evidence/state.xml --filter GeocodingStateTest
 ;;
 fpm)
-# The transport suite removes its temporary certificate; generate a fresh synthetic CA for FPM.
+# Generate a synthetic CA for the dedicated FPM pool.
 php -r '
 $cfg="/tmp/g3-fpm-ssl.cnf";
 file_put_contents($cfg,"[req]\ndistinguished_name=dn\nx509_extensions=ext\n[dn]\n[ext]\nsubjectAltName=DNS:localhost,IP:127.0.0.1\nbasicConstraints=critical,CA:TRUE\n");

@@ -337,16 +337,23 @@ test('only an explicit station choice fits the circle and docking keeps the load
         const map = window.__smokeMapIn('.pa-map')
         const original = map.fitBounds.bind(map)
         map.fitBounds = (bounds, options) => {
-            window.lastFit = bounds.toArray().flat()
-            return original(bounds, options)
+            const result = original(bounds, options)
+            const canvas = map.getCanvas()
+            window.lastFit = {
+                bounds: bounds.toArray().flat(),
+                size: { width: canvas.clientWidth, height: canvas.clientHeight },
+            }
+            return result
         }
     })
-    const fit = () => page.evaluate(() => window.lastFit)
+    const fit = () => page.evaluate(() => window.lastFit?.bounds)
+    const fittedSize = () => page.evaluate(() => window.lastFit?.size)
     const camera = () => page.evaluate(() => {
         const map = window.__smokeMapIn('.pa-map')
         return [...map.getCenter().toArray(), map.getZoom()]
     })
-    const mapHeight = () => page.locator('.pa-map').evaluate(element => element.clientHeight)
+    const viewport = page.locator('.pa-map')
+    const mapHeight = () => viewport.evaluate(element => element.clientHeight)
     await choosePoint(page)
     await expect.poll(() => fit()).toEqual(circle)
     const initialCamera = await camera()
@@ -400,7 +407,7 @@ test('only an explicit station choice fits the circle and docking keeps the load
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     }
     await expect.poll(() => fit()).toEqual(secondFit)
-    await expect.poll(() => page.evaluate(([bounds, station]) => {
+    const contextFits = () => page.evaluate(([bounds, station]) => {
         const map = window.__smokeMapIn('.pa-map')
         const canvas = map.getCanvas().getBoundingClientRect()
         const layers = document.querySelector('.pa-layers').getBoundingClientRect()
@@ -411,7 +418,8 @@ test('only an explicit station choice fits the circle and docking keeps the load
             return p.x >= 12 && p.x <= canvas.width - 12 && p.y >= 12 && p.y <= canvas.height - 12
                 && (x < layers.left || x > layers.right || y < layers.top || y > layers.bottom)
         })
-    }, [circle, second])).toBe(true)
+    }, [circle, second])
+    await expect.poll(contextFits).toBe(true)
     await page.getByRole('button', { name: 'Вернуть в боковую панель' }).click()
     await expect(page.locator('#pa-panel .pa-history')).toBeVisible()
     await expect(dock).toBeHidden()
@@ -419,6 +427,11 @@ test('only an explicit station choice fits the circle and docking keeps the load
     expect(historyRequests).toEqual(['1001', '1002'])
 
     await expect.poll(mapHeight).toBe(height)
+    const restoredWidth = await viewport.evaluate(element => element.clientWidth)
+    // The container can reach its final size before ResizeObserver resizes and refits the map.
+    await expect.poll(fittedSize).toEqual({ width: restoredWidth, height })
+    expect(await fit()).toEqual(secondFit)
+    await expect.poll(contextFits).toBe(true)
     const selectedCamera = await camera()
     await stationButton(page, 'Станция без координат').click()
     await expect(airSeries(page)).toBeVisible()

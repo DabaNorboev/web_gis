@@ -156,7 +156,8 @@ class SearchProfileApiTest extends TestCase
     public function test_exact_lookup_uses_active_snapshot_id_and_never_analytical_services(): void
     {
         $row = (object) ['label' => 'Synthetic', 'point_method' => 'osm_node', 'lon' => .12, 'lat' => .23,
-            'geometry' => '{"type":"Point","coordinates":[0.12,0.23]}', 'west' => .12, 'south' => .23, 'east' => .12, 'north' => .23, 'levels' => null, 'object_type' => 'address_point'];
+            'geometry' => '{"type":"Point","coordinates":[0.12,0.23]}', 'west' => .12, 'south' => .23, 'east' => .12, 'north' => .23,
+            'levels' => null, 'object_type' => 'address_point', 'address_line' => 'Synthetic street', 'house_number' => '12А/3', 'district' => null];
         $query = Mockery::mock(Builder::class);
         DB::shouldReceive('table')->once()->with('osm_addresses')->andReturn($query);
         $query->shouldReceive('where')->once()->with('dataset_import_id', 42)->andReturnSelf();
@@ -166,6 +167,7 @@ class SearchProfileApiTest extends TestCase
         $query->shouldReceive('first')->once()->andReturn($row);
         $value = (new AddressResolverService)->resolve('osm:node:1', ['addresses' => (object) ['id' => 42, 'observed_at' => null, 'source_updated_at' => null]]);
         $this->assertSame(42, $value['dataset_import_id']);
+        $this->assertSame(['address_line' => 'Synthetic street', 'house_number' => '12А/3', 'district' => null], $value['display']);
         $this->assertNull($value['observed_at']);
         $this->assertArrayNotHasKey('calculated_at', $value);
     }
