@@ -247,6 +247,54 @@ test('air history validates hourly gaps, literal source time, zero and unknown Q
     }
 })
 
+test('one hour must echo the exact snapshot, hour and set of stations', async () => {
+    const observed_at_raw = airSnapshot.window_raw.begin_inclusive
+    const request = { snapshot_version: airSnapshot.snapshot_version, observed_at_raw, station_ids: ['1001', '1002', '1003'] }
+    const row = { observed_at_raw, observed_at_utc: null, qc: 'UNKNOWN' }
+    const data = {
+        ...airSnapshot, observed_at_raw, source: 'air.krasn.ru/project/9', last_observed_at_raw: observed_at_raw,
+        rows: [
+            { ...row, station_id: '1001', row_present: true, value: 0, missing_reason: null, qc_reason: 'SOURCE_QC_NOT_PROVIDED' },
+            { ...row, station_id: '1002', row_present: true, value: null, missing_reason: 'SOURCE_VALUE_NULL_OR_ABSENT', qc_reason: 'SOURCE_QC_NOT_PROVIDED' },
+            { ...row, station_id: '1003', row_present: false, value: null, missing_reason: 'SOURCE_ROW_MISSING', qc_reason: 'SOURCE_ROW_MISSING' },
+        ],
+    }
+    let calls = 0
+    const { fetchAirSnapshotHour, validateAirSnapshotHour } = setup(async (path, options) => {
+        calls++
+        const url = new URL(path, 'http://fixture')
+        assert.equal(url.pathname, `/api/v1/air/snapshots/${request.snapshot_version}/hour`)
+        assert.deepEqual([...url.searchParams], [['observed_at_raw', observed_at_raw]])
+        assert.equal(options.cache, 'no-store')
+        assert.equal(options.mode, 'same-origin')
+        assert.equal(options.referrerPolicy, 'no-referrer')
+        return Response.json(data)
+    })
+    assert.deepEqual(await fetchAirSnapshotHour({ ...request, station_ids: [...request.station_ids].reverse() }), data)
+    await assert.rejects(fetchAirSnapshotHour({ ...request, observed_at_raw: '2026-08-09T00:00:00Z' }), { code: 'INVALID_REQUEST' })
+    assert.equal(calls, 1)
+    for (const change of [
+        v => v.snapshot_version = 'a'.repeat(64), v => v.observed_at_raw = v.window_raw.end_exclusive,
+        v => v.window_raw.begin_inclusive = '2026-08-09 01:00:00', v => v.rows[0].observed_at_raw = '2026-08-09 01:00:00',
+        v => v.rows[2].station_id = '1001', v => v.rows[2].station_id = '1004', v => v.rows.pop(),
+        v => v.rows[2].value = 0, v => v.rows[1].row_present = false, v => v.timezone = 'UTC',
+    ]) {
+        const invalid = structuredClone(data)
+        change(invalid)
+        assert.throws(() => validateAirSnapshotHour(invalid, request), { kind: 'invalid_response' })
+    }
+})
+
+test('the client accepts snapshot hours served by PHP', { skip: !process.env.AIR_API_TEST_EXCHANGE }, () => {
+    const directory = process.env.AIR_API_TEST_EXCHANGE
+    const payload = JSON.parse(readFileSync(`${directory}/snapshot-hours.json`, 'utf8'))
+    const { validateAirSnapshotHour } = setup(() => { throw new Error('No network expected') })
+    for (const data of [payload.first, payload.second]) {
+        const { snapshot_version, observed_at_raw } = data
+        assert.deepEqual(validateAirSnapshotHour(data, { snapshot_version, observed_at_raw, station_ids: ['1001', '1002'] }), data)
+    }
+})
+
 test('station distances accept zero with verified coordinates and reject invented distances', () => {
     const request = { ...input, blocks: ['air'] }
     const response = responseFor(request, { air: 'READY' })

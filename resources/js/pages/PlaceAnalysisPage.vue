@@ -18,7 +18,9 @@ import type { GeocodingSelection } from '@/types/geocoding'
 import PlaceAnalysisResults from '@/components/place-analysis/PlaceAnalysisResults.vue'
 import PlaceAnalysisAir from '@/components/place-analysis/PlaceAnalysisAir.vue'
 import PlaceAnalysisGuide from '@/components/place-analysis/PlaceAnalysisGuide.vue'
-import { useAirStationHistory } from '@/composables/useAirStationHistory'
+import { useAirSnapshotRequest } from '@/composables/useAirSnapshotRequest'
+import { fetchAirSnapshotHour, fetchAirStationHistory } from '@/api/placeAnalysis'
+import { airHourLabel } from '@/utils/airObservation'
 import { useAirDockHeight } from '@/composables/useAirDockHeight'
 import { usePlaceAnalysis } from '@/composables/usePlaceAnalysis'
 import { useSidebarWidth } from '@/composables/useSidebarWidth'
@@ -136,10 +138,32 @@ const mapStations = computed(() => airData.value?.stations.flatMap((station, ind
     station.crs === 'EPSG:4326' ? [{ id: station.id, name: station.name, lon: station.lon, lat: station.lat, number: index + 1 }] : [],
 ) ?? [])
 const historyStation = computed(() => airData.value?.stations.find(station => station.id === selectedStationId.value) ?? null)
-const { state: historyState, load: loadHistory } = useAirStationHistory(
-    computed(() => airData.value?.snapshot_version ?? null),
+const airSnapshotVersion = computed(() => airData.value?.snapshot_version ?? null)
+const { state: historyState, load: loadHistory } = useAirSnapshotRequest(
+    airSnapshotVersion,
     computed(() => historyStation.value?.id ?? null),
+    (snapshot_version, station_id, signal) => fetchAirStationHistory({ snapshot_version, station_id }, signal),
 )
+const pickedHour = ref<string | null>(null)
+const selectedHour = computed(() => {
+    const window = airData.value?.window_raw
+    const hour = pickedHour.value
+    return window && hour && hour >= window.begin_inclusive && hour < window.end_exclusive ? hour : null
+})
+const { state: hourState, load: loadHour } = useAirSnapshotRequest(
+    airSnapshotVersion,
+    selectedHour,
+    (snapshot_version, observed_at_raw, signal) => fetchAirSnapshotHour({
+        snapshot_version, observed_at_raw, station_ids: airData.value?.stations.map(station => station.id) ?? [],
+    }, signal),
+)
+const hourRows = computed(() => hourState.value.phase === 'ready'
+    ? new Map(hourState.value.data.rows.map(row => [row.station_id, row]))
+    : null)
+function clearPickedHour() {
+    pickedHour.value = null
+    mapRef.value?.focusMap()
+}
 const chartDocked = ref(false)
 const airRange = ref<'recent' | 'archive'>('recent')
 const inlineAirHistory = useTemplateRef('inlineAirHistory')
@@ -204,8 +228,10 @@ watch(satelliteData, value => { if (value) satelliteCatalog.value = value }, { f
 watch(place, () => {
     displayedGeometry.value = null; satelliteCatalog.value = null; selectedStationId.value = null
     stationContext.value = null
+    pickedHour.value = null
 }, { flush: 'sync' })
 watch(airData, data => {
+    if (data && !selectedHour.value) pickedHour.value = null
     if (data && !historyStation.value) {
         selectedStationId.value = null
         stationContext.value = null
@@ -450,7 +476,7 @@ onBeforeUnmount(() => {
                     </div>
                     <PlaceAnalysisResults v-else :tab="activeTab" :blocks="analysis.blocks" :selected-poi="selectedPoiId" :category="activeCategory"
                         :satellite-scope="satelliteScope" :can-load="!!analysis.input.value" :date="realDate" :satellite-mode="satelliteMode" :satellite-catalog="satelliteCatalog"
-                        :selected-station="selectedStationId"
+                        :selected-station="selectedStationId" :air-hour-rows="hourRows"
                         @load="loadBlock" @open="openAnalysisTab" @poi="selectPoi" @category="selectCategory"
                         @date="chooseSatelliteDate" @satellite-mode="satelliteMode = $event" @satellite-scope="satelliteScope = $event"
                         @station="selectStation">
@@ -481,6 +507,7 @@ onBeforeUnmount(() => {
                     :radius="displayedGeometry?.radius_m ?? radius"
                     :pois="mapPois"
                     :stations="mapStations"
+                    :air-hour-rows="activeTab === 'air' ? hourRows : null"
                     :poi-distances-known="true"
                     :tab="activeTab"
                     :show-objects="mapShowObjects"
@@ -507,7 +534,29 @@ onBeforeUnmount(() => {
                     @select-poi="selectPoiFromMap"
                     @select-station="selectStationFromMap"
                     @retry-satellite="loadBlock('satellite')"
-                />
+                >
+                    <template v-if="activeTab === 'air' && selectedHour && !pickMode && !pendingPoint && !geocodingPreview" #air-hour>
+                        <section class="pa-air-map-hour" aria-label="Выбранный час PM₂.₅">
+                            <div class="pa-air-map-hour__heading">
+                                <div>
+                                    <strong>PM₂.₅, мкг/м³</strong>
+                                    <time :datetime="selectedHour.replace(' ', 'T')">{{ airHourLabel(selectedHour) }}</time>
+                                </div>
+                                <button type="button" class="pa-icon-button" aria-label="Снять выбор часа" @click="clearPickedHour">
+                                    <X :size="15" aria-hidden="true" />
+                                </button>
+                            </div>
+                            <small>Время источника, часовой пояс неизвестен</small>
+                            <div role="status">
+                                <span v-if="hourState.phase === 'loading'">Загрузка значений за час…</span>
+                                <span v-else-if="hourState.phase === 'snapshot-changed'">Выпуск изменился. Нажмите «Обновить» у списка станций.</span>
+                                <span v-else-if="hourState.phase === 'error'">Не удалось загрузить значения за час.</span>
+                                <small v-else-if="hourRows">— пропущен час · ∅ пустое значение</small>
+                            </div>
+                            <button v-if="hourState.phase === 'error'" class="pa-outline" type="button" @click="loadHour">Повторить</button>
+                        </section>
+                    </template>
+                </PlaceAnalysisMap>
 
                 <div v-if="pendingPoint" class="pa-point-card" role="dialog" aria-label="Выбранная точка" @keydown.esc="cancelPoint">
                     <div class="pa-point-card__head">
@@ -636,6 +685,7 @@ onBeforeUnmount(() => {
         </div>
         <Teleport v-if="historyStation && chartTarget" :to="chartTarget">
             <PlaceAnalysisAir v-model:range="airRange" :station="historyStation" :state="historyState" :docked="chartDocked"
+                :selected-hour="selectedHour" @hour="pickedHour = $event"
                 @retry="loadHistory" @toggle-dock="toggleChartDock" />
         </Teleport>
     </div>

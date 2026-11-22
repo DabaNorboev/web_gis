@@ -1,28 +1,33 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { AirHistoryState } from '@/composables/useAirStationHistory'
-import type { AirObservation, AnalysisStation } from '@/types/placeAnalysis'
+import type { AirSnapshotState } from '@/composables/useAirSnapshotRequest'
+import { airDateLabel as dateLabel, airHourLabel as observationLabel, airReadingLabel as rowLabel } from '@/utils/airObservation'
+import type { AirObservation, AirStationHistory, AnalysisStation } from '@/types/placeAnalysis'
 
 const props = defineProps<{
     station: AnalysisStation
-    state: AirHistoryState
+    state: AirSnapshotState<AirStationHistory>
+    selectedHour: string | null
     docked: boolean
 }>()
-const emit = defineEmits<{ retry: []; 'toggle-dock': [] }>()
+const emit = defineEmits<{ retry: []; 'toggle-dock': []; hour: [literal: string] }>()
 const range = defineModel<'recent' | 'archive'>('range', { required: true })
 const stationHeading = ref<HTMLHeadingElement | null>(null)
-const number = new Intl.NumberFormat('ru-RU', { maximumSignificantDigits: 15 })
 const axisNumber = new Intl.NumberFormat('ru-RU', { maximumSignificantDigits: 3, notation: 'compact' })
 const releaseTime = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Krasnoyarsk' })
 const releaseUtc = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short', timeZone: 'UTC' })
 
 // The API returns one ordered bin per hour up to the exclusive archive end.
-const archiveRows = computed(() => props.state.phase === 'ready' ? props.state.history.rows : [])
+const archiveRows = computed(() => props.state.phase === 'ready' ? props.state.data.rows : [])
 const rows = computed(() => range.value === 'recent' ? archiveRows.value.slice(-48) : archiveRows.value)
 const latest = computed(() => archiveRows.value.filter(row => row.value !== null).at(-1))
 const pointer = ref<{ index: number; x: number; y: number } | null>(null)
 const activeRow = computed(() => pointer.value && rows.value[pointer.value.index])
-watch(rows, () => { pointer.value = null })
+const focusedHour = ref<string | null>(null)
+const tabHour = computed(() => rows.value.some(row => row.observed_at_raw === focusedHour.value)
+    ? focusedHour.value
+    : rows.value.find(row => row.observed_at_raw === props.selectedHour)?.observed_at_raw ?? rows.value.at(-1)?.observed_at_raw)
+watch(rows, () => { pointer.value = null; focusedHour.value = null })
 
 const archivePeriod = computed(() => formatPeriod(archiveRows.value, false))
 const selectedPeriod = computed(() => formatPeriod(rows.value, true))
@@ -68,23 +73,24 @@ function formatPeriod(series: AirObservation[], withTime: boolean) {
     if (sameDate) return `${observationLabel(first, false)}–${last.slice(11, 16)}`
     return `${observationLabel(first, differentYears)} — ${observationLabel(last, differentYears)}`
 }
-function dateLabel(value: string, withYear = true) {
-    const date = `${value.slice(8, 10)}.${value.slice(5, 7)}`
-    return withYear ? `${date}.${value.slice(0, 4)}` : date
-}
-function observationLabel(value: string, withYear = true) {
-    return `${dateLabel(value, withYear)}, ${value.slice(11, 16)}`
-}
-function rowLabel(row: AirObservation) {
-    if (row.value !== null) return number.format(row.value)
-    return row.missing_reason === 'SOURCE_ROW_MISSING' ? 'Пропущен час' : 'Пустое значение'
-}
 function readHour(event: PointerEvent) {
     const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect()
     if (bounds.width <= 0 || bounds.height <= 0) return
     const x = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width))
     const y = Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height))
     pointer.value = { index: Math.min(rows.value.length - 1, Math.floor(x * rows.value.length)), x, y }
+}
+function moveHourFocus(event: KeyboardEvent) {
+    const index = rows.value.findIndex(row => row.observed_at_raw === tabHour.value)
+    const last = rows.value.length - 1
+    const nextByKey: Partial<Record<string, number>> = {
+        ArrowLeft: Math.max(0, index - 1), ArrowRight: Math.min(last, index + 1), Home: 0, End: last,
+    }
+    const next = nextByKey[event.key]
+    if (next === undefined) return
+    event.preventDefault()
+    const plot = event.currentTarget as HTMLElement
+    plot.querySelectorAll('button')[next]?.focus()
 }
 function clearHour(event: PointerEvent) {
     if (event.pointerType !== 'touch') pointer.value = null
@@ -129,8 +135,8 @@ function retry() {
                             <p v-if="archivePeriod" class="pa-note">Архив: {{ archivePeriod }}</p>
                             <p class="pa-note">
                                 Обновлено:
-                                <time :datetime="state.history.last_success_at" :title="`${releaseUtc.format(new Date(state.history.last_success_at))} UTC`">
-                                    {{ releaseTime.format(new Date(state.history.last_success_at)) }} (Красноярск)
+                                <time :datetime="state.data.last_success_at" :title="`${releaseUtc.format(new Date(state.data.last_success_at))} UTC`">
+                                    {{ releaseTime.format(new Date(state.data.last_success_at)) }} (Красноярск)
                                 </time>
                             </p>
                         </div>
@@ -146,10 +152,10 @@ function retry() {
                                 <option value="archive">Весь архив</option>
                             </select>
                         </div>
-                        <div v-if="rows.length" class="pa-chart" aria-hidden="true">
+                        <div v-if="rows.length" class="pa-chart">
                             <span class="pa-chart__unit">мкг/м³</span>
                             <div class="pa-chart__plot">
-                                <div class="pa-chart__scale">
+                                <div class="pa-chart__scale" aria-hidden="true">
                                     <span v-for="(tick, index) in chart.ticks" :key="index">{{ axisNumber.format(tick) }}</span>
                                 </div>
                                 <div class="pa-chart__series">
@@ -158,21 +164,25 @@ function retry() {
                                     </div>
                                     <div v-if="chart.valueCount" class="pa-chart__baseline" :style="{ bottom: `${chart.zero}%` }"></div>
                                     <div class="pa-chart__bars" :style="{ gridTemplateColumns: `repeat(${rows.length}, minmax(0, 1fr))` }"
+                                        role="group" aria-label="Выбор часа PM₂.₅" @keydown="moveHourFocus"
                                         @pointermove="readHour" @pointerdown="readHour" @pointerleave="clearHour" @pointercancel="pointer = null">
-                                        <div v-for="(row, index) in rows" :key="row.observed_at_raw" class="pa-chart__bin"
-                                            :class="{ 'is-active': pointer?.index === index }" :data-missing-reason="row.missing_reason">
-                                            <div v-if="chart.bars[index]" class="pa-bar" :class="{ 'is-zero': row.value === 0 }"
-                                                :style="chart.bars[index]"></div>
-                                        </div>
+                                        <button v-for="(row, index) in rows" :key="row.observed_at_raw" type="button" class="pa-chart__bin"
+                                            :class="{ 'is-active': pointer?.index === index }" :data-missing-reason="row.missing_reason"
+                                            :tabindex="tabHour === row.observed_at_raw ? 0 : -1" :aria-pressed="selectedHour === row.observed_at_raw"
+                                            :aria-label="`${observationLabel(row.observed_at_raw)} · ${rowLabel(row)}${row.value === null ? '' : ' мкг/м³'}`"
+                                            @focus="focusedHour = row.observed_at_raw" @click="emit('hour', row.observed_at_raw)">
+                                            <span v-if="chart.bars[index]" class="pa-bar" :class="{ 'is-zero': row.value === 0 }"
+                                                :style="chart.bars[index]"></span>
+                                        </button>
                                     </div>
-                                    <div v-if="activeRow && pointer" class="pa-chart__reading"
+                                    <div v-if="activeRow && pointer" class="pa-chart__reading" aria-hidden="true"
                                         :class="{ 'is-left': pointer.x > 0.5, 'is-above': pointer.y > 0.5 }"
                                         :style="{ '--pointer-x': `${pointer.x * 100}%`, '--pointer-y': `${pointer.y * 100}%` }">
                                         <time :datetime="activeRow.observed_at_raw.replace(' ', 'T')">{{ observationLabel(activeRow.observed_at_raw) }}</time>
                                         <strong>{{ rowLabel(activeRow) }}{{ activeRow.value === null ? '' : ' мкг/м³' }}</strong>
                                     </div>
                                 </div>
-                                <div class="pa-chart__labels">
+                                <div class="pa-chart__labels" aria-hidden="true">
                                     <span>{{ observationLabel(rows[0]!.observed_at_raw, false) }}</span>
                                     <span v-for="tick in timeTicks" :key="tick.time" class="pa-chart__tick" :style="{ left: `${tick.position}%` }">
                                         {{ observationLabel(tick.time, false) }}

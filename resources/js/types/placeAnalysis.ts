@@ -186,6 +186,16 @@ export interface AirStationHistory extends AirSnapshotRef {
     source: 'air.krasn.ru/project/9'
     rows: AirObservation[]
 }
+export interface AirSnapshotHourRequest {
+    snapshot_version: string
+    observed_at_raw: string
+    station_ids: string[]
+}
+export interface AirSnapshotHour extends AirSnapshotRef {
+    observed_at_raw: string
+    source: 'air.krasn.ru/project/9'
+    rows: (AirObservation & { station_id: string })[]
+}
 export interface BlockData { poi: PoiData; satellite: SatelliteData; air: AirData }
 export type AnalysisBlock<K extends AnalysisBlockKey = AnalysisBlockKey> = {
     availability_by_category?: Record<PoiCategory, { status: 'READY' | 'UNAVAILABLE' | 'ERROR'; code: string | null; message: string }>

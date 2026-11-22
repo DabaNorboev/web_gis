@@ -188,11 +188,12 @@ POST сохраняет no-store/no-referrer и безопасные ошибк�
 
 Группы `selected` и `unlocated`, `selected`, `counts` и `missing_selected_ids` отражают явный выбор ID. `history` содержит статус `AVAILABLE|UNAVAILABLE`, фактические `first_observed_at_raw` и `last_observed_at_raw`, `row_count`, `null_values`, `missing_hour_bins` и `reason`. `latest` содержит последнюю строку или `null`.
 
-`GET /api/v1/air/snapshots/{snapshot_version}/stations/{station_id}/history` отдаёт метаданные того же выпуска, `station_id`, `source` и `rows` по одному часовому интервалу. Исходная метка `observed_at_raw` сохраняется буквально, для отсутствующей строки она обозначает пропущенный час. `observed_at_utc: null`, `qc: UNKNOWN`. Число, включая 0, имеет `row_present: true` и `missing_reason: null`. Пустое значение имеет `row_present: true` и `SOURCE_VALUE_NULL_OR_ABSENT`. Пропущенный час имеет `row_present: false` и `SOURCE_ROW_MISSING`. В обоих случаях пропуска `value: null`. `qc_reason` равен `SOURCE_QC_NOT_PROVIDED` для существующей строки и `SOURCE_ROW_MISSING` для отсутствующей.
+Оба GET возвращают метаданные версии сводки, `source` и [часовые строки `rows`](../data/air.md#часовые-строки-http).
 
-При смене pin сервер отдаёт `409 AIR_SNAPSHOT_CHANGED`, для неизвестной станции `404 AIR_STATION_NOT_FOUND`, без доступного выпуска `503 AIR_SOURCE_UNAVAILABLE`. [Проверки PHP и TypeScript](../testing.md#плановое-обновление-и-локальная-история-воздуха-а12).
+- `/api/v1/air/snapshots/{snapshot_version}/stations/{station_id}/history` — `station_id` и строка на каждый час окна. Неизвестная станция — `404 AIR_STATION_NOT_FOUND`.
+- `/api/v1/air/snapshots/{snapshot_version}/hour?observed_at_raw=…` — исходный час и строка на каждую станцию. Неверный час — `422 AIR_INVALID_HOUR`, час вне окна — `422 AIR_HOUR_OUTSIDE_WINDOW`.
 
-Выбор станции, в том числе вне круга, открывает ряд из версии сводки. [Карточка PM₂.₅, диапазоны и панель графика](../frontend-structure.md#станции-и-история-воздуха).
+Смена версии — `409 AIR_SNAPSHOT_CHANGED`, недоступный выпуск — `503 AIR_SOURCE_UNAVAILABLE`. GET используют `no-store` и `no-referrer`. [Карточка, график и выбор часа](../frontend-structure.md#станции-и-история-воздуха).
 
 ## 8. Независимость и поздние ответы
 

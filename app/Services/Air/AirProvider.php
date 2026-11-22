@@ -148,6 +148,39 @@ class AirProvider
         return $this->metadata($release) + ['station_id' => $id, 'source' => self::SOURCE, 'rows' => $rows];
     }
 
+    public function hour(string $version, mixed $literal): array
+    {
+        if (! is_string($literal) || ! preg_match('/\A[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:00:00\z/', $literal)) {
+            return ['code' => 'AIR_INVALID_HOUR'];
+        }
+
+        try {
+            $this->sourceHour($literal);
+        } catch (RuntimeException) {
+            return ['code' => 'AIR_INVALID_HOUR'];
+        }
+
+        $release = $this->read($version, observedHour: $literal);
+        if ($release === null) {
+            return ['code' => 'AIR_SOURCE_UNAVAILABLE'];
+        }
+        if ($release['snapshot_version'] !== $version) {
+            return ['code' => 'AIR_SNAPSHOT_CHANGED'];
+        }
+        $window = $release['window_raw'];
+        if ($literal < $window['begin_inclusive'] || $literal >= $window['end_exclusive']) {
+            return ['code' => 'AIR_HOUR_OUTSIDE_WINDOW'];
+        }
+
+        $rows = [];
+        foreach ($release['stations'] as $station) {
+            $id = $station['station_id'];
+            $rows[] = ['station_id' => $id] + ($release['series'][$id] ?? $this->observation($literal, null, false));
+        }
+
+        return $this->metadata($release) + ['observed_at_raw' => $literal, 'source' => self::SOURCE, 'rows' => $rows];
+    }
+
     private function metadata(array $release): array
     {
         return [
@@ -168,7 +201,7 @@ class AirProvider
         ];
     }
 
-    private function read(?string $version = null, ?string $stationId = null): ?array
+    private function read(?string $version = null, ?string $stationId = null, ?string $observedHour = null): ?array
     {
         $root = config('air.root');
         if (! is_string($root) || ! str_starts_with($root, '/')) {
@@ -209,7 +242,7 @@ class AirProvider
                 return ['snapshot_version' => $pin];
             }
             $inventory = array_column($manifest['files'], null, 'path');
-            $stationCatalog = $stationId === null ? $this->verifiedStationCatalog($folder, $pin, $manifest, $inventory) : null;
+            $stationCatalog = $version === null ? $this->verifiedStationCatalog($folder, $pin, $manifest, $inventory) : null;
             $metadata = [];
             foreach (['stations.json' => 65536, 'coverage.json' => 65536, 'observations.jsonl' => 8 * 1024 * 1024] as $name => $limit) {
                 $product = $this->file($folder.'/'.$name, $limit);
@@ -250,6 +283,13 @@ class AirProvider
                     continue;
                 }
                 $time = $raw['observed_at_raw'];
+                if ($observedHour !== null) {
+                    if ($time === $observedHour) {
+                        $series[$id] = $this->observation($time, $raw['value'], true);
+                    }
+
+                    continue;
+                }
                 $row = $this->observation($time, $raw['value'], true);
                 $latest[$id] = $row; // A11 sorts observations by station and literal hour.
                 if ($stationId !== null) {

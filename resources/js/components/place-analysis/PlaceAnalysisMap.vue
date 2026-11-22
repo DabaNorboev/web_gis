@@ -26,7 +26,8 @@ import {
 import { satelliteClipLayers } from '@/utils/satelliteClip'
 import { addressFeatures, type AddressSearchPreview } from '@/utils/addressMap'
 import type { Feature, FeatureCollection, Polygon, MultiPolygon, Point } from 'geojson'
-import type { SatelliteLayerKey, SatelliteRasterSource } from '@/types/placeAnalysis'
+import { airReadingLabel } from '@/utils/airObservation'
+import type { AirObservation, SatelliteLayerKey, SatelliteRasterSource } from '@/types/placeAnalysis'
 
 const props = withDefaults(defineProps<{
     addressPreview?: AddressSearchPreview | null
@@ -43,6 +44,7 @@ const props = withDefaults(defineProps<{
     showObjects: boolean
     showSatellite: boolean
     showStations: boolean
+    airHourRows: ReadonlyMap<string, AirObservation> | null
     showRadius: boolean
     layerOrder: AnalysisLayer[]
     satelliteMode: SatelliteMode
@@ -308,6 +310,21 @@ function clipPoiMarkers() {
     for (const marker of poiMarkers) marker.getElement().style.display = ''
 }
 
+function syncStationHourLabels() {
+    for (const marker of stationMarkers) {
+        const element = marker.getElement()
+        const caption = element.querySelector<HTMLElement>('.pa-map-station__hour')!
+        const row = props.airHourRows?.get(element.dataset.stationId!)
+        const reading = row ? airReadingLabel(row) : ''
+        caption.hidden = !row
+        caption.textContent = row?.missing_reason === 'SOURCE_ROW_MISSING' ? '—'
+            : row?.missing_reason === 'SOURCE_VALUE_NULL_OR_ABSENT' ? '∅' : reading
+        element.setAttribute('aria-label', row
+            ? `${element.dataset.stationName} · PM₂.₅ · ${reading}${row.value === null ? '' : ' мкг/м³'}`
+            : `${element.dataset.stationName} · Местоположение по данным источника`)
+    }
+}
+
 function syncMarkers() {
     if (!map || !ready) return
     // A style-load callback and a Vue prop update can both request this synchronously.
@@ -358,16 +375,22 @@ function syncMarkersNow() {
             element.type = 'button'
             element.className = `pa-map-station${station.id === props.selectedStation ? ' is-selected' : ''}`
             element.textContent = String(station.number)
-            element.setAttribute('aria-label', `${station.name} · Местоположение по данным источника`)
+            const caption = document.createElement('span')
+            caption.className = 'pa-map-station__hour'
+            caption.setAttribute('aria-hidden', 'true')
+            element.append(caption)
             element.setAttribute('aria-pressed', String(station.id === props.selectedStation))
             element.addEventListener('click', event => {
                 event.stopPropagation()
                 emit('select-station', station.id)
             })
             element.dataset.stationId = station.id
+            element.dataset.stationName = station.name
             stationMarkers.push(new Marker({ element, anchor: 'center' }).setLngLat([station.lon, station.lat]).addTo(instance))
         }
     }
+
+    syncStationHourLabels()
 
     const pinElement = document.createElement('div')
     pinElement.className = 'pa-map-pin'
@@ -565,7 +588,7 @@ watch(theme, value => {
     map.triggerRepaint()
 })
 
-watch(() => [props.center.lon, props.center.lat], () => {
+watch([() => props.center.lon, () => props.center.lat], () => {
     map?.jumpTo({ center: [props.center.lon, props.center.lat] })
     syncLayers()
     syncMarkers()
@@ -593,6 +616,7 @@ watch([
 ], fitContext)
 
 watch(() => props.selectedPoi, () => syncPoiSelection())
+watch(() => props.airHourRows, syncStationHourLabels)
 watch(() => props.layerOrder, () => applyLayerOrder(), { deep: true })
 watch(() => props.stationContext, point => {
     if (point) fitContext()
@@ -642,11 +666,15 @@ onBeforeUnmount(() => {
             :aria-label="pickMode ? 'Карта анализа места. Enter выбирает точку в центре, Escape отменяет выбор.' : 'Карта анализа места'"
             @keydown="mapKeydown"
         ></div>
-        <p v-if="rasterError" class="pa-map-alert" role="alert">
-            <TriangleAlert :size="16" aria-hidden="true" />
-            <span>Не удалось загрузить изображение. Аналитика по кругу сохранена.</span>
-            <button type="button" class="pa-outline" @click="emit('retry-satellite')">Повторить</button>
-        </p>
+        <div v-if="$slots['air-hour'] || rasterError" class="pa-map-notices"
+            :class="{ 'has-air-hour': $slots['air-hour'], 'has-raster-alert': rasterError }">
+            <slot name="air-hour" />
+            <p v-if="rasterError" class="pa-map-alert" role="alert">
+                <TriangleAlert :size="16" aria-hidden="true" />
+                <span>Не удалось загрузить изображение. Аналитика по кругу сохранена.</span>
+                <button type="button" class="pa-outline" @click="emit('retry-satellite')">Повторить</button>
+            </p>
+        </div>
         <p v-if="mapStatus !== 'ready'" class="pa-map-status" role="status">{{ mapStatusText }}</p>
     </div>
 </template>

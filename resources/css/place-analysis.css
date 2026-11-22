@@ -587,7 +587,9 @@
 .pa-chart__grid span { border-top: 1px solid #e0e8df; }
 .pa-chart__baseline { position: absolute; inset-inline: 0; border-top: 1px solid #a8bcb0; }
 .pa-chart__bars { display: grid; position: relative; height: 100%; cursor: crosshair; }
-.pa-chart__bin { position: relative; min-width: 0; }
+.pa-chart__bin { position: relative; min-width: 0; padding: 0; border: 0; background: none; cursor: inherit; }
+.pa-chart__bin[aria-pressed="true"] { background: #30755640; }
+.pa-chart__bin:focus-visible { outline: 2px solid #245d45; outline-offset: 1px; z-index: 1; }
 .pa-chart__bin.is-active::after { content: ''; position: absolute; inset-block: 0; left: 50%; border-inline-start: 1px solid #307556; pointer-events: none; }
 .pa-bar { position: absolute; inset-inline: 0; width: min(82%, 14px); margin-inline: auto; background: var(--pa-accent); }
 .pa-chart__bin.is-active .pa-bar { background: #388262; }
@@ -662,6 +664,34 @@
 .pa-map-marker--official_stop { background: #2b6cb0; }
 .pa-map-marker--park { background: #4d7c0f; }
 .pa-map-station { background: #fff; border-color: var(--pa-accent); color: var(--pa-accent); font-size: 11px; pointer-events: auto; padding: 0; }
+.pa-station__hour { font-size: 12px; font-weight: 650; }
+.pa-map-station__hour {
+    position: absolute;
+    left: calc(100% + 3px);
+    padding: 2px 5px;
+    border: 1px solid var(--pa-border);
+    border-radius: 5px;
+    background: #fff;
+    color: var(--pa-ink);
+    white-space: nowrap;
+}
+.pa-air-map-hour {
+    display: grid;
+    gap: 2px;
+    width: max-content;
+    max-width: min(255px, calc(100% - 84px));
+    margin-left: 44px;
+    padding: 7px 10px;
+    border: 1px solid var(--pa-border);
+    border-radius: 9px;
+    background: #fffffff5;
+    color: var(--pa-ink);
+    font-size: 12px;
+    box-shadow: 0 3px 10px #1f382b26;
+}
+.pa-air-map-hour__heading { display: flex; align-items: start; justify-content: space-between; gap: 6px; }
+.pa-air-map-hour__heading time { display: block; font-variant-numeric: tabular-nums; }
+.pa-air-map-hour small { color: var(--pa-muted); }
 .pa-map-station.is-selected { background: var(--pa-accent); color: #fff; }
 .pa-map-pin {
     position: relative;
@@ -845,7 +875,20 @@
 .pa-sat-details p { margin: 6px 0; }
 .pa-sat-reasons { display: grid; gap: 4px; margin: 6px 0; padding: 0; list-style: none; }
 .pa-sat-reasons li { font-variant-numeric: tabular-nums; }
-.pa-map-alert { position: absolute; left: 14px; top: 108px; z-index: 9; display: flex; align-items: center; flex-wrap: wrap; gap: 7px; max-width: min(430px, calc(100% - 28px)); margin: 0; padding: 8px 10px; border: 1px solid #e2c3b9; border-radius: 9px; background: #fff7f3f2; color: #7a3c2b; box-shadow: 0 4px 14px #1b332a1f; font-size: 11.5px; line-height: 1.4; }
+.pa-map-notices {
+    position: absolute;
+    z-index: 8;
+    top: 108px;
+    left: 14px;
+    width: min(430px, calc(100% - 28px));
+    display: grid;
+    justify-items: start;
+    gap: 6px;
+    pointer-events: none;
+}
+.pa-map-notices > * { pointer-events: auto; }
+.pa-map-notices.has-air-hour { top: 62px; }
+.pa-map-alert { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; max-width: 100%; margin: 0; padding: 8px 10px; border: 1px solid #e2c3b9; border-radius: 9px; background: #fff7f3f2; color: #7a3c2b; box-shadow: 0 4px 14px #1b332a1f; font-size: 11.5px; line-height: 1.4; }
 .pa-map-alert svg { flex: none; }
 .pa-map-alert span { flex: 1 1 160px; }
 .pa-map-alert .pa-outline { min-height: 30px; margin: 0; padding: 3px 9px; font-size: 11px; }
@@ -893,6 +936,7 @@
     .pa-layers { left: 12px; right: 12px; bottom: 40px; width: auto; max-height: calc(50% - 60px); }
     .pa-layers.is-collapsed { width: auto; }
     .pa-map-style { top: 10px; left: 10px; gap: 4px; padding-left: 7px; }
+    .pa-map-notices.has-air-hour.has-raster-alert { max-height: calc(50% - 48px); overflow-y: auto; pointer-events: auto; }
     .pa-radius__range { width: 140px; }
     .pa-radius__edge { display: none; }
     .pa-point-card { top: 42%; }
