@@ -28,7 +28,7 @@ verified: run 2026-10-31
 
 Стенд — существующий `tests/browser/server.mjs`, настоящий Vue/MapLibre и синтетические fixtures поиска, профилей, поездок. Сборка временная; backend, рабочая БД, GIS, `.env`, миграции, volumes и опубликованный `public/build` не были целью запуска. Node выполнялся только через `docker compose exec --user node node`. Первоначальный sandbox не имел доступа к Docker socket; после разрешённого расширения доступа использован существующий Compose node без установки зависимостей.
 
-Контракты выбраны через [индекс документации](../README.md): [product](../product.md), [frontend-structure](../frontend-structure.md), [address-comparison](../features/address-comparison.md), [trips](../features/trips.md), [home-workspace-map](../features/home-workspace-map.md), [testing](../testing.md), [browser-smoke](../browser-smoke.md). Визуальный ориентир — `experiments/placelens-visual/PlaceLens-visual.html`; его desktop/mobile render также просмотрен. Архив и полная история плана не использовались как автоматический контекст.
+Контракты выбраны через [индекс документации](../README.md): [product](../product.md), [frontend-structure](../frontend-structure.md), [address-comparison](../features/address-comparison.md), [trips](../features/trips.md), [home-workspace-map](home-workspace-map-2026-11-04.md), [testing](../testing.md), [browser-smoke](../browser-smoke.md). Визуальный ориентир — `experiments/placelens-visual/PlaceLens-visual.html`; его desktop/mobile render также просмотрен. Архив и полная история плана не использовались как автоматический контекст.
 
 ## Лично выполненные сценарии
 

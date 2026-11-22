@@ -1,6 +1,6 @@
 ---
 status: history
-updated: 2026-11-04
+updated: 2026-11-22
 verified: not verified
 ---
 
@@ -19,10 +19,13 @@ verified: not verified
 - [G4: интеграция и handoff](interface-integration-2026-10-30.md).
 - [U1–U4: исправления после оценки владельца](interface-usability-corrections-2026-10-31.md).
 - [V1–V3: карта, поиск и известные short-desktop регрессии](interface-map-refinements-2026-11-01.md).
+- [Карта и навигация снятой главной А/Б](home-workspace-map-2026-11-04.md).
 - [Исторические фрагменты контрактов и прежние результаты проверок](ui-contract-notes-2026-11-01.md).
 
 ## Протоколы функций и проверок
 
+- [Локальные проверки MVP, А11 и карточки PM₂.₅ в А12](mvp-air-checks-2026-11-22.md).
+- [Подбор и подготовка городских спутниковых выпусков А9.4–А9.6](satellite-city-preparation-2026-11-06.md).
 - [Проверки покрытия, площадей и пешего backend](runtime-checks.md).
 - [Журнал продуктовых решений](../decisions.md).
 - [Спецификация завершённой проверки источников](../plans/source-feasibility-task.md).
