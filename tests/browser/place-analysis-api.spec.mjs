@@ -150,11 +150,16 @@ test('unavailable providers never display demo objects or measurements; malforme
 
 const source = 'air.krasn.ru/project/9'
 const historyPath = (version, id) => `/api/v1/air/snapshots/${version}/stations/${id}/history`
-const hour = n => `2026-08-09 0${n}:00:00`
-function airFixture(version = airSnapshot.snapshot_version, firstValue = 0) {
-    const metadata = { ...airSnapshot, snapshot_version: version, last_observed_at_raw: hour(3),
-        window_raw: { begin_inclusive: hour(0), end_exclusive: hour(4) } }
-    const values = [[firstValue, null, undefined, 12], [undefined, 42, undefined, undefined]]
+const hour = n => new Date(Date.UTC(2026, 7, 9, n)).toISOString().slice(0, 19).replace('T', ' ')
+const displayedHour = n => {
+    const [date, time] = hour(n).split(' ')
+    return `${date.split('-').reverse().join('.')}, ${time.slice(0, 5)}`
+}
+function airFixture(version = airSnapshot.snapshot_version, firstValue = 0,
+    values = [[firstValue, null, undefined, 12], [undefined, 42, undefined, undefined]]) {
+    const lastRow = Math.max(...values.map(readings => readings.findLastIndex(value => value !== undefined)))
+    const metadata = { ...airSnapshot, snapshot_version: version, last_observed_at_raw: hour(lastRow),
+        window_raw: { begin_inclusive: hour(0), end_exclusive: hour(values[0].length) } }
     const histories = values.map((readings, index) => ({
         ...metadata, station_id: String(1001 + index), source,
         rows: readings.map((value, i) => ({
@@ -188,6 +193,7 @@ const airTab = page => page.getByRole('tab', { name: 'Воздух', exact: true
 const airSeries = page => page.getByRole('region', { name: 'История PM2.5' })
 const stationButton = (page, name) => page.getByRole('button', { name, exact: true })
 const stationMarker = (page, id) => page.locator(`.pa-map-station[data-station-id="${id}"]`)
+const airRange = page => airSeries(page).getByRole('combobox', { name: 'Период графика PM2.5' })
 const hourlyValues = page => airSeries(page).getByText('Часовые значения и пропуски')
 
 async function openPointAir(page) {
@@ -240,24 +246,30 @@ test('exact address and keyboard station choice show zero and two distinct gaps'
     await expect(sourceLink).toBeVisible()
     await expect(sourceLink).toHaveAttribute('href', 'https://air.krasn.ru/')
     await expect(sourceLink).toHaveAttribute('rel', 'noopener noreferrer')
-    await expect(airSeries(page).getByText(`Период наблюдений: ${hour(0)} — ${hour(3)}`, { exact: true })).toBeVisible()
-    const published = airSeries(page).locator('time[datetime]')
+    await expect(airSeries(page).getByText('Архив: 09.08.2026', { exact: true })).toBeVisible()
+    const latest = airSeries(page).locator('.pa-air-latest')
+    await expect(latest.locator('strong')).toHaveText('12 мкг/м³')
+    await expect(latest.locator('time')).toHaveAttribute('datetime', hour(3).replace(' ', 'T'))
+    await expect(latest.locator('time')).toContainText(displayedHour(3))
+    const published = airSeries(page).locator('.pa-air-meta time')
     await expect(published).toHaveAttribute('datetime', history.last_success_at)
-    await expect(published).toContainText('UTC')
+    await expect(published).toHaveText('04.11.2026, 07:00 (Красноярск)')
+    await expect(published).toHaveAttribute('title', '04.11.2026, 00:00 UTC')
     await expect(page.locator('.pa-chart .pa-bar.is-zero')).toHaveCount(1)
     await expect(page.locator('.pa-chart [data-missing-reason] .pa-bar')).toHaveCount(0)
     const bins = page.locator('.pa-chart__bin')
     for (const [index, label] of ['0 мкг/м³', 'Пустое значение', 'Пропущен час', '12 мкг/м³'].entries()) {
         await bins.nth(index).hover({ position: { x: 5, y: 12 } })
         const reading = page.locator('.pa-chart__reading')
-        await expect(reading.locator('time')).toHaveText(hour(index))
+        await expect(reading.locator('time')).toHaveText(displayedHour(index))
         await expect(reading.locator('strong')).toHaveText(label)
     }
     await hourlyValues(page).click()
-    const cells = time => airSeries(page).getByRole('row', { name: new RegExp(time) }).getByRole('cell')
-    await expect(cells(hour(0))).toHaveText([hour(0), '0'])
-    await expect(cells(hour(1))).toHaveText([hour(1), 'Пустое значение'])
-    await expect(cells(hour(2))).toHaveText([hour(2), 'Пропущен час'])
+    for (const [index, value] of ['0', 'Пустое значение', 'Пропущен час'].entries()) {
+        const time = displayedHour(index)
+        const row = airSeries(page).getByRole('row').filter({ has: page.getByRole('cell', { name: time, exact: true }) })
+        await expect(row.getByRole('cell')).toHaveText([time, value])
+    }
     expect(calls).toHaveLength(3)
     expect(historyCalls).toBe(1)
     await page.getByRole('tab', { name: 'Обзор', exact: true }).click()
@@ -299,7 +311,7 @@ test('late station response cannot replace the chosen station', async ({ page })
     await stationButton(page, 'Станция Альфа').click()
     await expect.poll(() => !!delayed).toBe(true)
     await stationButton(page, 'Станция Бета').click()
-    await expect(airSeries(page).getByText(`Период наблюдений: ${hour(1)}`, { exact: true })).toBeVisible()
+    await expect(airSeries(page).locator('.pa-air-latest time')).toHaveAttribute('datetime', hour(1).replace(' ', 'T'))
     await hourlyValues(page).click()
     await expect(airSeries(page).getByRole('cell', { name: '42', exact: true })).toBeVisible()
     await delayed.fulfill({ json: alpha })
@@ -388,12 +400,58 @@ test('only an explicit station choice fits the circle and docking keeps the load
     await page.getByRole('button', { name: 'Открыть график внизу' }).click()
     const dock = page.locator('#pa-air-dock')
     await expect(dock.locator('.pa-history')).toBeVisible()
+    const plot = dock.locator('.pa-chart__plot')
+    await expect(plot).toBeInViewport({ ratio: 0.99 })
+    expect(await dock.evaluate(element => {
+        const header = element.querySelector('.pa-station-detail__header').getBoundingClientRect()
+        const scrollArea = element.querySelector('.pa-station-detail__body').getBoundingClientRect()
+        return header.bottom <= scrollArea.top
+    })).toBe(true)
     await dock.locator('.pa-chart__bin').nth(1).hover({ position: { x: 5, y: 12 } })
     await expect(dock.locator('.pa-chart__reading strong')).toHaveText('42 мкг/м³')
+    const bars = dock.locator('.pa-chart__bars')
+    const plotBounds = await bars.boundingBox()
+    for (const [x, y] of [[plotBounds.x + 3, plotBounds.y + 3], [
+        plotBounds.x + plotBounds.width - 3, plotBounds.y + plotBounds.height - 3,
+    ]]) {
+        await page.mouse.move(x, y)
+        const reading = dock.locator('.pa-chart__reading')
+        await expect(reading).toBeVisible()
+        const tip = await reading.boundingBox()
+        expect(tip.x).toBeGreaterThanOrEqual(plotBounds.x - 1)
+        expect(tip.y).toBeGreaterThanOrEqual(plotBounds.y - 1)
+        expect(tip.x + tip.width).toBeLessThanOrEqual(plotBounds.x + plotBounds.width + 1)
+        expect(tip.y + tip.height).toBeLessThanOrEqual(plotBounds.y + plotBounds.height + 1)
+        expect(Math.min(Math.abs(tip.x - x), Math.abs(tip.x + tip.width - x))).toBeLessThan(11)
+        expect(Math.min(Math.abs(tip.y - y), Math.abs(tip.y + tip.height - y))).toBeLessThan(11)
+    }
     await expect(page.locator('#pa-panel .pa-history')).toHaveCount(0)
     await expect(stationButton(page, 'Станция Бета')).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByRole('button', { name: 'Вернуть в боковую панель' })).toBeFocused()
     expect(historyRequests).toEqual(['1001', '1002'])
+    const dockDivider = page.getByRole('separator', { name: 'Высота панели графика' })
+    const initialDockHeight = Number(await dockDivider.getAttribute('aria-valuenow'))
+    const initialPlotHeight = await plot.evaluate(element => element.clientHeight)
+    await dockDivider.press('ArrowDown')
+    await expect(dockDivider).toHaveAttribute('aria-valuenow', String(initialDockHeight - 16))
+    await expect.poll(() => plot.evaluate(element => element.clientHeight)).toBeLessThan(initialPlotHeight)
+    await dockDivider.press('Home')
+    await expect(dockDivider).toHaveAttribute('aria-valuenow', await dockDivider.getAttribute('aria-valuemin'))
+    await dockDivider.press('End')
+    await expect(dockDivider).toHaveAttribute('aria-valuenow', await dockDivider.getAttribute('aria-valuemax'))
+    const dockMax = Number(await dockDivider.getAttribute('aria-valuenow'))
+    const dockMin = Number(await dockDivider.getAttribute('aria-valuemin'))
+    const dragTarget = Math.max(dockMin, Math.min(initialDockHeight, dockMax - 32))
+    await dockDivider.scrollIntoViewIfNeeded()
+    const dockHandle = await dockDivider.boundingBox()
+    const startX = dockHandle.x + dockHandle.width / 2
+    const startY = dockHandle.y + dockHandle.height / 2
+    await page.mouse.move(startX, startY)
+    await page.mouse.down()
+    const direction = testInfo.project.name.includes('desktop') ? 1 : -1
+    await page.mouse.move(startX, startY + (dockMax - dragTarget) * direction, { steps: 4 })
+    await page.mouse.up()
+    await expect(dockDivider).toHaveAttribute('aria-valuenow', String(dragTarget))
     const divider = page.getByRole('separator', { name: 'Ширина панели анализа' })
     if (testInfo.project.name.includes('desktop')) {
         await expect.poll(mapHeight).toBeLessThan(height)
@@ -505,9 +563,100 @@ test('409 refreshes only the summary and a history failure retries only the GET'
     await expect(card(page, 'satellite').getByRole('status')).toHaveText('Наблюдение готово')
 })
 
+test('archive ranges preserve station history across panels and count numeric hours', async ({ page }, testInfo) => {
+    const readings = Array(72).fill(12)
+    readings.splice(69, 3, 0, null, undefined)
+    const empty = Array(72).fill(undefined)
+    empty[70] = null
+    const { summary, histories } = airFixture(airSnapshot.snapshot_version, 0, [readings, empty])
+    const historyRequests = []
+    for (const history of histories) {
+        await page.route(`**${historyPath(history.snapshot_version, history.station_id)}`, route => {
+            historyRequests.push(history.station_id)
+            return route.fulfill({ json: history })
+        })
+    }
+    await page.route('**/api/v1/place-analysis', route => route.fulfill({ json: analysisWithAir(route.request().postDataJSON(), summary) }))
+
+    await openPointAir(page)
+    const alpha = stationButton(page, 'Станция Альфа')
+    await alpha.click()
+    const side = page.locator('#pa-panel-air')
+    const range = airRange(page)
+    const bins = page.locator('.pa-chart__bin')
+    const latest = page.locator('.pa-air-latest')
+    await expect(side.locator('.pa-air-latest strong')).toHaveText('0 мкг/м³')
+    await expect(latest.locator('time')).toHaveAttribute('datetime', hour(69).replace(' ', 'T'))
+    await expect(airSeries(page).getByText('Архив: 09.08 — 11.08.2026', { exact: true })).toBeVisible()
+    await expect(range).toHaveValue('recent')
+    await expect(airSeries(page).getByText('График: 10.08, 00:00 — 11.08, 23:00', { exact: true })).toBeVisible()
+    await expect(airSeries(page).getByText('46 из 48 часов со значениями')).toBeVisible()
+    await expect(bins).toHaveCount(48)
+    await expect(bins.nth(46)).toHaveAttribute('data-missing-reason', 'SOURCE_VALUE_NULL_OR_ABSENT')
+    await expect(bins.nth(47)).toHaveAttribute('data-missing-reason', 'SOURCE_ROW_MISSING')
+    await hourlyValues(page).click()
+    await expect(airSeries(page).getByRole('row')).toHaveCount(49)
+
+    await range.selectOption({ label: 'Весь архив' })
+    await expect(airSeries(page).getByText('70 из 72 часов со значениями')).toBeVisible()
+    await expect(bins).toHaveCount(72)
+    await expect(airSeries(page).getByRole('row')).toHaveCount(73)
+    await hourlyValues(page).click()
+    await page.getByRole('button', { name: 'Открыть график внизу' }).click()
+    const dock = page.locator('#pa-air-dock')
+    if (testInfo.project.name === 'short-desktop') {
+        await page.setViewportSize({ width: 2200, height: 900 })
+        await expect.poll(() => dock.evaluate(element => {
+            const header = element.querySelector('.pa-station-detail__header').getBoundingClientRect()
+            const body = element.querySelector('.pa-station-detail__body')
+            const overview = element.querySelector('.pa-history__overview')
+            const chart = element.querySelector('.pa-chart').getBoundingClientRect()
+            const plot = element.querySelector('.pa-chart__series').getBoundingClientRect()
+            const labels = element.querySelector('.pa-chart__labels').getBoundingClientRect()
+            const summary = element.querySelector('.pa-air-latest').getBoundingClientRect()
+            const metadata = element.querySelector('.pa-air-meta').getBoundingClientRect()
+            const panel = element.getBoundingClientRect()
+            const { paddingLeft, paddingRight } = getComputedStyle(element)
+            const originalChartWidth = 1440 - 224 - parseFloat(getComputedStyle(overview).columnGap)
+                - (body.offsetWidth - body.clientWidth)
+            return Math.abs(header.left - panel.left - parseFloat(paddingLeft)) < 1
+                && Math.abs(panel.right - header.right - parseFloat(paddingRight)) < 1
+                && Math.abs(chart.width - originalChartWidth) < 1
+                && summary.left > chart.right && metadata.left > summary.right && Math.abs(summary.top - metadata.top) < 1
+                && plot.height >= 180 && labels.bottom <= body.getBoundingClientRect().bottom
+        })).toBe(true)
+        await expect(dock.locator('.pa-chart__tick').first()).toBeVisible()
+    }
+    await expect(dock.locator('.pa-air-latest strong')).toHaveText('0 мкг/м³')
+    await expect(range).toHaveValue('archive')
+    await range.selectOption({ label: '48 часов' })
+    await expect(bins).toHaveCount(48)
+    await expect(alpha).toHaveAttribute('aria-pressed', 'true')
+    for (const panel of [dock, side]) {
+        if (panel === side) await page.getByRole('button', { name: 'Вернуть в боковую панель' }).click()
+        const coverage = panel.getByText('46 из 48 часов со значениями')
+        await coverage.scrollIntoViewIfNeeded()
+        await expect(coverage).toBeInViewport()
+        expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    expect(historyRequests).toEqual(['1001'])
+
+    await stationButton(page, 'Станция Бета').click()
+    await expect(latest).toContainText('У станции нет числовых значений в архиве.')
+    await expect(latest.locator('time')).toHaveCount(0)
+    await expect(airSeries(page).getByText('0 из 48 часов со значениями')).toBeVisible()
+    await expect(bins).toHaveCount(48)
+    await expect(bins.locator('.pa-bar')).toHaveCount(0)
+    await hourlyValues(page).click()
+    await expect(airSeries(page).getByRole('row', { name: `${displayedHour(70)} Пустое значение` })).toBeVisible()
+    await expect(airSeries(page).getByRole('row', { name: `${displayedHour(71)} Пропущен час` })).toBeVisible()
+    expect(historyRequests).toEqual(['1001', '1002'])
+})
+
 test('short mobile screen can scroll through the graph and hourly values', async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 500 })
-    const { summary, histories: [history] } = airFixture()
+    const { summary, histories: [history] } = airFixture(airSnapshot.snapshot_version, 0, [Array(168).fill(12)])
     await page.route(`**${historyPath(history.snapshot_version, history.station_id)}`, route => route.fulfill({ json: history }))
     await page.route('**/api/v1/place-analysis', route => route.fulfill({ json: analysisWithAir(route.request().postDataJSON(), summary) }))
     await openPointAir(page)
@@ -516,12 +665,17 @@ test('short mobile screen can scroll through the graph and hourly values', async
     const values = hourlyValues(page)
     await values.scrollIntoViewIfNeeded()
     await values.click()
-    const last = airSeries(page).getByRole('cell', { name: '12', exact: true })
+    const last = airSeries(page).getByRole('cell', { name: '12', exact: true }).last()
     await last.scrollIntoViewIfNeeded()
     await expect(last).toBeInViewport()
     const horizontalOverflow = await page.locator('.pa-panel__scroll').evaluate(panel =>
         panel.scrollWidth > panel.clientWidth || document.documentElement.scrollWidth > window.innerWidth)
     expect(horizontalOverflow).toBe(false)
+    await page.getByRole('button', { name: 'Открыть график внизу' }).click()
+    await expect(page.locator('#pa-air-dock .pa-chart__plot')).toBeInViewport({ ratio: 0.99 })
+    await airRange(page).selectOption('archive')
+    await expect(airSeries(page).getByText('168 из 168 часов со значениями')).toBeVisible()
+    await expect(page.locator('#pa-air-dock .pa-chart__labels')).toBeInViewport({ ratio: 0.99 })
 })
 
 test('pinned A11 map and list open the same station weeks', async ({ page }) => {
@@ -573,7 +727,10 @@ test('pinned A11 map and list open the same station weeks', async ({ page }) => 
         await expect(airTab(page)).toHaveAttribute('aria-selected', 'true')
         await expect(marker).toHaveAttribute('aria-pressed', 'true')
         await expect(stationButton(page, data.stations.find(station => station.id === id).name)).toHaveAttribute('aria-pressed', 'true')
+        await expect(page.locator('.pa-chart .pa-chart__bin')).toHaveCount(48)
+        await airRange(page).selectOption('archive')
         await expect(page.locator('.pa-chart .pa-chart__bin')).toHaveCount(168)
+        await airRange(page).selectOption('recent')
         expect(historyRequests.at(-1)).toBe(historyPath(air.snapshot_version, id))
     }
 
@@ -582,12 +739,15 @@ test('pinned A11 map and list open the same station weeks', async ({ page }) => 
     await stationButton(page, station.name).click()
     await expect(stationMarker(page, station.id)).toHaveAttribute('aria-pressed', 'true')
     await expect(page.getByText('Местоположение по данным источника', { exact: true })).toBeVisible()
-    await expect(airSeries(page).getByText('Период наблюдений: 2026-08-09 00:00:00 — 2026-08-15 23:00:00', { exact: true })).toBeVisible()
+    await expect(airSeries(page).getByText('Архив: 09.08 — 15.08.2026', { exact: true })).toBeVisible()
+    await airRange(page).selectOption('archive')
     await expect(page.locator('.pa-chart .pa-chart__bin')).toHaveCount(168)
     await hourlyValues(page).click()
     const zero = history.rows.find(row => row.value === 0)
-    await expect(airSeries(page).getByRole('row', { name: new RegExp(zero.observed_at_raw) }).getByRole('cell'))
-        .toHaveText([zero.observed_at_raw, '0'])
+    const [date, time] = zero.observed_at_raw.split(' ')
+    const hourLabel = `${date.split('-').reverse().join('.')}, ${time.slice(0, 5)}`
+    const zeroRow = airSeries(page).getByRole('row').filter({ has: page.getByRole('cell', { name: hourLabel, exact: true }) })
+    await expect(zeroRow.getByRole('cell')).toHaveText([hourLabel, '0'])
     expect(historyRequests).toEqual([...histories, history].map(row => historyPath(air.snapshot_version, row.station_id)))
     await page.getByRole('tab', { name: 'Обзор', exact: true }).click()
     await expect(card(page, 'poi').getByRole('status')).toHaveText('Готово')

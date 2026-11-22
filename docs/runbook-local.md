@@ -134,25 +134,11 @@ docker compose up -d --no-deps --wait --wait-timeout 90 php node nginx
 
 Владелец принял пилот 22.11.2026. На [localhost](http://localhost/) после анализа точки открыть «Воздух» и выбрать станцию из списка или с карты. Период архива — 09–15.08.2026. [Выпуск и происхождение координат](data/air.md#пробный-выпуск-а12).
 
-Каталог `data/air/a12-pilot-2026-11-22/` содержит сырьё, проверки, `runtime/` и `build-final/`. Override подключает выпуск и сборку на чтение и отключает расписание. Запускать из корня проекта при работающем `db`.
+На рабочем ноутбуке обычный `docker compose up -d` использует локальный override с `data/air/a12-pilot-2026-11-22/runtime/` на чтение. Режим `build` отдаёт карточку PM₂.₅ и регулируемую нижнюю панель из `public/build/`. Расписание выключено. Для изменения Vue и CSS нужна [отдельная пересборка](#выбор-frontend-assets).
 
-```sh
-docker compose -f docker-compose.yml -f docker-compose.override.yml \
-  -f data/air/a12-pilot-2026-11-22/compose.preview.yml up -d --no-deps --no-build --wait php
-docker compose -f docker-compose.yml -f docker-compose.override.yml \
-  -f data/air/a12-pilot-2026-11-22/compose.preview.yml up -d --no-deps --no-build --wait nginx
-```
+Сборка до переноса подсказки к указателю сохранена в `data/backups/air-chart-layout-2026-11-22.yitg0X/build/`. Сборка до расширения нижней панели сохранена в `data/backups/air-dock-width-2026-11-22.Pqo0c8/build/`.
 
-После запуска проверить восемь станций и время обновления в UTC.
-
-Для возврата к А11 использовать обычный Compose с прежними выпуском и `public/build/`.
-
-```sh
-docker compose up -d --no-deps --no-build --wait php
-docker compose up -d --no-deps --no-build --wait nginx
-```
-
-После возврата проверить три станции А11.
+Из корня проекта: возврат предыдущей компоновки — `sh data/backups/air-layout-2026-11-22.T1mzWd/return.sh`, возврат к А11 и прежней конфигурации — `sh data/backups/air-unified-2026-11-22.2C0sjl/return.sh`.
 
 ### Локальная активация Г6.4
 
