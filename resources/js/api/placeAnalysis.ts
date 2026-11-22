@@ -1,6 +1,6 @@
 import { validGeocodedPlace, sameSnapshot } from './geocoding'
 import { ApiRequestError, requestJson } from './errors'
-import type { AirSnapshotHour, AirSnapshotHourRequest, AirStationHistory, AirStationHistoryRequest, AnalysisBlockKey, AnalysisRequest, PlaceAnalysisInput, PlaceAnalysisResponse } from '../types/placeAnalysis'
+import type { AirSnapshotHour, AirSnapshotHourRequest, AirStationHistory, AirStationHistoryRequest, AnalysisBlockKey, AnalysisRequest, AnalysisStation, PlaceAnalysisInput, PlaceAnalysisResponse } from '../types/placeAnalysis'
 
 export const analysisBlockKeys: AnalysisBlockKey[] = ['poi', 'satellite', 'air']
 const categories = ['grocery', 'pharmacy', 'official_stop', 'park'] as const
@@ -210,6 +210,10 @@ function airData(d: any, selectedIds: string[]): boolean {
     const missing = selectedIds.filter(id => !stationIds.has(id))
     const selected = selectedIds.length - missing.length
     const observed = d.stations.map((s: any) => s.history.last_observed_at_raw).filter(Boolean).sort().at(-1) ?? null
+    const lastNumeric = d.last_numeric_observed_at_raw
+    const hasNumeric = d.stations.some((station: AnalysisStation) => station.history.row_count > station.history.null_values)
+    if (lastNumeric !== undefined && (lastNumeric === null ? hasNumeric
+        : !hasNumeric || observed === null || !inAirWindow(lastNumeric, d.window_raw) || lastNumeric > observed)) return false
     return stationIds.size === d.stations.length && sameSet(d.missing_selected_ids, missing)
         && d.last_observed_at_raw === observed && d.counts.selected === selected && d.counts.unlocated === d.stations.length - selected
 }
@@ -217,6 +221,12 @@ export function validateAirStationHistory(v: unknown, request: AirStationHistory
     if (!record(v) || !airSnapshot(v) || v.snapshot_version !== request.snapshot_version || v.station_id !== request.station_id
         || !stationId(v.station_id) || v.source !== airSource || !Array.isArray(v.rows) || v.rows.length !== airWindow(v.window_raw)
         || !v.rows.every((row, i) => airRow(row) && sourceHour(row.observed_at_raw) === sourceHour(v.window_raw.begin_inclusive) + i * hourMs)) {
+        throw new ApiRequestError('invalid_response')
+    }
+    if (v.pm10_rows !== undefined && (!Array.isArray(v.pm10_rows) || v.pm10_rows.length !== v.rows.length
+        || !v.pm10_rows.every((row, index) => airRow(row) && (row.value === null || row.value >= 0)
+            && row.observed_at_raw === v.rows[index].observed_at_raw && row.row_present === v.rows[index].row_present)
+        || !v.pm10_rows.some(row => row.value !== null))) {
         throw new ApiRequestError('invalid_response')
     }
     return v as unknown as AirStationHistory

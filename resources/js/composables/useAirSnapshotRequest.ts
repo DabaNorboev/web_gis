@@ -24,6 +24,7 @@ export function useAirSnapshotRequest<T>(
         }
         const request = new AbortController()
         controller = request
+        const isCurrent = () => controller === request && snapshotVersion.value === version && selection.value === selected
         state.value = { phase: 'loading' }
         let timer: ReturnType<typeof setTimeout> | undefined
         try {
@@ -34,9 +35,9 @@ export function useAirSnapshotRequest<T>(
                 }, 20_000)
             })
             const data = await Promise.race([fetchSelection(version, selected, request.signal), timeout])
-            if (controller === request) state.value = { phase: 'ready', data }
+            if (isCurrent()) state.value = { phase: 'ready', data }
         } catch (error) {
-            if (controller === request) {
+            if (isCurrent()) {
                 const changed = error instanceof ApiRequestError && error.status === 409 && error.code === 'AIR_SNAPSHOT_CHANGED'
                 state.value = { phase: changed ? 'snapshot-changed' : 'error' }
             }
@@ -46,7 +47,7 @@ export function useAirSnapshotRequest<T>(
         }
     }
 
-    watch([snapshotVersion, selection], load, { flush: 'sync' })
+    watch([snapshotVersion, selection], load)
     onBeforeUnmount(() => {
         controller?.abort()
         controller = null

@@ -709,6 +709,116 @@ test.describe('one hour for all stations', () => {
     })
 })
 
+test('station markers default to the last numeric hour and restore it after a manual choice', async ({ page }, testInfo) => {
+    if (testInfo.project.name === 'phone-320') await page.setViewportSize({ width: 320, height: 500 })
+    const observed = airFixture(airSnapshot.snapshot_version, 0, [[18.6, 0, null], [7, undefined, null], [null, null, null]])
+    const empty = airFixture('a'.repeat(64), 0, [[null, null, null], [null, null, null], [null, null, null]])
+    for (const fixture of [observed, empty]) {
+        fixture.summary.stations[2].name = 'Станция Гамма'
+        for (const [index, station] of fixture.summary.stations.entries()) {
+            Object.assign(station, { lon: 92.90 + index * 0.007, lat: 56.024, crs: 'EPSG:4326',
+                coordinate_reason: 'A11_OPERATOR_MAP_INTERPRETATION',
+                coordinate_provenance: { raw_file: 'raw/air-project9-api.json', source_id: station.id } })
+        }
+    }
+    observed.summary.last_numeric_observed_at_raw = hour(1)
+    empty.summary.last_numeric_observed_at_raw = null
+    let current = observed, historyCalls = 0
+    const hourCalls = []
+    await page.route('**/api/v1/place-analysis', route =>
+        route.fulfill({ json: analysisWithAir(route.request().postDataJSON(), current.summary) }))
+    await page.route(`**${historyPath(observed.summary.snapshot_version, '1001')}`, route => {
+        historyCalls++
+        return route.fulfill({ json: observed.histories[0] })
+    })
+    await page.route(`**${historyPath(empty.summary.snapshot_version, '1001')}`, route => route.fulfill({ json: empty.histories[0] }))
+    await page.route('**/api/v1/air/snapshots/*/hour?*', route => {
+        const url = new URL(route.request().url())
+        const version = url.pathname.split('/').at(-2)
+        const selected = url.searchParams.get('observed_at_raw')
+        hourCalls.push([version, selected])
+        expect(version).toBe(observed.summary.snapshot_version)
+        const { station_id, rows, ...metadata } = observed.histories[0]
+        return route.fulfill({ json: { ...metadata, observed_at_raw: selected,
+            rows: observed.histories.map(history => ({
+                ...history.rows.find(row => row.observed_at_raw === selected), station_id: history.station_id,
+            })),
+        } })
+    })
+
+    await page.goto('/')
+    await choosePoint(page)
+    const automatic = page.getByRole('region', { name: 'Последний час PM₂.₅' })
+    await expect(automatic.locator('time')).toHaveText(displayedHour(1))
+    const marker = stationMarker(page, '1001')
+    await expect(marker).toHaveText('0')
+    await expect(marker).toHaveAccessibleName(/PM₂.₅ · 0 мкг\/м³/)
+    await expect(stationMarker(page, '1002')).toHaveText('—')
+    await expect(stationMarker(page, '1003')).toHaveText('∅')
+    expect(historyCalls).toBe(0)
+
+    await airTab(page).click()
+    await expect(stationButton(page, 'Станция Альфа').locator('.pa-station__hour')).toHaveText('0 мкг/м³')
+    await expect(stationButton(page, 'Станция Бета').locator('.pa-station__hour')).toHaveText('Пропущен час')
+    await expect(stationButton(page, 'Станция Гамма').locator('.pa-station__hour')).toHaveText('Пустое значение')
+    await stationButton(page, 'Станция Альфа').click()
+    const hours = page.getByRole('group', { name: 'Выбор часа PM₂.₅' }).getByRole('button')
+    await expect(hours.nth(1)).toHaveAttribute('aria-pressed', 'true')
+    await hours.first().click()
+    const manual = page.getByRole('region', { name: 'Выбранный час PM₂.₅' })
+    await expect(manual.locator('time')).toHaveText(displayedHour(0))
+    await expect(marker).toHaveText('18,6')
+    await manual.getByRole('button', { name: 'Вернуться к последнему часу' }).click()
+    await expect(automatic.locator('time')).toHaveText(displayedHour(1))
+    await expect(marker).toHaveText('0')
+    expect(hourCalls).toEqual([1, 0, 1].map(index => [observed.summary.snapshot_version, hour(index)]))
+
+    current = empty
+    await stationButton(page, 'Обновить').click()
+    await expect(automatic.getByRole('status')).toHaveText('В выпуске нет числовых наблюдений.')
+    await expect(automatic.locator('time')).toHaveCount(0)
+    await expect(marker.locator('.pa-map-station__hour')).toBeHidden()
+    expect(hourCalls).toHaveLength(3)
+})
+
+test('station history compares both particle concentrations on one hourly scale', async ({ page }, testInfo) => {
+    if (testInfo.project.name === 'phone-320') await page.setViewportSize({ width: 320, height: 500 })
+    const { summary, histories: [history] } = airFixture()
+    const pm10 = [30, null, null, 0]
+    history.pm10_rows = history.rows.map((row, index) => ({
+        ...row, value: pm10[index], missing_reason: pm10[index] === null ? row.missing_reason : null,
+    }))
+    await page.route(`**${historyPath(history.snapshot_version, history.station_id)}`, route => route.fulfill({ json: history }))
+    await page.route('**/api/v1/place-analysis', route =>
+        route.fulfill({ json: analysisWithAir(route.request().postDataJSON(), summary) }))
+    await page.route('**/api/v1/air/snapshots/*/hour?*', route => {
+        const selected = new URL(route.request().url()).searchParams.get('observed_at_raw')
+        const { station_id, rows, pm10_rows, ...metadata } = history
+        return route.fulfill({ json: { ...metadata, observed_at_raw: selected, rows: [
+            { ...rows.find(row => row.observed_at_raw === selected), station_id },
+            { ...rows.find(row => row.observed_at_raw === selected), station_id: '1002', value: null,
+                row_present: false, missing_reason: 'SOURCE_ROW_MISSING', qc_reason: 'SOURCE_ROW_MISSING' },
+        ] } })
+    })
+    await openPointAir(page)
+    await stationButton(page, 'Станция Альфа').click()
+    const metrics = page.getByRole('group', { name: 'Показатель графика' })
+    await metrics.getByRole('button', { name: 'PM₁₀', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'История PM₁₀' })).toBeVisible()
+    await expect(page.getByRole('group', { name: 'Выбор часа PM₁₀' }).getByRole('button').first()).toHaveAccessibleName(/30 мкг/)
+    await metrics.getByRole('button', { name: 'Вместе' }).click()
+    const compare = page.getByRole('group', { name: 'Выбор часа PM₂.₅ и PM₁₀' })
+    await expect(compare.getByRole('button').first()).toHaveAccessibleName(/PM₂.₅ ·? ?0 мкг.*PM₁₀.*30 мкг/)
+    await expect(compare.getByRole('button').first().locator('.pa-bar')).toHaveCount(2)
+    await expect(compare.getByRole('button').first().locator('.pa-bar--pm10')).toHaveCSS('height', /.+px/)
+    await expect(page.locator('.pa-chart__scale').getByText('30', { exact: true })).toHaveCount(1)
+    await expect(compare.getByRole('button').nth(2)).toHaveAccessibleName(/Пропущен час.*Пропущен час/)
+    await compare.getByRole('button').first().click()
+    await expect(page.getByRole('region', { name: 'Выбранный час PM₂.₅' }).locator('time')).toHaveText(displayedHour(0))
+    await metrics.getByRole('button', { name: 'PM₂.₅', exact: true }).click()
+    await expect(airSeries(page)).toBeVisible()
+})
+
 test('archive ranges preserve station history across panels and count numeric hours', async ({ page }, testInfo) => {
     const readings = Array(72).fill(12)
     readings.splice(69, 3, 0, null, undefined)

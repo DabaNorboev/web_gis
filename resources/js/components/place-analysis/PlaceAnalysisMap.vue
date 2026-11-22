@@ -38,7 +38,7 @@ const props = withDefaults(defineProps<{
     pois: { id: string; category: PoiCategory; name: string; lon: number; lat: number; distance_m: number; geometry?: Point | Polygon | MultiPolygon }[]
     analysisArea?: Polygon | null
     analysisBounds?: [number, number, number, number] | null
-    stations?: { id: string; name: string; lon: number; lat: number; number: number }[]
+    stations?: { id: string; name: string; lon: number; lat: number }[]
     poiDistancesKnown: boolean
     tab: AnalysisTab
     showObjects: boolean
@@ -374,7 +374,6 @@ function syncMarkersNow() {
             const element = document.createElement('button')
             element.type = 'button'
             element.className = `pa-map-station${station.id === props.selectedStation ? ' is-selected' : ''}`
-            element.textContent = String(station.number)
             const caption = document.createElement('span')
             caption.className = 'pa-map-station__hour'
             caption.setAttribute('aria-hidden', 'true')

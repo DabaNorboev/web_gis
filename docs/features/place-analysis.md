@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-11-22
+updated: 2026-11-23
 verified: code
 ---
 
@@ -182,7 +182,7 @@ POST сохраняет no-store/no-referrer и безопасные ошибк�
 
 [А12](../data/air.md#обновление-и-хранение-а12) читает локальный снимок станций КНЦ СО РАН / air.krasn.ru, проект 9. `coverage: null`, `completeness.status: UNKNOWN`. При отсутствии или повреждении выпуска блок отдаёт `UNAVAILABLE/AIR_SOURCE_UNAVAILABLE` с `data: null`. POI и спутник независимы.
 
-`data`: `snapshot_version` (SHA-256 готового manifest), `window_raw` (до 168 часов, `begin_inclusive` и `end_exclusive`), `last_success_at` (UTC), `last_observed_at_raw` (исходное время или `null`). `timezone` и `utc_offset` равны `null`, `time_reason: SOURCE_TIMEZONE_UNCONFIRMED`. `freshness: UNKNOWN`, `scope: STATION_OBSERVATIONS`, `indicator: pm2_5`, `unit: µg/m³`, `aggregation: hourly`.
+`data`: `snapshot_version` (SHA-256 готового manifest), `window_raw` (до 168 часов, `begin_inclusive` и `end_exclusive`), `last_success_at` (UTC), `last_observed_at_raw` (исходное время последней строки или `null`, включая строки с пустым значением). `last_numeric_observed_at_raw` — последний исходный час с числовым PM₂.₅ хотя бы у одной станции выпуска, включая ноль. Если числовых наблюдений нет, поле равно `null`. `timezone` и `utc_offset` равны `null`, `time_reason: SOURCE_TIMEZONE_UNCONFIRMED`. `freshness: UNKNOWN`, `scope: STATION_OBSERVATIONS`, `indicator: pm2_5`, `unit: µg/m³`, `aggregation: hourly`.
 
 `stations`: `id`, `name`, `source: air.krasn.ru/project/9`, `status: UNKNOWN`. Проверенные позиции имеют `lon`, `lat`, `crs: EPSG:4326`, `coordinate_provenance: {raw_file, source_id}` и `coordinate_reason` для [А11](../data/air.md#основание-для-маркеров-и3) или [пилота А12](../data/air.md#пробный-выпуск-а12). Иначе координаты и CRS — `null` с `SOURCE_DATUM_CRS_UNCONFIRMED` или отсутствуют. `distance_m` — метры по прямой от точки анализа (PostGIS geography) или `null`. Сортировка по возрастанию, `null` в конце.
 
@@ -190,7 +190,7 @@ POST сохраняет no-store/no-referrer и безопасные ошибк�
 
 Оба GET возвращают метаданные версии сводки, `source` и [часовые строки `rows`](../data/air.md#часовые-строки-http).
 
-- `/api/v1/air/snapshots/{snapshot_version}/stations/{station_id}/history` — `station_id` и строка на каждый час окна. Неизвестная станция — `404 AIR_STATION_NOT_FOUND`.
+- `/api/v1/air/snapshots/{snapshot_version}/stations/{station_id}/history` — `station_id` и строка на каждый час окна. Неизвестная станция — `404 AIR_STATION_NOT_FOUND`. При наличии проверенных данных PM₁₀ ответ также содержит `pm10_rows` того же размера, с теми же часами и присутствием исходных строк. Единица и агрегация общие с основным рядом. Ошибка чтения дополнительных данных оставляет основной ряд доступным.
 - `/api/v1/air/snapshots/{snapshot_version}/hour?observed_at_raw=…` — исходный час и строка на каждую станцию. Неверный час — `422 AIR_INVALID_HOUR`, час вне окна — `422 AIR_HOUR_OUTSIDE_WINDOW`.
 
 Смена версии — `409 AIR_SNAPSHOT_CHANGED`, недоступный выпуск — `503 AIR_SOURCE_UNAVAILABLE`. GET используют `no-store` и `no-referrer`. [Карточка, график и выбор часа](../frontend-structure.md#станции-и-история-воздуха).

@@ -174,6 +174,19 @@ class AirSnapshotApiTest extends TestCase
         $version = $active['snapshot_version'];
         $path = "/api/v1/air/snapshots/$version/hour";
 
+        $this->postJson('/api/v1/place-analysis', self::POINT + ['blocks' => ['air']])->assertOk()
+            ->assertJsonPath('blocks.air.data.last_observed_at_raw', '2026-08-09 03:00:00')
+            ->assertJsonPath('blocks.air.data.last_numeric_observed_at_raw', '2026-08-09 00:00:00');
+
+        $pm10History = $this->historyPath($version, '1001');
+        $this->getJson($pm10History)->assertOk()->assertJsonCount(4, 'pm10_rows')
+            ->assertJsonPath('pm10_rows.0.value', 0)
+            ->assertJsonPath('pm10_rows.1.missing_reason', 'SOURCE_VALUE_NULL_OR_ABSENT')
+            ->assertJsonPath('pm10_rows.2.missing_reason', 'SOURCE_ROW_MISSING');
+        $this->getJson($this->historyPath($version, '1002'))->assertOk()->assertJsonMissingPath('pm10_rows');
+        File::append($this->root.'/releases/'.$version.'/input/raw/hourly.json', 'damage');
+        $this->getJson($pm10History)->assertOk()->assertJsonCount(4, 'rows')->assertJsonMissingPath('pm10_rows');
+
         $requestHour = fn (string $hour) => $this->getJson($path.'?'.http_build_query(['observed_at_raw' => $hour]));
         $first = $requestHour('2026-08-09 00:00:00')->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')->assertHeader('Referrer-Policy', 'no-referrer')

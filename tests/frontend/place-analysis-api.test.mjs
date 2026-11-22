@@ -329,6 +329,38 @@ test('station distances accept zero with verified coordinates and reject invente
     assert.throws(check, { kind: 'invalid_response' })
 })
 
+test('the default hour identifies the latest numeric observation without mistaking gaps for zero', () => {
+    const request = { ...input, blocks: ['air'] }
+    const response = responseFor(request, { air: 'READY' })
+    const data = response.blocks.air.data
+    const first = data.window_raw.begin_inclusive
+    const last = '2026-08-09 01:00:00'
+    data.last_observed_at_raw = last
+    data.stations = [{
+        id: '1001', name: 'Synthetic station', source: 'air.krasn.ru/project/9', selected: false, group: 'unlocated',
+        status: 'UNKNOWN', distance_m: null,
+        latest: { observed_at_raw: last, observed_at_utc: null, value: null, row_present: true,
+            missing_reason: 'SOURCE_VALUE_NULL_OR_ABSENT', qc: 'UNKNOWN', qc_reason: 'SOURCE_QC_NOT_PROVIDED' },
+        history: { status: 'AVAILABLE', reason: null, first_observed_at_raw: first, last_observed_at_raw: last,
+            row_count: 2, null_values: 1, missing_hour_bins: 1 },
+    }]
+    data.counts.unlocated = 1
+    const api = setup(() => assert.fail('No HTTP needed'))
+    const validate = () => api.validateAnalysisResponse(response, api.normalizeAnalysisInput(request)).blocks.air.data
+    assert.equal(validate().last_numeric_observed_at_raw, undefined)
+    data.last_numeric_observed_at_raw = first
+    assert.equal(validate().last_numeric_observed_at_raw, first)
+    for (const value of [null, '2026-08-09 02:00:00', '2026-08-08 23:00:00']) {
+        data.last_numeric_observed_at_raw = value
+        assert.throws(validate, { kind: 'invalid_response' })
+    }
+    data.stations[0].history.null_values = 2
+    data.last_numeric_observed_at_raw = null
+    assert.equal(validate().last_numeric_observed_at_raw, null)
+    data.last_numeric_observed_at_raw = first
+    assert.throws(validate, { kind: 'invalid_response' })
+})
+
 const airExchange = process.env.AIR_API_TEST_EXCHANGE
 test('actual PHP summaries and histories pass the TypeScript validators', { skip: !airExchange }, () => {
     const api = setup(() => assert.fail('The exchange uses captured responses only'))
