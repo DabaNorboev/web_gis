@@ -107,6 +107,11 @@ const selectedDateKnown = computed(() => !props.date || satelliteDates.value.som
 const selectedDateInCatalog = computed(() => satelliteInfo.value?.releases.some(release => release.date === props.date))
 const satelliteImageUnavailable = computed(() => (selectedCoverage.value?.prepared_pixels ?? 0) > 0 && !selectedSatellite.value?.layers)
 const satelliteLoadFailed = computed(() => ['error', 'unavailable'].includes(props.blocks.satellite.phase))
+const comparableSatelliteDates = computed(() => {
+    if (satelliteLoadFailed.value || satelliteDates.value.length < 2) return []
+    const available = new Set(satelliteDates.value.map(release => release.date))
+    return satelliteInfo.value?.releases.filter(release => available.has(release.date)) ?? []
+})
 const air = computed(() => props.blocks.air.response?.blocks.air)
 const cardNames = { poi: 'Объекты рядом', satellite: 'Спутник', air: 'Воздух' }
 const cardIcons = { poi: Layers, satellite: Satellite, air: Wind }
@@ -192,6 +197,25 @@ function reloadAirSummary() {
                 <option v-if="date && !selectedDateKnown" :value="date">{{ formatObservationDate(date) }}{{ selectedDateInCatalog ? '' : ' · нет в каталоге' }}</option>
             </select>
         </label>
+        <details v-show="comparableSatelliteDates.length > 1" class="pa-sat-details">
+            <summary>Сравнить даты</summary>
+            <table class="pa-sat-comparison" aria-label="NDVI и покрытие круга по датам">
+                <thead>
+                    <tr><th scope="col">Дата</th><th scope="col">Средний NDVI</th><th scope="col">Пригодно</th></tr>
+                </thead>
+                <tbody>
+                    <tr v-for="release in comparableSatelliteDates" :key="release.date">
+                        <th scope="row">
+                            <button class="pa-sat-comparison__date" type="button" :aria-pressed="date === release.date"
+                                :disabled="!canLoad" @click="emit('date', release.date)">{{ formatObservationDate(release.date) }}</button>
+                            <span v-if="release.warnings.length" class="pa-sat-comparison__warning">С ограничением</span>
+                        </th>
+                        <td>{{ formatMeanNdvi(release.mean_ndvi) }}</td>
+                        <td>{{ release.coverage ? formatCircleFraction(release.coverage.usable_fraction) : '—' }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </details>
         <label class="pa-field"><span>Область отображения</span>
             <select class="pa-select" aria-label="Область спутникового слоя" :value="satelliteScope"
                 @change="emit('satellite-scope', ($event.target as HTMLSelectElement).value as 'territory' | 'circle')">

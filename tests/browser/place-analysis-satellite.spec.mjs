@@ -155,6 +155,90 @@ test('two dates, TCI/NDVI, legend, coverage scope, opacity 0/100%, order and per
     await expect.poll(() => sourceTiles(page, 'pa-satellite-ndvi-raster')).toContain('2024-08-15')
 })
 
+test('comparing two dates switches the satellite layer without changing the circle or map', async ({ page }) => {
+    const state = await setup(page, { holdDate: '2024-08-15' })
+    await openSatellite(page)
+    const comparison = page.getByText('Сравнить даты', { exact: true })
+    await comparison.press('Enter')
+    const table = page.getByRole('table', { name: 'NDVI и покрытие круга по датам' })
+    const spring = table.getByRole('button', { name: '07.05.2024', exact: true })
+    const summer = table.getByRole('button', { name: '15.08.2024', exact: true })
+    const springRow = table.getByRole('row').filter({ has: page.getByRole('button', { name: '07.05.2024', exact: true }) })
+    const summerRow = table.getByRole('row').filter({ has: page.getByRole('button', { name: '15.08.2024', exact: true }) })
+    await expect(springRow.getByRole('cell', { name: '0,31', exact: true })).toBeVisible()
+    await expect(springRow.getByRole('cell', { name: /^87,5\s%$/u })).toBeVisible()
+    await expect(springRow.getByText('С ограничением')).toBeVisible()
+    await expect(summerRow.getByRole('cell', { name: '0,44', exact: true })).toBeVisible()
+    await expect(summerRow.getByRole('cell', { name: /^100\s%$/u })).toBeVisible()
+    expect(state.calls).toHaveLength(3)
+
+    await spring.press('Space')
+    await expectReady(page)
+    await expect(spring).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByLabel('Дата снимка', { exact: true })).toHaveValue('2024-05-07')
+    await page.getByLabel('Область спутникового слоя').selectOption('circle')
+    await page.evaluate(() => {
+        const map = window.__smokeMapIn('.pa-map')
+        const { lng, lat } = map.getCenter()
+        map.jumpTo({ center: [lng + .002, lat], zoom: map.getZoom() + .4 })
+    })
+    const camera = () => page.evaluate(() => {
+        const map = window.__smokeMapIn('.pa-map')
+        return { center: map.getCenter().toArray(), zoom: map.getZoom() }
+    })
+    const initialCamera = await camera()
+
+    await summer.click()
+    await expect(summer).toHaveAttribute('aria-pressed', 'true')
+    await expect(summer).toBeFocused()
+    await expect(springRow.getByRole('cell', { name: '0,31', exact: true })).toBeVisible()
+    await expect.poll(() => !!state.held()).toBe(true)
+    const second = state.calls.at(-1)
+    const first = state.calls.at(-2)
+    expect(state.calls).toHaveLength(5)
+    expect(second).toEqual({ ...first, date: '2024-08-15' })
+    expect(second.blocks).toEqual(['satellite'])
+
+    const held = state.held()
+    await held.fulfill({ json: responseFor(second, { poi: 'READY', satellite: 'READY' }) })
+    await expectReady(page)
+    await expect.poll(() => sourceTiles(page, ndviLayer)).toContain('2024-08-15')
+    await expect(page.getByLabel('Дата снимка', { exact: true })).toHaveValue('2024-08-15')
+    await expect(page.getByLabel('Область спутникового слоя')).toHaveValue('circle')
+    expect(await camera()).toEqual(initialCamera)
+    expect(await table.evaluate(element => {
+        const panel = element.closest('.pa-panel__scroll')
+        return element.getBoundingClientRect().right <= panel.getBoundingClientRect().right
+    })).toBe(true)
+})
+
+test('an open date comparison refreshes for the new analysis radius', async ({ page }) => {
+    const options = {}
+    const state = await setup(page, options)
+    await openSatellite(page)
+    await chooseDate(page, '2024-08-15')
+    await expectReady(page)
+    const table = page.getByRole('table', { name: 'NDVI и покрытие круга по датам' })
+    await page.getByText('Сравнить даты', { exact: true }).click()
+    await expect(table.getByRole('cell', { name: '0,31', exact: true })).toBeVisible()
+
+    options.holdDate = '2024-08-15'
+    const radius = page.getByRole('spinbutton', { name: 'Радиус анализа:', exact: true })
+    await radius.fill('1000')
+    await radius.press('Tab')
+    await expect.poll(() => !!state.held()).toBe(true)
+    await expect(table).toBeHidden()
+    const request = state.held().request().postDataJSON()
+    expect(request.radius_m).toBe(1000)
+
+    const response = responseFor(request, { poi: 'READY', satellite: 'READY' })
+    response.blocks.satellite.data.releases[0].mean_ndvi = 0.19
+    await state.held().fulfill({ json: response })
+    await expect(table.getByRole('cell', { name: '0,19', exact: true })).toBeVisible()
+    await expect(table.getByRole('cell', { name: '0,31', exact: true })).toHaveCount(0)
+    await expect(table.getByRole('button', { name: '15.08.2024', exact: true })).toHaveAttribute('aria-pressed', 'true')
+})
+
 test('a late reply for an old date cannot replace the current observation and hides old tiles while loading', async ({ page }) => {
     const state = await setup(page, { holdDate: '2024-05-07' })
     await openSatellite(page)

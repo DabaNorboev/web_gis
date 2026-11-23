@@ -882,6 +882,29 @@
 .pa-sat-details { margin: 9px 0; border-top: 1px solid #e6ede6; padding-top: 8px; color: var(--pa-muted); font-size: 12px; }
 .pa-sat-details summary { cursor: pointer; color: var(--pa-ink); font-size: 13px; font-weight: 600; }
 .pa-sat-details p { margin: 6px 0; }
+.pa-sat-comparison {
+    width: 100%;
+    margin: 6px 0 0;
+    border-collapse: collapse;
+    color: var(--pa-ink);
+    font-variant-numeric: tabular-nums;
+}
+.pa-sat-comparison :is(th, td) { padding: 4px; text-align: end; vertical-align: middle; }
+.pa-sat-comparison th:first-child { padding-inline-start: 0; text-align: start; }
+.pa-sat-comparison thead { color: var(--pa-muted); }
+.pa-sat-comparison tbody tr { border-top: 1px solid var(--pa-border); }
+.pa-sat-comparison td { white-space: nowrap; }
+.pa-sat-comparison__date {
+    min-height: 34px;
+    padding: 4px 8px;
+    border: 1px solid var(--pa-border);
+    border-radius: 6px;
+    background: #fff;
+    color: var(--pa-accent);
+    white-space: nowrap;
+}
+.pa-sat-comparison__date[aria-pressed="true"] { border-color: var(--pa-accent); background: var(--pa-accent); color: #fff; }
+.pa-sat-comparison__warning { display: block; margin-top: 2px; color: #6b5124; font-size: 11px; font-weight: 400; }
 .pa-sat-reasons { display: grid; gap: 4px; margin: 6px 0; padding: 0; list-style: none; }
 .pa-sat-reasons li { font-variant-numeric: tabular-nums; }
 .pa-map-notices {

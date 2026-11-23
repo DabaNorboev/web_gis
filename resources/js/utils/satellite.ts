@@ -18,7 +18,10 @@ export function formatObtainedAt(value: string | null | undefined): string {
     return `${dateTimeFormatter.format(new Date(value))} UTC`
 }
 export function formatCircleFraction(value: number): string {
-    return percentFormatter.format(Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0)
+    const fraction = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0
+    if (fraction > 0 && fraction < .0005) return `< ${percentFormatter.format(.001)}`
+    if (fraction >= .9995 && fraction < 1) return `> ${percentFormatter.format(.999)}`
+    return percentFormatter.format(fraction)
 }
 export function formatMeanNdvi(value: number | null): string {
     return value === null ? '—' : ndviFormatter.format(value)
