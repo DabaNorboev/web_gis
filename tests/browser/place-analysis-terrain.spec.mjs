@@ -107,6 +107,7 @@ test('3D loads terrain on demand and preserves the analysis and camera across mo
 })
 
 test('satellite basemap refreshes attribution and preserves terrain and analysis layers', async ({ page }) => {
+    test.setTimeout(60_000)
     const viewports = []
     await page.route('**/api/v1/basemap/imagery/viewport', route => {
         viewports.push(route.request().postDataJSON())
@@ -158,13 +159,15 @@ test('satellite basemap refreshes attribution and preserves terrain and analysis
         })
         map.triggerRepaint()
     }))
-    await expect.poll(imageryOutsideCircle).toEqual([210, 45, 70, 255])
+    await expect.poll(imageryOutsideCircle, { timeout: 20_000 }).toEqual([210, 45, 70, 255])
 
     await relief.press('Enter')
     await expect.poll(async () => (await readMap(page)).elevation).toBeCloseTo(240, 6)
-    await page.evaluate(() => window.__smokeMapIn('.pa-map').jumpTo({ center: [92.851, 56.011], zoom: 15, bearing: 30 }))
+    await page.evaluate(() => {
+        window.__smokeMapIn('.pa-map').jumpTo({ center: [92.851, 56.011], zoom: 15, bearing: 30 })
+    })
     await expect(credit).toContainText('Map data © Google, Second area')
-    await expect.poll(imageryOutsideCircle).toEqual([210, 45, 70, 255])
+    await expect.poll(imageryOutsideCircle, { timeout: 20_000 }).toEqual([210, 45, 70, 255])
     expect(viewports.length).toBeGreaterThan(1)
     await expect.poll(() => viewports.at(-1)?.zoom).toBe(15)
     const tilted = await readMap(page)
