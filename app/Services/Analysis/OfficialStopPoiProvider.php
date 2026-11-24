@@ -14,23 +14,23 @@ class OfficialStopPoiProvider
 
     public function __construct(private DatasetCoverage $coverage) {}
 
-    public function analyze(array $point, int $radius): array
+    public function analyze(array $point, int $radius): PoiCategoryResult
     {
         if (! config('place_analysis.official_stops_enabled')) {
-            return $this->unavailable('OFFICIAL_STOP_NOT_ENABLED', 'Подключение официальных остановок к анализу места ожидает отдельной активации.');
+            return PoiCategoryResult::unavailable('OFFICIAL_STOP_NOT_ENABLED', 'Подключение официальных остановок к анализу места ожидает отдельной активации.');
         }
 
-        return DB::transaction(function () use ($point, $radius) {
+        return DB::transaction(function () use ($point, $radius): PoiCategoryResult {
             DB::statement("SET LOCAL statement_timeout = '2s'");
             DB::statement("SET LOCAL lock_timeout = '500ms'");
             $snapshot = DB::table('dataset_imports')->where('source', OfficialStopsImporter::SOURCE)
                 ->where('dataset_key', OfficialStopsImporter::DATASET)->where('status', 'succeeded')->where('is_active', true)->first();
             if (! $snapshot) {
-                return $this->unavailable('OFFICIAL_STOP_SNAPSHOT_UNAVAILABLE', 'Активный официальный набор остановок 24bpd отсутствует.');
+                return PoiCategoryResult::unavailable('OFFICIAL_STOP_SNAPSHOT_UNAVAILABLE', 'Активный официальный набор остановок 24bpd отсутствует.');
             }
             $coverage = $this->coverage->assess($snapshot->id, $point['lon'], $point['lat'], $radius);
             if ($coverage['status'] === 'UNKNOWN') {
-                return $this->unavailable('OFFICIAL_STOP_COVERAGE_UNAVAILABLE', $coverage['reason']);
+                return PoiCategoryResult::unavailable('OFFICIAL_STOP_COVERAGE_UNAVAILABLE', $coverage['reason']);
             }
             $report = json_decode($snapshot->result ?? '{}', true);
             $invalid = $report['invalid_coordinates'] ?? null;
@@ -73,16 +73,12 @@ class OfficialStopPoiProvider
                 }
             }
 
-            return ['status' => 'READY', 'code' => null, 'coverage' => ['by_category' => ['official_stop' => $coverage]],
-                'completeness' => ['by_category' => ['official_stop' => ['status' => $partial ? 'PARTIAL' : 'UNKNOWN', 'reason' => $reason]]],
-                'data' => ['official_stop_summary' => ['found_count' => $foundCount, 'source_without_coordinates' => is_array($invalid) ? count($invalid) : null, 'excluded_outside_scope' => $excluded], 'items' => $items, 'counts_by_category' => ['official_stop' => $coverage['status'] === 'COVERED' && ! $partial ? count($items) : null]]];
+            return PoiCategoryResult::ready(
+                $coverage,
+                ['status' => $partial ? 'PARTIAL' : 'UNKNOWN', 'reason' => $reason],
+                $items,
+                ['found_count' => $foundCount, 'source_without_coordinates' => is_array($invalid) ? count($invalid) : null, 'excluded_outside_scope' => $excluded],
+            );
         });
-    }
-
-    private function unavailable(string $code, string $reason): array
-    {
-        return ['status' => 'UNAVAILABLE', 'code' => $code,
-            'coverage' => ['by_category' => ['official_stop' => ['status' => 'UNKNOWN', 'reason' => $reason, 'available_radius_m' => null]]],
-            'completeness' => ['by_category' => ['official_stop' => ['status' => 'UNKNOWN', 'reason' => $reason]]], 'data' => null];
     }
 }

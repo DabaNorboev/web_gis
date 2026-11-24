@@ -14,38 +14,26 @@ class RetailPoiProvider
     public function analyze(array $point, int $radius): array
     {
         $coverage = $completeness = $availability = $items = [];
-        $counts = array_fill_keys(['grocery', 'pharmacy', 'official_stop', 'park'], null);
+        $counts = [];
         $providers = ['grocery' => $this->grocery, 'pharmacy' => $this->pharmacy, 'official_stop' => $this->officialStops, 'park' => $this->parks];
         $stopSummary = ['found_count' => null, 'source_without_coordinates' => null];
         $ready = $failed = false;
-        foreach ($counts as $category => $_) {
-            $reason = 'Provider категории '.$category.' ещё не подключён (А8).';
-            $availability[$category] = ['status' => 'UNAVAILABLE', 'code' => 'CATEGORY_PROVIDER_UNAVAILABLE', 'message' => $reason];
-            $coverage[$category] = ['status' => 'UNKNOWN', 'reason' => $reason, 'available_radius_m' => null];
-            $completeness[$category] = ['status' => 'UNKNOWN', 'reason' => $reason];
-            if (! isset($providers[$category])) {
-                continue;
-            }
+        foreach ($providers as $category => $provider) {
             try {
-                $block = $providers[$category]->analyze($point, $radius);
-                $coverage[$category] = $block['coverage']['by_category'][$category];
-                $completeness[$category] = $block['completeness']['by_category'][$category];
-                $availability[$category] = ['status' => $block['status'], 'code' => $block['code'], 'message' => $coverage[$category]['reason']];
-                if ($block['status'] === 'READY') {
-                    $ready = true;
-                    if ($category === 'official_stop') {
-                        $stopSummary = $block['data']['official_stop_summary'];
-                    }
-                    array_push($items, ...$block['data']['items']);
-                    $counts[$category] = $block['data']['counts_by_category'][$category];
-                }
+                $result = $provider->analyze($point, $radius);
             } catch (Throwable $error) {
-                $failed = true;
-                $reason = 'Не удалось рассчитать категорию '.$category.'.';
                 Log::error('Place analysis category failed.', ['category' => $category, 'exception_type' => get_class($error)]);
-                $availability[$category] = ['status' => 'ERROR', 'code' => 'CATEGORY_CALCULATION_FAILED', 'message' => $reason];
-                $coverage[$category]['reason'] = $completeness[$category]['reason'] = $reason;
+                $result = PoiCategoryResult::failed('Не удалось рассчитать категорию '.$category.'.');
             }
+
+            $coverage[$category] = $result->coverage;
+            $completeness[$category] = $result->completeness;
+            $availability[$category] = ['status' => $result->status, 'code' => $result->code, 'message' => $result->coverage['reason']];
+            $counts[$category] = $result->count;
+            $stopSummary = $result->officialStopSummary ?? $stopSummary;
+            $ready = $ready || $result->status === 'READY';
+            $failed = $failed || $result->status === 'ERROR';
+            array_push($items, ...$result->items);
         }
         // The same OSM object can carry both tags. Keep one identity, with the
         // explicit pharmacy tag taking precedence; never merge different IDs.

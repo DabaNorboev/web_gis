@@ -120,12 +120,14 @@ class PharmacyPoiTest extends PostgisTestCase
         $report = $this->import($this->document($rows));
         $this->assertCount(1, $report['report']['duplicate_representations']);
         $this->assertNotEmpty($report['report']['possible_duplicates']);
-        $a = $this->response()['blocks']['poi']['data']['items'];
+        $block = $this->response()['blocks']['poi'];
+        $this->assertSame('Полнота OSM и фактическая работа аптек не подтверждены.', $block['completeness']['by_category']['pharmacy']['reason']);
+        $a = $block['data']['items'];
         $this->assertContains('osm:node:10', array_column($a, 'id'));
         $this->assertNotContains('osm:node:11', array_column($a, 'id'));
         $polygon = collect($a)->firstWhere('id', 'osm:relation:30');
         $this->assertSame(0.0, (float) $polygon['distance_m']);
-        $this->assertNotNull($polygon['identity_note']);
+        $this->assertSame('Возможное повторное представление аптеки в OSM. Общая идентичность не подтверждена, записи сохранены отдельно.', $polygon['identity_note']);
         $this->assertGreaterThan(93.01, $polygon['point']['lon']);
         $b = $this->response(93, 1000)['blocks']['poi']['data']['items'];
         $this->assertContains('osm:node:12', array_column($b, 'id'));

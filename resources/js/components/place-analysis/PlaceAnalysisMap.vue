@@ -61,6 +61,7 @@ const props = withDefaults(defineProps<{
 }>(), { satelliteOpacity: .75, showPlacePin: true, geometryStale: false, analysisArea: null, analysisBounds: null, stations: () => [], addressPreview: null, pendingDraggable: false })
 
 const stations = computed(() => props.stations)
+const poiCategory = computed(() => props.tab === 'objects' ? props.categoryFilter : null)
 
 const emit = defineEmits<{ 'select-point': [point: AnalysisPoint]; 'select-station': [id: string]; 'select-poi': [id: string]; 'cancel-pick': []; 'highlight-address': [id: string | null, source: 'pointer' | 'focus']; 'select-address': [id: string]; 'retry-satellite': [] }>()
 const { theme } = useMapTheme()
@@ -185,7 +186,7 @@ function applyLayerOrder() {
 function syncPoiGeometry() {
     if (!map || !ready) return
     const features: Feature[] = props.pois.filter(p => p.geometry && p.geometry.type !== 'Point'
-        && (props.tab !== 'objects' || !props.categoryFilter || p.category === props.categoryFilter))
+        && (!poiCategory.value || p.category === poiCategory.value))
         .map(p => ({ type: 'Feature', properties: { id: p.id, selected: p.id === props.selectedPoi }, geometry: p.geometry! }))
     ;(map.getSource('pa-poi') as GeoJSONSource | undefined)?.setData({ type: 'FeatureCollection', features })
     setVisibility('pa-poi-fill', props.showObjects)
@@ -320,9 +321,29 @@ function syncStationHourLabels() {
         caption.textContent = row?.missing_reason === 'SOURCE_ROW_MISSING' ? '—'
             : row?.missing_reason === 'SOURCE_VALUE_NULL_OR_ABSENT' ? '∅' : reading
         element.setAttribute('aria-label', row
-            ? `${element.dataset.stationName} · PM₂.₅ · ${reading}${row.value === null ? '' : ' мкг/м³'}`
+            ? `${element.dataset.stationName} · PM2,5 · ${reading}${row.value === null ? '' : ' мкг/м³'}`
             : `${element.dataset.stationName} · Местоположение по данным источника`)
     }
+}
+
+function syncPoiMarkers() {
+    const instance = map
+    if (!instance || !ready) return
+    clearMarkers(poiMarkers)
+    poiMarkers = []
+    if (props.showObjects) {
+        const filter = poiCategory.value
+        for (const poi of props.pois) {
+            if (filter && poi.category !== filter) continue
+            const element = poiMarkerElement(
+                poi,
+                props.poiDistancesKnown ? `${poi.name} · ${poi.distance_m} м по прямой` : `${poi.name} · демонстрационный объект`,
+            )
+            poiMarkers.push(new Marker({ element }).setLngLat([poi.lon, poi.lat]).addTo(instance))
+        }
+    }
+    clipPoiMarkers()
+    applyMarkerOrder()
 }
 
 function syncMarkers() {
@@ -346,9 +367,7 @@ function syncMarkers() {
 function syncMarkersNow() {
     const instance = map
     if (!instance) return
-    clearMarkers(poiMarkers)
     clearMarkers(stationMarkers)
-    poiMarkers = []
     stationMarkers = []
     pinMarker?.remove()
     pinMarker = null
@@ -356,18 +375,6 @@ function syncMarkersNow() {
     pendingMarker = null
     radiusLabel?.remove()
     radiusLabel = null
-
-    if (props.showObjects) {
-        const filter = props.tab === 'objects' ? props.categoryFilter : null
-        for (const poi of props.pois) {
-            if (filter && poi.category !== filter) continue
-            const element = poiMarkerElement(
-                poi,
-                props.poiDistancesKnown ? `${poi.name} · ${poi.distance_m} м по прямой` : `${poi.name} · демонстрационный объект`,
-            )
-            poiMarkers.push(new Marker({ element }).setLngLat([poi.lon, poi.lat]).addTo(instance))
-        }
-    }
 
     if (props.showStations) {
         for (const station of stations.value) {
@@ -412,7 +419,6 @@ function syncMarkersNow() {
         label.textContent = `R = ${props.radius} м${props.geometryStale ? ' · предыдущий' : ''}`
         radiusLabel = new Marker({ element: label }).setLngLat([anchor.lon, anchor.lat]).addTo(instance)
     }
-    clipPoiMarkers()
     applyMarkerOrder()
 }
 
@@ -556,6 +562,7 @@ function initMap() {
         addLayers()
         for (const layer of satelliteClipLayers(() => ({ enabled: props.satelliteScope === 'circle' && props.showSatellite && !!props.satelliteLayers, area: props.analysisArea }))) map.addLayer(layer)
         syncLayers()
+        syncPoiMarkers()
         syncMarkers()
         syncAddressPreview()
         fitContext()
@@ -621,10 +628,17 @@ watch(() => props.stationContext, point => {
     if (point) fitContext()
 })
 
+watch([poiCategory, () => props.showObjects, () => props.pois, () => props.poiDistancesKnown], () => {
+    syncPoiGeometry()
+    syncPoiMarkers()
+})
+
+watch(() => [props.showSatellite, props.satelliteMode, props.satelliteScope, props.satelliteOpacity, props.satelliteLayers], syncSatelliteRasters)
+
 watch(
     () => [
-        props.showPlacePin, props.geometryStale, props.tab, props.showObjects, props.showSatellite, props.showStations, props.showRadius,
-        props.satelliteMode, props.satelliteScope, props.satelliteOpacity, props.satelliteLayers, props.categoryFilter, props.selectedStation, props.pendingPoint, props.pendingDraggable, props.pois, props.poiDistancesKnown, props.analysisArea, props.stations,
+        props.showPlacePin, props.geometryStale, props.showStations, props.showRadius,
+        props.selectedStation, props.pendingPoint, props.pendingDraggable, props.analysisArea, props.stations,
     ],
     () => {
         syncLayers()

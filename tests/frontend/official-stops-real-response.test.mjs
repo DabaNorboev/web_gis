@@ -12,7 +12,13 @@ test('actual official CSV API responses pass runtime with names/source/version a
         const api=loadModule(new URL('../../resources/js/api/placeAnalysis.ts',import.meta.url),{'./errors':errors,'./geocoding':geocodingModule(errors)})
         const r=await api.fetchPlaceAnalysis(f.request),b=r.blocks.poi,stops=b.data.items.filter(i=>i.category==='official_stop')
         assert.ok(stops.length>=2);assert.ok(stops.some(i=>i.id==='official-stop:3965'));assert.ok(stops.some(i=>i.id==='official-stop:3966'))
-        assert.equal(b.data.counts_by_category.official_stop,null);assert.equal(b.completeness.by_category.official_stop.status,'PARTIAL')
+        assert.equal(b.data.counts_by_category.official_stop, stops.length)
+        assert.equal(b.completeness.by_category.official_stop.status, 'UNKNOWN')
+        assert.deepEqual(b.data.official_stop_summary, {
+            found_count: stops.length,
+            source_without_coordinates: 2,
+            excluded_outside_scope: 2,
+        })
         assert.ok(stops.every(i=>i.source==='official-stops'&&i.source_version==='20250531T1612'&&i.observed_at===null))
         for(const metadata of [{source_version:123},{source_url:'javascript:alert(1)'},{limitations:42}]){
             response=structuredClone(f.response);Object.assign(response.blocks.poi.data.items.find(i=>i.category==='official_stop'),metadata)
