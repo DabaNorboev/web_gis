@@ -813,6 +813,13 @@
 .pa-layers__chevron { flex: none; color: var(--pa-muted); transition: transform .16s ease; }
 .pa-layers__chevron.is-open { transform: rotate(180deg); }
 .pa-layers__body { padding-top: 3px; }
+.pa-basemap-control { display: inline-flex; gap: 3px; padding: 3px; margin-bottom: 4px; border: 1px solid var(--pa-border); border-radius: 8px; background: #f4f7f2; }
+.pa-basemap-control button { min-height: 30px; padding: 3px 12px; border-radius: 6px; color: var(--pa-muted); font-size: 11px; font-weight: 650; }
+.pa-basemap-control button[aria-pressed="true"] { color: #fff; background: var(--pa-accent); }
+.pa-basemap-control button:disabled { opacity: .5; }
+.pa-map .pa-imagery-credit { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 8px; max-width: min(650px, calc(100vw - 12px)); margin: 0; padding: 3px 8px; background: #fffffff5; color: #273c33; font-size: 10px; line-height: 1.35; }
+.pa-imagery-credit__logo { width: auto; height: 18px; margin: 7px 4px 4px; }
+.pa-map-shell:has(.pa-imagery-credit) .pa-layers { bottom: 74px; }
 .pa-layer-item { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .pa-layer-item .pa-opacity { flex-basis: 100%; margin-left: 22px; }
 .pa-layer-item .pa-layer-row { flex: 1; min-width: 0; }
@@ -860,7 +867,7 @@
 .pa-legend__swatch--unknown { background: repeating-linear-gradient(135deg, #eff2ed 0 3px, #89968b 3px 4px); }
 .pa-legend__note { margin: 7px 0 0; color: var(--pa-soft); font-size: 10px; line-height: 1.45; }
 .pa-hatch { width: 22px; height: 12px; border: 1px solid #c6d2c8; background: repeating-linear-gradient(135deg, #eff2ed 0 3px, #89968b 3px 4px); }
-.pa-layer-sub { display: block; margin-top: 1px; color: var(--pa-soft); font-size: 9.5px; font-weight: 400; }
+.pa-layer-sub { display: block; margin-top: 2px; color: var(--pa-muted); font-size: 10.5px; line-height: 1.4; }
 
 .pa-sat-mode { display: inline-flex; gap: 2px; margin: 2px 0 12px; padding: 3px; border: 1px solid var(--pa-border); border-radius: 8px; background: #f4f7f2; }
 .pa-sat-mode__button { min-height: 34px; padding: 5px 16px; border: 0; border-radius: 6px; background: transparent; color: var(--pa-muted); font-size: 12px; font-weight: 600; }

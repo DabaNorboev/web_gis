@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-11-23
+updated: 2026-11-24
 verified: not verified
 ---
 
@@ -121,6 +121,12 @@ docker compose up -d --no-deps --wait --wait-timeout 90 php node nginx
 Выбранный режим сохраняется после `docker compose up -d` и `docker compose restart node`. Перезапуск Node сам по себе не применяет новую правку `.env`: после выбора режима нужно пересоздание указанной командой. Build не означает публичный деплой или изменение `APP_ENV`.
 
 Если сборки нет или её действительно нужно обновить, сначала сохранить существующий `public/build` в новый backup; затем явно выполнить `docker compose exec --user node node npm run build`. Команда заменяет сборку, но не меняет выбранный режим. Уже готовую сборку повторно не строить ради переключения. Ни build, ни переключение не удаляют `public/hot`.
+
+### Спутниковая подложка
+
+На `localhost` без `GOOGLE_MAP_TILES_KEY` браузер напрямую запрашивает гибридные тайлы `mt1.google.com` после включения «Спутника». Этот адрес отсутствует в документации Google Map Tiles API. Для развёртывания включите [Map Tiles API и биллинг](https://developers.google.com/maps/documentation/tile/get-api-key), ограничьте ключ по API и исходящему IP, задайте [квоту 2D Tiles](https://developers.google.com/maps/documentation/tile/usage-and-billing). Укажите ключ в локальном `.env` и обновите кеш конфигурации при его использовании.
+
+Ключ и токен сессии остаются на сервере. Браузеру передаются тайлы и заголовки кеширования Google. У проектов с платёжным адресом в ЕЭЗ спутниковые тайлы [могут быть недоступны](https://developers.google.com/maps/comms/eea/map-tiles). [Поведение подложки](frontend-structure.md#карты-и-адаптивность).
 
 ### Пробный выпуск А12 на восемь станций
 
