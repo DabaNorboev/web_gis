@@ -340,7 +340,7 @@ function reloadAirSummary() {
                     </button>
                 </li>
             </ul>
-            <p v-if="!selectedStation" class="pa-note">Выберите станцию, чтобы посмотреть историю PM2.5.</p>
+            <p v-if="!selectedStation" class="pa-note">Выберите станцию, чтобы посмотреть историю PM2,5.</p>
             <slot name="air-history" />
         </template>
         <p v-else-if="blocks.air.phase === 'ready'" class="pa-note" role="status">В локальном выпуске нет станций.</p>

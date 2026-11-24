@@ -21,7 +21,7 @@ const releaseUtc = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeSt
 const metric = ref<'pm25' | 'pm10' | 'both'>('pm25')
 const pm10Archive = computed(() => props.state.phase === 'ready' ? props.state.data.pm10_rows ?? [] : [])
 const currentMetric = computed(() => pm10Archive.value.length ? metric.value : 'pm25')
-const metricLabel = computed(() => currentMetric.value === 'pm10' ? 'PM₁₀' : 'PM₂.₅')
+const metricLabel = computed(() => currentMetric.value === 'pm10' ? 'PM₁₀' : 'PM2,5')
 const comparisons = computed(() => currentMetric.value === 'both')
 const archiveRows = computed(() => props.state.phase !== 'ready' ? []
     : currentMetric.value === 'pm10' ? pm10Archive.value : props.state.data.rows)
@@ -38,7 +38,7 @@ function reading(row: AirObservation) {
 }
 function hourButtonLabel(row: AirObservation, comparison?: AirObservation) {
     const hour = observationLabel(row.observed_at_raw)
-    return comparison ? `${hour} · PM₂.₅ ${reading(row)} · PM₁₀ ${reading(comparison)}` : `${hour} · ${reading(row)}`
+    return comparison ? `${hour} · PM2,5 ${reading(row)} · PM₁₀ ${reading(comparison)}` : `${hour} · ${reading(row)}`
 }
 const focusedHour = ref<string | null>(null)
 const tabHour = computed(() => rows.value.some(row => row.observed_at_raw === focusedHour.value)
@@ -164,25 +164,25 @@ function retry() {
                     <div class="pa-history__main">
                         <div class="pa-history__heading">
                             <div>
-                                <h3 id="pa-air-history">{{ comparisons ? 'История PM₂.₅ и PM₁₀' : currentMetric === 'pm10' ? 'История PM₁₀' : 'История PM2.5' }}</h3>
+                                <h3 id="pa-air-history">{{ comparisons ? 'История PM2,5 и PM₁₀' : currentMetric === 'pm10' ? 'История PM₁₀' : 'История PM2,5' }}</h3>
                                 <p class="pa-note pa-air-coverage" role="status">
-                                    <template v-if="comparisons">PM₂.₅ </template>{{ chart.valueCount }} из {{ rows.length }} часов со значениями
+                                    <template v-if="comparisons">PM2,5 </template>{{ chart.valueCount }} из {{ rows.length }} часов со значениями
                                     <template v-if="comparisons"> · PM₁₀ {{ chart.comparisonCount }} из {{ rows.length }}</template>
                                 </p>
                             </div>
                             <select v-model="range" class="pa-outline"
-                                :aria-label="comparisons ? 'Период общего графика' : currentMetric === 'pm10' ? 'Период графика PM₁₀' : 'Период графика PM2.5'">
+                                :aria-label="comparisons ? 'Период общего графика' : currentMetric === 'pm10' ? 'Период графика PM₁₀' : 'Период графика PM2,5'">
                                 <option value="recent">48 часов</option>
                                 <option value="archive">Весь архив</option>
                             </select>
                         </div>
                         <div v-if="pm10Archive.length" class="pa-air-metrics" role="group" aria-label="Показатель графика">
-                            <button type="button" class="pa-outline" :aria-pressed="currentMetric === 'pm25'" @click="metric = 'pm25'">PM₂.₅</button>
+                            <button type="button" class="pa-outline" :aria-pressed="currentMetric === 'pm25'" @click="metric = 'pm25'">PM2,5</button>
                             <button type="button" class="pa-outline" :aria-pressed="currentMetric === 'pm10'" @click="metric = 'pm10'">PM₁₀</button>
                             <button type="button" class="pa-outline" :aria-pressed="comparisons" @click="metric = 'both'">Вместе</button>
                         </div>
                         <div v-if="comparisons" class="pa-air-series-key" aria-label="Цвета рядов">
-                            <span>PM₂.₅</span><span>PM₁₀</span>
+                            <span>PM2,5</span><span>PM₁₀</span>
                         </div>
                         <div v-if="rows.length" class="pa-chart">
                             <span class="pa-chart__unit">мкг/м³</span>
@@ -196,7 +196,7 @@ function retry() {
                                     </div>
                                     <div v-if="chart.valueCount || chart.comparisonCount" class="pa-chart__baseline" :style="{ bottom: `${chart.zero}%` }"></div>
                                     <div class="pa-chart__bars" :style="{ gridTemplateColumns: `repeat(${rows.length}, minmax(0, 1fr))` }"
-                                        role="group" :aria-label="comparisons ? 'Выбор часа PM₂.₅ и PM₁₀' : `Выбор часа ${metricLabel}`" @keydown="moveHourFocus"
+                                        role="group" :aria-label="comparisons ? 'Выбор часа PM2,5 и PM₁₀' : `Выбор часа ${metricLabel}`" @keydown="moveHourFocus"
                                         @pointermove="readHour" @pointerdown="readHour" @pointerleave="clearHour" @pointercancel="pointer = null">
                                         <button v-for="(row, index) in rows" :key="row.observed_at_raw" type="button" class="pa-chart__bin"
                                             :class="{ 'is-active': pointer?.index === index, 'is-comparing': comparisons }" :data-missing-reason="row.missing_reason"
@@ -213,7 +213,7 @@ function retry() {
                                         :class="{ 'is-left': pointer.x > 0.5, 'is-above': pointer.y > 0.5, 'is-comparing': comparisons }"
                                         :style="{ '--pointer-x': `${pointer.x * 100}%`, '--pointer-y': `${pointer.y * 100}%` }">
                                         <time :datetime="activeRow.observed_at_raw.replace(' ', 'T')">{{ observationLabel(activeRow.observed_at_raw) }}</time>
-                                        <strong><template v-if="comparisons">PM₂.₅ </template>{{ reading(activeRow) }}</strong>
+                                        <strong><template v-if="comparisons">PM2,5 </template>{{ reading(activeRow) }}</strong>
                                         <strong v-if="activeComparison" class="pa-air-pm10-text">PM₁₀ {{ reading(activeComparison) }}</strong>
                                     </div>
                                 </div>
@@ -231,7 +231,7 @@ function retry() {
                 <details class="pa-air-values">
                     <summary>Часовые значения и пропуски</summary>
                     <table>
-                        <caption class="sr-only">Часовые значения {{ comparisons ? 'PM₂.₅ и PM₁₀' : metricLabel }}. {{ station.name }}</caption>
+                        <caption class="sr-only">Часовые значения {{ comparisons ? 'PM2,5 и PM₁₀' : metricLabel }}. {{ station.name }}</caption>
                         <thead><tr><th scope="col">Время источника</th><th scope="col">{{ metricLabel }}, мкг/м³</th>
                             <th v-if="comparisons" scope="col">PM₁₀, мкг/м³</th></tr></thead>
                         <tbody>

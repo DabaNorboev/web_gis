@@ -545,10 +545,10 @@ onBeforeUnmount(() => {
                     @retry-satellite="loadBlock('satellite')"
                 >
                     <template v-if="showAirHour" #air-hour>
-                        <section class="pa-air-map-hour" :aria-label="explicitHour ? 'Выбранный час PM₂.₅' : 'Последний час PM₂.₅'">
+                        <section class="pa-air-map-hour" :aria-label="explicitHour ? 'Выбранный час PM2,5' : 'Последний час PM2,5'">
                             <div class="pa-air-map-hour__heading">
                                 <div>
-                                    <strong>PM₂.₅, мкг/м³</strong>
+                                    <strong>PM2,5, мкг/м³</strong>
                                     <time v-if="selectedHour" :datetime="selectedHour.replace(' ', 'T')">{{ airHourLabel(selectedHour) }}</time>
                                 </div>
                                 <button v-if="explicitHour" type="button" class="pa-icon-button"

@@ -17,6 +17,39 @@ function fixture(route, statuses = {}) {
 }
 const card = (page, key) => page.locator(`[data-analysis-block="${key}"]`)
 
+test('satellite opacity and POI category filters leave independent map markers in place', async ({ page }) => {
+    const { summary } = airFixture()
+    const station = summary.stations[0]
+    Object.assign(station, {
+        lon: 92.85, lat: 56.01, crs: 'EPSG:4326', distance_m: 0,
+        coordinate_reason: 'A11_OPERATOR_MAP_INTERPRETATION',
+        coordinate_provenance: { raw_file: 'raw/air-project9-api.json', source_id: station.id },
+    })
+    await page.route('**/api/v1/place-analysis', route =>
+        route.fulfill({ json: analysisWithAir(route.request().postDataJSON(), summary) }))
+    await page.goto('/analysis')
+    await choosePoint(page)
+
+    const poi = page.locator('.pa-map-marker[data-poi-id="osm:node:1"]')
+    const stationMarker = page.locator('.pa-map-station')
+    await expect(poi).toHaveCount(1)
+    await expect(stationMarker).toHaveCount(1)
+    await poi.evaluate(element => { element.dataset.markerProbe = 'poi' })
+    await stationMarker.evaluate(element => { element.dataset.markerProbe = 'station' })
+
+    await page.getByLabel('Непрозрачность спутникового слоя').press('ArrowLeft')
+    await expect(page.locator('.pa-opacity output')).toHaveText('65%')
+    await expect(poi).toHaveAttribute('data-marker-probe', 'poi')
+    await expect(stationMarker).toHaveAttribute('data-marker-probe', 'station')
+
+    await page.getByRole('tab', { name: 'Объекты', exact: true }).press('Enter')
+    await page.getByRole('button', { name: 'Аптеки (1)', exact: true }).press('Enter')
+    await expect(poi).toHaveCount(1)
+    await expect(stationMarker).toHaveAttribute('data-marker-probe', 'station')
+    await poi.press('Enter')
+    await expect(page.locator('.pa-objects [data-poi-id="osm:node:1"] > button')).toHaveAttribute('aria-pressed', 'true')
+})
+
 test('analysis guides explain air and NDVI without reloading results', async ({ page }, testInfo) => {
     if (testInfo.project.name === 'phone-320') await page.setViewportSize({ width: 320, height: 500 })
     const calls = []
@@ -29,7 +62,7 @@ test('analysis guides explain air and NDVI without reloading results', async ({ 
     await expect.poll(() => calls.length).toBe(3)
     await expect(page.getByText('Как это работает', { exact: true })).toHaveCount(0)
     for (const [tab, title, explanation] of [
-        ['Воздух', 'Как читать график PM2.5', 'Почему станция может быть только в списке?'],
+        ['Воздух', 'Как читать график PM2,5', 'Почему станция может быть только в списке?'],
         ['Спутник', 'Как читать снимок и NDVI', 'NDVI сам по себе не показывает долю растительности'],
     ]) {
         await page.getByRole('tab', { name: tab, exact: true }).click()
@@ -142,7 +175,7 @@ test('unavailable providers never display demo objects or measurements; malforme
     for (const tab of ['Объекты', 'Спутник', 'Воздух']) {
         await page.getByRole('tab', { name: tab, exact: true }).click()
         await expect(page.locator('.pa-map-marker, .pa-map-station, .pa-history')).toHaveCount(0)
-        await expect(page.getByText('PM2.5 18.6', { exact: false })).toHaveCount(0)
+        await expect(page.getByText('PM2,5 18,6', { exact: false })).toHaveCount(0)
     }
     await expect(page.getByText('Данные о станциях и наблюдениях пока недоступны.')).toBeVisible()
     await expect(page.getByText('Synthetic air provider unavailable')).toHaveCount(0)
@@ -190,10 +223,10 @@ function analysisWithAir(request, summary) {
 }
 
 const airTab = page => page.getByRole('tab', { name: 'Воздух', exact: true })
-const airSeries = page => page.getByRole('region', { name: 'История PM2.5' })
+const airSeries = page => page.getByRole('region', { name: 'История PM2,5' })
 const stationButton = (page, name) => page.getByRole('button', { name, exact: true })
 const stationMarker = (page, id) => page.locator(`.pa-map-station[data-station-id="${id}"]`)
-const airRange = page => airSeries(page).getByRole('combobox', { name: 'Период графика PM2.5' })
+const airRange = page => airSeries(page).getByRole('combobox', { name: 'Период графика PM2,5' })
 const hourlyValues = page => airSeries(page).getByText('Часовые значения и пропуски')
 
 async function openPointAir(page) {
@@ -617,8 +650,8 @@ test.describe('one hour for all stations', () => {
         await airTab(page).click()
         await stationButton(page, 'Станция Альфа').click()
         await expect(airSeries(page)).toBeVisible()
-        const hourButtons = page.getByRole('group', { name: 'Выбор часа PM₂.₅' }).getByRole('button')
-        const legend = page.getByRole('region', { name: 'Выбранный час PM₂.₅' })
+        const hourButtons = page.getByRole('group', { name: 'Выбор часа PM2,5' }).getByRole('button')
+        const legend = page.getByRole('region', { name: 'Выбранный час PM2,5' })
         const selectedReading = name => stationButton(page, name).locator('.pa-station__hour')
         const markerReading = id => stationMarker(page, id).locator('.pa-map-station__hour')
         const camera = () => page.evaluate(() => {
@@ -642,7 +675,7 @@ test.describe('one hour for all stations', () => {
         await hourButtons.nth(0).click()
         await expect(legend.locator('time')).toHaveText(displayedHour(0))
         await expect(markerReading('1001')).toHaveText('0')
-        await expect(stationMarker(page, '1001')).toHaveAccessibleName(/PM₂.₅ · 0 мкг\/м³/)
+        await expect(stationMarker(page, '1001')).toHaveAccessibleName(/PM2,5 · 0 мкг\/м³/)
         await expect(markerReading('1002')).toHaveText('—')
         await expect(selectedReading('Станция без координат')).toHaveText('7 мкг/м³')
         await expect(stationMarker(page, '1003')).toHaveCount(0)
@@ -748,11 +781,11 @@ test('station markers default to the last numeric hour and restore it after a ma
 
     await page.goto('/')
     await choosePoint(page)
-    const automatic = page.getByRole('region', { name: 'Последний час PM₂.₅' })
+    const automatic = page.getByRole('region', { name: 'Последний час PM2,5' })
     await expect(automatic.locator('time')).toHaveText(displayedHour(1))
     const marker = stationMarker(page, '1001')
     await expect(marker).toHaveText('0')
-    await expect(marker).toHaveAccessibleName(/PM₂.₅ · 0 мкг\/м³/)
+    await expect(marker).toHaveAccessibleName(/PM2,5 · 0 мкг\/м³/)
     await expect(stationMarker(page, '1002')).toHaveText('—')
     await expect(stationMarker(page, '1003')).toHaveText('∅')
     expect(historyCalls).toBe(0)
@@ -762,10 +795,10 @@ test('station markers default to the last numeric hour and restore it after a ma
     await expect(stationButton(page, 'Станция Бета').locator('.pa-station__hour')).toHaveText('Пропущен час')
     await expect(stationButton(page, 'Станция Гамма').locator('.pa-station__hour')).toHaveText('Пустое значение')
     await stationButton(page, 'Станция Альфа').click()
-    const hours = page.getByRole('group', { name: 'Выбор часа PM₂.₅' }).getByRole('button')
+    const hours = page.getByRole('group', { name: 'Выбор часа PM2,5' }).getByRole('button')
     await expect(hours.nth(1)).toHaveAttribute('aria-pressed', 'true')
     await hours.first().click()
-    const manual = page.getByRole('region', { name: 'Выбранный час PM₂.₅' })
+    const manual = page.getByRole('region', { name: 'Выбранный час PM2,5' })
     await expect(manual.locator('time')).toHaveText(displayedHour(0))
     await expect(marker).toHaveText('18,6')
     await manual.getByRole('button', { name: 'Вернуться к последнему часу' }).click()
@@ -807,15 +840,15 @@ test('station history compares both particle concentrations on one hourly scale'
     await expect(page.getByRole('heading', { name: 'История PM₁₀' })).toBeVisible()
     await expect(page.getByRole('group', { name: 'Выбор часа PM₁₀' }).getByRole('button').first()).toHaveAccessibleName(/30 мкг/)
     await metrics.getByRole('button', { name: 'Вместе' }).click()
-    const compare = page.getByRole('group', { name: 'Выбор часа PM₂.₅ и PM₁₀' })
-    await expect(compare.getByRole('button').first()).toHaveAccessibleName(/PM₂.₅ ·? ?0 мкг.*PM₁₀.*30 мкг/)
+    const compare = page.getByRole('group', { name: 'Выбор часа PM2,5 и PM₁₀' })
+    await expect(compare.getByRole('button').first()).toHaveAccessibleName(/PM2,5 ·? ?0 мкг.*PM₁₀.*30 мкг/)
     await expect(compare.getByRole('button').first().locator('.pa-bar')).toHaveCount(2)
     await expect(compare.getByRole('button').first().locator('.pa-bar--pm10')).toHaveCSS('height', /.+px/)
     await expect(page.locator('.pa-chart__scale').getByText('30', { exact: true })).toHaveCount(1)
     await expect(compare.getByRole('button').nth(2)).toHaveAccessibleName(/Пропущен час.*Пропущен час/)
     await compare.getByRole('button').first().click()
-    await expect(page.getByRole('region', { name: 'Выбранный час PM₂.₅' }).locator('time')).toHaveText(displayedHour(0))
-    await metrics.getByRole('button', { name: 'PM₂.₅', exact: true }).click()
+    await expect(page.getByRole('region', { name: 'Выбранный час PM2,5' }).locator('time')).toHaveText(displayedHour(0))
+    await metrics.getByRole('button', { name: 'PM2,5', exact: true }).click()
     await expect(airSeries(page)).toBeVisible()
 })
 
