@@ -623,13 +623,17 @@
 .pa-map-style__label { display: inline-flex; align-items: center; gap: 5px; color: var(--pa-muted); font-size: 10px; white-space: nowrap; }
 .pa-map-style .map-theme-control { padding: 0; border: 0; background: transparent; }
 .pa-map-style .map-theme-control button { min-height: 28px; padding: 3px 8px; font-size: 10.5px; }
+.pa-map-view-control { display: inline-flex; gap: 2px; padding-left: 5px; border-left: 1px solid var(--pa-border); }
+.pa-map-view-control button { min-width: 30px; min-height: 28px; padding: 3px 5px; border-radius: 6px; color: var(--pa-muted); font-size: 11px; font-weight: 600; }
+.pa-map-view-control button[aria-pressed="true"] { background: var(--pa-accent); color: #fff; }
+.pa-map-view-control button:disabled { opacity: .5; }
 .pa-map { position: absolute; inset: 0; cursor: crosshair; isolation: isolate; }
 .pa-map:focus-visible { outline: 3px solid #2d6450; outline-offset: -3px; }
 .pa-map-host.is-picking .pa-map-marker,
 .pa-map-host.is-picking .pa-map-station { pointer-events: none; }
 .pa-map .maplibregl-ctrl-group { border-radius: 9px; box-shadow: 0 3px 10px #1f382b26; }
 .pa-map .maplibregl-ctrl-bottom-left { margin: 0 0 14px 14px; }
-.pa-map .maplibregl-ctrl-top-right { margin: 14px 14px 0 0; }
+.pa-map .maplibregl-ctrl-top-right { z-index: 90; margin: 14px 14px 0 0; }
 .pa-map-marker,
 .pa-map-station {
     display: grid;
@@ -968,10 +972,15 @@
     .pa-layers { left: 12px; right: 12px; bottom: 40px; width: auto; max-height: calc(50% - 60px); }
     .pa-layers.is-collapsed { width: auto; }
     .pa-map-style { top: 10px; left: 10px; gap: 4px; padding-left: 7px; }
-    .pa-map-notices.has-air-hour.has-raster-alert { max-height: calc(50% - 48px); overflow-y: auto; pointer-events: auto; }
+    .pa-map-notices.has-air-hour.has-map-alert { max-height: calc(50% - 48px); overflow-y: auto; pointer-events: auto; }
     .pa-radius__range { width: 140px; }
     .pa-radius__edge { display: none; }
     .pa-point-card { top: 42%; }
+}
+
+@media (max-width: 380px) {
+    .pa-map-style { gap: 3px; }
+    .pa-map-style .map-theme-control button { padding-inline: 2px; }
 }
 
 @media (max-width: 820px) and (max-height: 600px) {

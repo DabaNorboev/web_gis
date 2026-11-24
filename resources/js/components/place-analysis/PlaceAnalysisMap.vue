@@ -71,6 +71,11 @@ const categoryIcons: Record<PoiCategory, Component> = {
 const container = ref<HTMLElement | null>(null)
 const mapStatus = ref<'loading' | 'ready' | 'error'>('loading')
 const mapStatusText = ref('Загрузка карты…')
+const terrainSourceId = 'pa-terrain'
+const terrainEnabled = ref(false)
+const terrainError = ref(false)
+const terrainAvailable = computed(() => mapStatus.value === 'ready')
+let terrainLoadTimer: ReturnType<typeof setTimeout> | undefined
 let map: MapLibreMap | null = null
 let ready = false
 let addressMarkers: Marker[] = []
@@ -516,6 +521,52 @@ function baseStyle(): StyleSpecification {
     return { ...style, sprite: new URL(String(style.sprite), window.location.href).href }
 }
 
+function clearTerrainLoadTimer() {
+    clearTimeout(terrainLoadTimer)
+    terrainLoadTimer = undefined
+}
+
+function setTerrainMode(enabled: boolean) {
+    if (!map || !ready || terrainEnabled.value === enabled) return
+    map.stop()
+    const center = map.getCenter()
+    const zoom = map.getZoom()
+
+    terrainError.value = false
+    terrainEnabled.value = enabled
+    clearTerrainLoadTimer()
+    if (enabled) {
+        map.addSource(terrainSourceId, {
+            type: 'raster-dem',
+            tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+            encoding: 'terrarium',
+            tileSize: 256,
+            maxzoom: 15,
+            attribution: '<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener noreferrer">Рельеф AWS Terrain Tiles</a> · USGS · NOAA',
+        })
+        map.setMaxPitch(60)
+        map.setTerrain({ source: terrainSourceId, exaggeration: 1 })
+        terrainLoadTimer = setTimeout(terrainUnavailable, 8000)
+        map.jumpTo({ center, zoom, pitch: 45 })
+    } else {
+        map.setTerrain(null)
+        map.removeSource(terrainSourceId)
+        map.jumpTo({ center, zoom, pitch: 0 })
+        map.setMaxPitch(0)
+    }
+}
+
+function terrainUnavailable() {
+    const failedSource = map?.getSource(terrainSourceId)
+    if (!failedSource) return
+    // Let MapLibre finish handling the tile before removing its source.
+    queueMicrotask(() => {
+        if (!terrainEnabled.value || map?.getSource(terrainSourceId) !== failedSource) return
+        setTerrainMode(false)
+        terrainError.value = true
+    })
+}
+
 function initMap() {
     if (!container.value || map) return
     map = new MapLibreMap({
@@ -524,6 +575,7 @@ function initMap() {
         center: [props.center.lon, props.center.lat],
         zoom: 15.15,
         pitch: 0,
+        maxPitch: 0,
         bearing: 0,
         attributionControl: { compact: false },
     })
@@ -567,8 +619,19 @@ function initMap() {
         syncAddressPreview()
         fitContext()
     })
+    map.on('sourcedata', event => {
+        if (event.sourceId === terrainSourceId && event.tile?.dem) clearTerrainLoadTimer()
+    })
+    map.on('idle', () => {
+        // A 404 tries parent tiles without emitting an error. Elevation 0 is also valid data.
+        if (terrainLoadTimer !== undefined) terrainUnavailable()
+    })
     map.on('error', event => {
         const sourceId = String((event as unknown as { sourceId?: string }).sourceId ?? '')
+        if (sourceId === terrainSourceId) {
+            terrainUnavailable()
+            return
+        }
         const currentSources = new Set(Object.values(rasterLayers).map(value => value.source).filter(Boolean))
         const satelliteFailure = !!sourceId && currentSources.has(sourceId)
         if (satelliteFailure) {
@@ -650,10 +713,11 @@ function focusMap() {
     container.value?.focus()
 }
 
-defineExpose({ focusMap, fitContext })
+defineExpose({ focusMap, fitContext, terrainAvailable, terrainEnabled, setTerrainMode })
 
 onMounted(initMap)
 onBeforeUnmount(() => {
+    clearTerrainLoadTimer()
     clearMarkers(addressMarkers)
     clearMarkers(poiMarkers)
     clearMarkers(stationMarkers)
@@ -679,9 +743,13 @@ onBeforeUnmount(() => {
             :aria-label="pickMode ? 'Карта анализа места. Enter выбирает точку в центре, Escape отменяет выбор.' : 'Карта анализа места'"
             @keydown="mapKeydown"
         ></div>
-        <div v-if="$slots['air-hour'] || rasterError" class="pa-map-notices"
-            :class="{ 'has-air-hour': $slots['air-hour'], 'has-raster-alert': rasterError }">
+        <div v-if="$slots['air-hour'] || rasterError || terrainError" class="pa-map-notices"
+            :class="{ 'has-air-hour': $slots['air-hour'], 'has-map-alert': rasterError || terrainError }">
             <slot name="air-hour" />
+            <p v-if="terrainError" class="pa-map-alert" role="alert">
+                <TriangleAlert :size="16" aria-hidden="true" />
+                <span>Рельеф недоступен. Карта переключена в 2D.</span>
+            </p>
             <p v-if="rasterError" class="pa-map-alert" role="alert">
                 <TriangleAlert :size="16" aria-hidden="true" />
                 <span>Не удалось загрузить изображение. Аналитика по кругу сохранена.</span>

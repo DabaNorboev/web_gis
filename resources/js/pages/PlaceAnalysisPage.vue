@@ -587,6 +587,11 @@ onBeforeUnmount(() => {
                 <div class="pa-map-style">
                     <span class="pa-map-style__label"><Palette :size="14" aria-hidden="true" /> Тема</span>
                     <MapThemeControl />
+                    <div class="pa-map-view-control" role="group" aria-label="Режим карты">
+                        <button type="button" :aria-pressed="!mapRef?.terrainEnabled" @click="mapRef?.setTerrainMode(false)">2D</button>
+                        <button type="button" :disabled="!mapRef?.terrainAvailable" :aria-pressed="mapRef?.terrainEnabled ?? false"
+                            @click="mapRef?.setTerrainMode(true)">3D</button>
+                    </div>
                 </div>
                 <div id="pa-search-attribution"></div>
 
