@@ -8,12 +8,15 @@ import {
     NavigationControl,
     ScaleControl,
     setWorkerUrl,
+    type ExpressionSpecification,
     type GeoJSONSource,
     type StyleSpecification,
 } from 'maplibre-gl'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import basemap from '@/maps/basemap.json'
+import googleMapsLogo from '@/maps/google-maps-attribution.png'
+import { useImageryBasemap } from '@/composables/useImageryBasemap'
 import { useMapTheme } from '@/composables/useMapTheme'
 import { applyBasemapTheme, themedBasemap } from '@/utils/mapTheme'
 import {
@@ -69,9 +72,26 @@ const categoryIcons: Record<PoiCategory, Component> = {
     grocery: ShoppingBasket, pharmacy: Pill, official_stop: BusFront, park: Trees,
 }
 const container = ref<HTMLElement | null>(null)
+const imageryAttributionTarget = ref<HTMLElement | null>(null)
 const mapStatus = ref<'loading' | 'ready' | 'error'>('loading')
 const mapStatusText = ref('Загрузка карты…')
+const terrainSourceId = 'pa-terrain'
+const buildingsLayerId = 'pa-buildings-3d'
+const buildingsMinZoom = 15
+const buildingsColors = { light: '#a0aba4', streets: '#aea396', dark: '#657589' }
+const terrainEnabled = ref(false)
+const terrainError = ref(false)
+const mapReady = computed(() => mapStatus.value === 'ready')
+let terrainLoadTimer: ReturnType<typeof setTimeout> | undefined
 let map: MapLibreMap | null = null
+const imageryBasemap = useImageryBasemap({
+    map: () => map,
+    baseLayers: () => baseStyle().layers.map(layer => layer.id),
+    // Anchor inside the basemap. getStyle() omits the custom layers masking NDVI.
+    beforeLayer: instance => instance.getLayer(buildingsLayerId)
+        ? buildingsLayerId : firstLabelLayer(instance) ?? baseStyle().layers.at(-1)?.id,
+})
+const { mode: basemapMode, imagery, error: basemapError, select: selectBasemap } = imageryBasemap
 let ready = false
 let addressMarkers: Marker[] = []
 let renderedAddressGroup: AddressSearchPreview['groups'][number] | undefined
@@ -516,6 +536,95 @@ function baseStyle(): StyleSpecification {
     return { ...style, sprite: new URL(String(style.sprite), window.location.href).href }
 }
 
+function firstLabelLayer(instance: MapLibreMap) {
+    return instance.getStyle().layers.find(layer => layer.type === 'symbol' && layer.layout?.['text-field'])?.id
+}
+
+function buildingsVisibility(instance: MapLibreMap) {
+    // Use camera zoom because terrain can adjust the rendering zoom.
+    return instance.getZoom() >= buildingsMinZoom ? 'visible' : 'none'
+}
+
+function syncBuildingsVisibility() {
+    if (!map?.getLayer(buildingsLayerId)) return
+    const visibility = buildingsVisibility(map)
+    if (map.getLayoutProperty(buildingsLayerId, 'visibility') !== visibility) {
+        map.setLayoutProperty(buildingsLayerId, 'visibility', visibility)
+    }
+}
+
+function addBuildingsLayer(instance: MapLibreMap) {
+    const source = 'openmaptiles'
+    if (!instance.getSource(source)) return
+
+    const height: ExpressionSpecification = ['number', ['get', 'render_height'], -1]
+    const base: ExpressionSpecification = ['number', ['get', 'render_min_height'], -1]
+    const before = firstLabelLayer(instance)
+    instance.addLayer({
+        id: buildingsLayerId,
+        type: 'fill-extrusion',
+        source,
+        'source-layer': 'building',
+        minzoom: buildingsMinZoom,
+        layout: { visibility: buildingsVisibility(instance) },
+        filter: [
+            'all',
+            ['!', ['in', ['to-string', ['get', 'hide_3d']], ['literal', ['true', '1']]]],
+            ['>=', base, 0],
+            ['>', height, base],
+        ],
+        paint: {
+            'fill-extrusion-color': buildingsColors[theme.value],
+            'fill-extrusion-height': height,
+            'fill-extrusion-base': base,
+            'fill-extrusion-opacity': .88,
+        },
+    }, before ?? 'pa-radius-fill')
+}
+
+function clearTerrainLoadTimer() {
+    clearTimeout(terrainLoadTimer)
+    terrainLoadTimer = undefined
+}
+
+function setTerrainMode(enabled: boolean) {
+    if (!map || !ready || terrainEnabled.value === enabled) return
+    map.stop()
+    const center = map.getCenter()
+    const zoom = map.getZoom()
+
+    terrainError.value = false
+    terrainEnabled.value = enabled
+    clearTerrainLoadTimer()
+    if (enabled) {
+        map.addSource(terrainSourceId, {
+            type: 'raster-dem',
+            tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+            encoding: 'terrarium',
+            tileSize: 256,
+            maxzoom: 15,
+            attribution: '<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener noreferrer">Рельеф AWS Terrain Tiles</a> · USGS · NOAA',
+        })
+        map.setMaxPitch(60)
+        map.setTerrain({ source: terrainSourceId, exaggeration: 1.5 })
+        addBuildingsLayer(map)
+        terrainLoadTimer = setTimeout(terrainUnavailable, 8000)
+        map.jumpTo({ center, zoom, pitch: 55 })
+    } else {
+        if (map.getLayer(buildingsLayerId)) map.removeLayer(buildingsLayerId)
+        map.setTerrain(null)
+        map.removeSource(terrainSourceId)
+        map.jumpTo({ center, zoom, pitch: 0 })
+        map.setMaxPitch(0)
+    }
+}
+
+function terrainUnavailable() {
+    if (terrainLoadTimer === undefined) return
+    setTerrainMode(false)
+    terrainError.value = true
+}
+
 function initMap() {
     if (!container.value || map) return
     map = new MapLibreMap({
@@ -524,6 +633,7 @@ function initMap() {
         center: [props.center.lon, props.center.lat],
         zoom: 15.15,
         pitch: 0,
+        maxPitch: 0,
         bearing: 0,
         attributionControl: { compact: false },
     })
@@ -535,8 +645,11 @@ function initMap() {
     }, 8000)
     map.addControl(new NavigationControl({ showCompass: false }), 'top-right')
     map.addControl(new ScaleControl({ maxWidth: 90, unit: 'metric' }), 'bottom-left')
+    imageryAttributionTarget.value = container.value.querySelector('.maplibregl-ctrl-bottom-right')
     map.on('move', clipPoiMarkers)
     map.on('moveend', spaceAddressMarkers)
+    map.on('moveend', imageryBasemap.onMoveEnd)
+    map.on('zoom', syncBuildingsVisibility)
     map.on('click', event => {
         if (!props.pickMode && props.addressPreview && map?.getLayer('pa-address-fill')) {
             const ids = new Set(map.queryRenderedFeatures(event.point, { layers: ['pa-address-fill', 'pa-address-point', 'pa-address-outline'] })
@@ -567,8 +680,14 @@ function initMap() {
         syncAddressPreview()
         fitContext()
     })
+    map.on('sourcedata', event => {
+        imageryBasemap.onSourceData(event)
+        if (event.sourceId === terrainSourceId && event.tile?.dem) clearTerrainLoadTimer()
+    })
     map.on('error', event => {
         const sourceId = String((event as unknown as { sourceId?: string }).sourceId ?? '')
+        // Allow other DEM tiles to load. Only a failed initial load returns to 2D.
+        if (sourceId === terrainSourceId) return
         const currentSources = new Set(Object.values(rasterLayers).map(value => value.source).filter(Boolean))
         const satelliteFailure = !!sourceId && currentSources.has(sourceId)
         if (satelliteFailure) {
@@ -591,6 +710,7 @@ function initMap() {
 watch(theme, value => {
     if (!map || !ready) return
     applyBasemapTheme(map, baseStyle(), value)
+    if (map.getLayer(buildingsLayerId)) map.setPaintProperty(buildingsLayerId, 'fill-extrusion-color', buildingsColors[value])
     map.triggerRepaint()
 })
 
@@ -650,10 +770,12 @@ function focusMap() {
     container.value?.focus()
 }
 
-defineExpose({ focusMap, fitContext })
+defineExpose({ focusMap, fitContext, mapReady, terrainEnabled, setTerrainMode, basemapMode, selectBasemap })
 
 onMounted(initMap)
 onBeforeUnmount(() => {
+    imageryBasemap.dispose()
+    clearTerrainLoadTimer()
     clearMarkers(addressMarkers)
     clearMarkers(poiMarkers)
     clearMarkers(stationMarkers)
@@ -679,9 +801,24 @@ onBeforeUnmount(() => {
             :aria-label="pickMode ? 'Карта анализа места. Enter выбирает точку в центре, Escape отменяет выбор.' : 'Карта анализа места'"
             @keydown="mapKeydown"
         ></div>
-        <div v-if="$slots['air-hour'] || rasterError" class="pa-map-notices"
-            :class="{ 'has-air-hour': $slots['air-hour'], 'has-raster-alert': rasterError }">
+        <Teleport v-if="basemapMode === 'satellite' && imagery && imageryAttributionTarget" :to="imageryAttributionTarget">
+            <div class="maplibregl-ctrl pa-imagery-credit" aria-label="Источник спутниковой подложки">
+                <img class="pa-imagery-credit__logo" :src="googleMapsLogo" alt="Google Maps">
+                <span>{{ imagery.attribution }}</span>
+            </div>
+        </Teleport>
+        <div v-if="$slots['air-hour'] || rasterError || terrainError || basemapError" class="pa-map-notices"
+            :class="{ 'has-air-hour': $slots['air-hour'], 'has-map-alert': rasterError || terrainError || basemapError }">
             <slot name="air-hour" />
+            <p v-if="basemapError" class="pa-map-alert" role="alert">
+                <TriangleAlert :size="16" aria-hidden="true" />
+                <span>Спутниковая подложка недоступна. Показана обычная карта.</span>
+                <button type="button" class="pa-outline" @click="selectBasemap(true)">Повторить</button>
+            </p>
+            <p v-if="terrainError" class="pa-map-alert" role="alert">
+                <TriangleAlert :size="16" aria-hidden="true" />
+                <span>Рельеф недоступен. Карта переключена в 2D.</span>
+            </p>
             <p v-if="rasterError" class="pa-map-alert" role="alert">
                 <TriangleAlert :size="16" aria-hidden="true" />
                 <span>Не удалось загрузить изображение. Аналитика по кругу сохранена.</span>

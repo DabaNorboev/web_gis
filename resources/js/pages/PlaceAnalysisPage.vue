@@ -587,6 +587,11 @@ onBeforeUnmount(() => {
                 <div class="pa-map-style">
                     <span class="pa-map-style__label"><Palette :size="14" aria-hidden="true" /> Тема</span>
                     <MapThemeControl />
+                    <div class="pa-map-view-control" role="group" aria-label="Режим карты">
+                        <button type="button" :aria-pressed="!mapRef?.terrainEnabled" @click="mapRef?.setTerrainMode(false)">2D</button>
+                        <button type="button" :disabled="!mapRef?.mapReady" :aria-pressed="mapRef?.terrainEnabled ?? false"
+                            @click="mapRef?.setTerrainMode(true)">3D</button>
+                    </div>
                 </div>
                 <div id="pa-search-attribution"></div>
 
@@ -605,6 +610,16 @@ onBeforeUnmount(() => {
                         </button>
                     </h2>
                     <div v-show="layersOpen" id="pa-layers-body" class="pa-layers__body">
+                        <div class="pa-basemap-control" role="group" aria-label="Подложка карты">
+                            <button type="button" :aria-pressed="!mapRef?.basemapMode || mapRef.basemapMode === 'map'"
+                                @click="mapRef?.selectBasemap(false)">Карта</button>
+                            <button type="button" :disabled="!mapRef?.mapReady" :aria-pressed="!!mapRef?.basemapMode && mapRef.basemapMode !== 'map'"
+                                @click="mapRef?.selectBasemap(true)">Спутник</button>
+                        </div>
+                        <small v-if="mapRef?.basemapMode === 'loading'" class="pa-layer-sub" role="status">Загрузка подложки…</small>
+                        <small v-else-if="mapRef?.basemapMode === 'satellite'" class="pa-layer-sub">
+                            Дата съёмки не указана
+                        </small>
                         <div v-for="(key, index) in layerOrder" :key="key" class="pa-layer-item" :data-layer-key="key">
                             <label class="pa-layer-row">
                                 <input v-if="key === 'objects'" v-model="showObjects" type="checkbox">
@@ -639,7 +654,10 @@ onBeforeUnmount(() => {
                         <div class="pa-layer-row pa-layer-row--static">
                             <input type="checkbox" checked disabled>
                             <MapIcon class="pa-layer-icon" :size="15" aria-hidden="true" />
-                            <span>Базовая карта</span>
+                            <span>
+                                Базовая карта
+                                <small v-if="mapRef?.terrainEnabled" class="pa-layer-sub">При приближении видны здания с приблизительными высотами.</small>
+                            </span>
                         </div>
 
                         <section v-if="ndviLegendVisible" class="pa-legend" aria-label="Легенда NDVI">
