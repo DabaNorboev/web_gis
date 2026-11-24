@@ -1,10 +1,10 @@
 ---
 status: current
-updated: 2026-11-22
+updated: 2026-11-23
 verified: code
 ---
 
-# Анализ одного места: целевой контракт API
+# Анализ одного места: контракт API
 
 API А7 реализован: POST `/api/v1/place-analysis`, адрес/точка, 200–1000 м, эхо/серверный круг и независимые блоки. POI — §5; спутники — §6; воздух — §7.
 
@@ -182,17 +182,18 @@ POST сохраняет no-store/no-referrer и безопасные ошибк�
 
 [А12](../data/air.md#обновление-и-хранение-а12) читает локальный снимок станций КНЦ СО РАН / air.krasn.ru, проект 9. `coverage: null`, `completeness.status: UNKNOWN`. При отсутствии или повреждении выпуска блок отдаёт `UNAVAILABLE/AIR_SOURCE_UNAVAILABLE` с `data: null`. POI и спутник независимы.
 
-`data`: `snapshot_version` (SHA-256 готового manifest), `window_raw` (до 168 часов, `begin_inclusive` и `end_exclusive`), `last_success_at` (UTC), `last_observed_at_raw` (исходное время или `null`). `timezone` и `utc_offset` равны `null`, `time_reason: SOURCE_TIMEZONE_UNCONFIRMED`. `freshness: UNKNOWN`, `scope: STATION_OBSERVATIONS`, `indicator: pm2_5`, `unit: µg/m³`, `aggregation: hourly`.
+`data`: `snapshot_version` (SHA-256 готового manifest), `window_raw` (до 168 часов, `begin_inclusive` и `end_exclusive`), `last_success_at` (UTC), `last_observed_at_raw` (исходное время последней строки или `null`, включая строки с пустым значением). `last_numeric_observed_at_raw` — последний исходный час с числовым PM₂.₅ хотя бы у одной станции выпуска, включая ноль. Если числовых наблюдений нет, поле равно `null`. `timezone` и `utc_offset` равны `null`, `time_reason: SOURCE_TIMEZONE_UNCONFIRMED`. `freshness: UNKNOWN`, `scope: STATION_OBSERVATIONS`, `indicator: pm2_5`, `unit: µg/m³`, `aggregation: hourly`.
 
 `stations`: `id`, `name`, `source: air.krasn.ru/project/9`, `status: UNKNOWN`. Проверенные позиции имеют `lon`, `lat`, `crs: EPSG:4326`, `coordinate_provenance: {raw_file, source_id}` и `coordinate_reason` для [А11](../data/air.md#основание-для-маркеров-и3) или [пилота А12](../data/air.md#пробный-выпуск-а12). Иначе координаты и CRS — `null` с `SOURCE_DATUM_CRS_UNCONFIRMED` или отсутствуют. `distance_m` — метры по прямой от точки анализа (PostGIS geography) или `null`. Сортировка по возрастанию, `null` в конце.
 
 Группы `selected` и `unlocated`, `selected`, `counts` и `missing_selected_ids` отражают явный выбор ID. `history` содержит статус `AVAILABLE|UNAVAILABLE`, фактические `first_observed_at_raw` и `last_observed_at_raw`, `row_count`, `null_values`, `missing_hour_bins` и `reason`. `latest` содержит последнюю строку или `null`.
 
-`GET /api/v1/air/snapshots/{snapshot_version}/stations/{station_id}/history` отдаёт метаданные того же выпуска, `station_id`, `source` и `rows` по одному часовому интервалу. Исходная метка `observed_at_raw` сохраняется буквально, для отсутствующей строки она обозначает пропущенный час. `observed_at_utc: null`, `qc: UNKNOWN`. Число, включая 0, имеет `row_present: true` и `missing_reason: null`. Пустое значение имеет `row_present: true` и `SOURCE_VALUE_NULL_OR_ABSENT`. Пропущенный час имеет `row_present: false` и `SOURCE_ROW_MISSING`. В обоих случаях пропуска `value: null`. `qc_reason` равен `SOURCE_QC_NOT_PROVIDED` для существующей строки и `SOURCE_ROW_MISSING` для отсутствующей.
+Оба GET возвращают метаданные версии сводки, `source` и [часовые строки `rows`](../data/air.md#часовые-строки-http).
 
-При смене pin сервер отдаёт `409 AIR_SNAPSHOT_CHANGED`, для неизвестной станции `404 AIR_STATION_NOT_FOUND`, без доступного выпуска `503 AIR_SOURCE_UNAVAILABLE`. [Проверки PHP и TypeScript](../testing.md#плановое-обновление-и-локальная-история-воздуха-а12).
+- `/api/v1/air/snapshots/{snapshot_version}/stations/{station_id}/history` — `station_id` и строка на каждый час окна. Неизвестная станция — `404 AIR_STATION_NOT_FOUND`. При наличии проверенных данных PM₁₀ ответ также содержит `pm10_rows` того же размера, с теми же часами и присутствием исходных строк. Единица и агрегация общие с основным рядом. Ошибка чтения дополнительных данных оставляет основной ряд доступным.
+- `/api/v1/air/snapshots/{snapshot_version}/hour?observed_at_raw=…` — исходный час и строка на каждую станцию. Неверный час — `422 AIR_INVALID_HOUR`, час вне окна — `422 AIR_HOUR_OUTSIDE_WINDOW`.
 
-Выбор станции, в том числе вне круга, открывает ряд из версии сводки. Карточка показывает ссылку на оператора, исходный период и `last_success_at` в UTC. [Обновление и повтор](../frontend-structure.md#станции-и-история-воздуха).
+Смена версии — `409 AIR_SNAPSHOT_CHANGED`, недоступный выпуск — `503 AIR_SOURCE_UNAVAILABLE`. GET используют `no-store` и `no-referrer`. [Карточка, график и выбор часа](../frontend-structure.md#станции-и-история-воздуха).
 
 ## 8. Независимость и поздние ответы
 
@@ -260,6 +261,6 @@ API и клиентский lifecycle А7 реализованы без мигр
 - **POI:** четыре локальные категории подключены. А8 принят владельцем. Польза проверяется отдельно с людьми.
 - **Спутники:** список дат зависит от активного каталога. `valid_fraction` — покрытие пригодными данными. Композиции и различия отложены.
 - **А11/А12:** часовой пояс, QC, история оборудования/координат, полный ряд и стабильность ID. `timezone: null`/`qc: UNKNOWN` обязательны, пока это не подтверждено.
-- **Остаток А7:** решение владельца о хранении, обмене, URL и восстановлении reload/Back/Forward; затем отдельная реализация и регрессии совместимости. Сейчас новый ввод только в памяти. А6 и весь А7 не закрыты; полная проверка UI на данных будущих providers — А8–А12/И1–И3/А13.
+- **Хранение и восстановление:** ввод хранится в памяти страницы. Обмен, URL и восстановление после reload/Back/Forward требуют отдельного решения и проверок совместимости. Сквозная приёмка текущего экрана зафиксирована в [А13](../plans/roadmap.md#а13-приёмка-текущего-экрана).
 - **Производительность:** число дат/станций ограничивают А10/А12; тяжёлая raster/GIS-обработка в HTTP запрещена. 5 станций и 5 км — стартовые технические значения, не обещание полной сети.
 - **Пользовательская польза** не подтверждена; контракт не является продуктовым доказательством.

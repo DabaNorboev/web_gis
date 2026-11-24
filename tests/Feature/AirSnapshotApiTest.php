@@ -167,6 +167,73 @@ class AirSnapshotApiTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_one_source_hour_covers_every_station_of_the_active_release(): void
+    {
+        $this->python('tests/air/test_refresh.py', 'publish-fixture', $this->root);
+        $active = json_decode(File::get($this->root.'/active.json'), true, flags: JSON_THROW_ON_ERROR);
+        $version = $active['snapshot_version'];
+        $path = "/api/v1/air/snapshots/$version/hour";
+
+        $this->postJson('/api/v1/place-analysis', self::POINT + ['blocks' => ['air']])->assertOk()
+            ->assertJsonPath('blocks.air.data.last_observed_at_raw', '2026-08-09 03:00:00')
+            ->assertJsonPath('blocks.air.data.last_numeric_observed_at_raw', '2026-08-09 00:00:00');
+
+        $pm10History = $this->historyPath($version, '1001');
+        $this->getJson($pm10History)->assertOk()->assertJsonCount(4, 'pm10_rows')
+            ->assertJsonPath('pm10_rows.0.value', 0)
+            ->assertJsonPath('pm10_rows.1.missing_reason', 'SOURCE_VALUE_NULL_OR_ABSENT')
+            ->assertJsonPath('pm10_rows.2.missing_reason', 'SOURCE_ROW_MISSING');
+        $this->getJson($this->historyPath($version, '1002'))->assertOk()->assertJsonMissingPath('pm10_rows');
+        File::append($this->root.'/releases/'.$version.'/input/raw/hourly.json', 'damage');
+        $this->getJson($pm10History)->assertOk()->assertJsonCount(4, 'rows')->assertJsonMissingPath('pm10_rows');
+
+        $requestHour = fn (string $hour) => $this->getJson($path.'?'.http_build_query(['observed_at_raw' => $hour]));
+        $first = $requestHour('2026-08-09 00:00:00')->assertOk()
+            ->assertHeader('Cache-Control', 'no-store, private')->assertHeader('Referrer-Policy', 'no-referrer')
+            ->assertJsonPath('snapshot_version', $version)->assertJsonPath('observed_at_raw', '2026-08-09 00:00:00')
+            ->assertJsonPath('timezone', null)->assertJsonPath('utc_offset', null)->assertJsonCount(2, 'rows')
+            ->assertJsonPath('rows.0.station_id', '1001')->assertJsonPath('rows.0.value', 0)
+            ->assertJsonPath('rows.0.row_present', true)->assertJsonPath('rows.0.missing_reason', null)
+            ->assertJsonPath('rows.0.observed_at_utc', null)->assertJsonPath('rows.0.qc', 'UNKNOWN')
+            ->assertJsonPath('rows.1.station_id', '1002')->assertJsonPath('rows.1.row_present', false)
+            ->assertJsonPath('rows.1.value', null)->assertJsonPath('rows.1.missing_reason', 'SOURCE_ROW_MISSING')->json();
+        $second = $requestHour('2026-08-09 01:00:00')->assertOk()
+            ->assertJsonPath('rows.0.observed_at_raw', '2026-08-09 01:00:00')
+            ->assertJsonPath('rows.0.row_present', true)->assertJsonPath('rows.0.value', null)
+            ->assertJsonPath('rows.0.missing_reason', 'SOURCE_VALUE_NULL_OR_ABSENT')
+            ->assertJsonPath('rows.1.observed_at_raw', '2026-08-09 01:00:00')
+            ->assertJsonPath('rows.1.missing_reason', 'SOURCE_ROW_MISSING')->json();
+        $requestHour('2026-08-09 02:00:00')->assertOk()
+            ->assertJsonPath('rows.0.missing_reason', 'SOURCE_ROW_MISSING')
+            ->assertJsonPath('rows.1.missing_reason', 'SOURCE_ROW_MISSING');
+        $this->exchange('snapshot-hours', compact('first', 'second'));
+
+        foreach (['2026-08-08 23:00:00', '2026-08-09 04:00:00'] as $outside) {
+            $requestHour($outside)->assertUnprocessable()->assertJsonPath('code', 'AIR_HOUR_OUTSIDE_WINDOW');
+        }
+        foreach (['2026-08-09T01:00:00Z', '2026-08-09 01:30:00', '2026-02-30 00:00:00', "2026-08-09 01:00:\x0000"] as $invalid) {
+            $requestHour($invalid)->assertUnprocessable()->assertJsonPath('code', 'AIR_INVALID_HOUR');
+        }
+        $this->getJson($path)->assertUnprocessable()->assertJsonPath('code', 'AIR_INVALID_HOUR');
+        $this->getJson($path.'?observed_at_raw%5B%5D=invalid')->assertUnprocessable()->assertJsonPath('code', 'AIR_INVALID_HOUR');
+
+        // Publish a second manifest in the isolated runtime.
+        $folder = $this->root.'/releases/'.$version;
+        $manifest = json_decode(File::get($folder.'/manifest.json'), true, flags: JSON_THROW_ON_ERROR);
+        $manifest['input_manifest_sha256'] = str_repeat('a', 64);
+        File::put($folder.'/manifest.json', json_encode($manifest, JSON_THROW_ON_ERROR));
+        $otherVersion = hash_file('sha256', $folder.'/manifest.json');
+        rename($folder, $this->root.'/releases/'.$otherVersion);
+        $active['snapshot_version'] = $otherVersion;
+        File::put($this->root.'/active.json', json_encode($active, JSON_THROW_ON_ERROR));
+        $requestHour('2026-08-09 00:00:00')->assertConflict()->assertExactJson(['code' => 'AIR_SNAPSHOT_CHANGED']);
+        $newPath = "/api/v1/air/snapshots/$otherVersion/hour?observed_at_raw=2026-08-09+00%3A00%3A00";
+        $this->getJson($newPath)->assertOk()->assertJsonPath('snapshot_version', $otherVersion);
+        File::append($this->root.'/releases/'.$otherVersion.'/observations.jsonl', 'damage');
+        $this->getJson($newPath)->assertServiceUnavailable()->assertJsonPath('code', 'AIR_SOURCE_UNAVAILABLE');
+        Http::assertNothingSent();
+    }
+
     private function historyPath(string $version, string $station): string
     {
         return "/api/v1/air/snapshots/$version/stations/$station/history";

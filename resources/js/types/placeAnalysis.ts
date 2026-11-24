@@ -173,6 +173,7 @@ export type AnalysisStation = {
     )
 )
 export interface AirData extends AirSnapshotRef {
+    last_numeric_observed_at_raw?: string | null
     stations: AnalysisStation[]
     missing_selected_ids: string[]
     counts: { selected: number; unlocated: number }
@@ -185,6 +186,17 @@ export interface AirStationHistory extends AirSnapshotRef {
     station_id: string
     source: 'air.krasn.ru/project/9'
     rows: AirObservation[]
+    pm10_rows?: AirObservation[]
+}
+export interface AirSnapshotHourRequest {
+    snapshot_version: string
+    observed_at_raw: string
+    station_ids: string[]
+}
+export interface AirSnapshotHour extends AirSnapshotRef {
+    observed_at_raw: string
+    source: 'air.krasn.ru/project/9'
+    rows: (AirObservation & { station_id: string })[]
 }
 export interface BlockData { poi: PoiData; satellite: SatelliteData; air: AirData }
 export type AnalysisBlock<K extends AnalysisBlockKey = AnalysisBlockKey> = {

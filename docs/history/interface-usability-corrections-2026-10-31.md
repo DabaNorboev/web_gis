@@ -144,7 +144,7 @@ Handoff здесь: файлы, результат, команды, 1–3 сни
 ## Handoff U2 — 31.10.2026
 
 - U1 сохранён. U3 не начат.
-- HomePage/CSS: 480 px, drag/keyboard, сброс, collapse/inert/фокус. [Контракт](../features/home-workspace-map.md).
+- HomePage/CSS: 480 px, drag/keyboard, сброс, collapse/inert/фокус. [Контракт](home-workspace-map-2026-11-04.md).
 - Compose node от node: typecheck; frontend 29/29; browser U1 4/4, U2/mobile 8/8, финальные высота/фокус 2/2. Состояние/POST сохранены: 1440×900/1280×560 и переходе 390×844.
 - Снимки: [480 px](../../experiments/placelens-visual/screenshots/u2-before-900.png), [404 px, панель скрыта](../../experiments/placelens-visual/screenshots/u2-collapsed-900.png). API/подложка синтетические, UX принимает владелец.
 - Docs: прежняя ERROR размера interface-v2-plan и два WARN; diff-check чистый.

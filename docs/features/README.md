@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-11-04
+updated: 2026-11-22
 verified: not verified
 ---
 
@@ -12,20 +12,19 @@ verified: not verified
 
 | Правило | Основной документ |
 |---|---|
+| Главная: анализ адреса или точки, POI, спутник и станции | [place-analysis](place-analysis.md) |
 | Поиск, группа и явный выбор объекта | [address-search](address-search.md) |
-| Профиль: API, качество, прямой экран | [address-profile](address-profile.md) |
-| Пара А/Б, таблица и личные ориентиры | [address-comparison](address-comparison.md) |
-| Поездки: режимы, актуальность, повторы, восстановление ссылок | [trips](trips.md) |
-| Машинные причины и локализация отказа | [diagnostics](local-routing-diagnostics-contract.md); выбор/guards — [car](car-street-choice.md) и [walking](walking-backend.md) |
-| Точные коды нового поиска, объяснения и допустимые действия | [search-task-reasons](search-task-reasons.md); формат/локализация — diagnostics |
-| Главная: камера, приоритет выбора, навигация, scroll и диалоги | [home-workspace-map](home-workspace-map.md) |
-| Свободная точка: смысл и URL / подпись: метод и HTTP | [point-analysis](point-analysis.md) / [point-address](point-address.md) |
-| Источник и GeoJSON слоёв | [остановки](map-stops-layer.md), [площади](map-area-layers.md), [линии](map-linear-layers.md) |
-| Передача личных данных и защита журналирования | [trip-privacy](trip-privacy.md) |
+| Точные коды нового поиска, объяснения и допустимые действия | [search-task-reasons](search-task-reasons.md); [формат и локализация](local-routing-diagnostics-contract.md) |
+| Свободная точка и локальная адресная подпись | [point-analysis](point-analysis.md) / [point-address](point-address.md) |
 | Владельцы состояния и связи модулей | [frontend-structure](../frontend-structure.md); границы стека — [architecture](../architecture.md) |
 | Площади OSM и независимые категории | [area-analysis](area-analysis.md) |
 | Территория и покрытие данных | [coverage](coverage.md) |
 
-## Проектный контракт
+## Сохранённые API и совместимость
 
-[Анализ одного места](place-analysis.md) — будущий API адреса/точки, радиуса 200–1000 м, POI, спутников и станций. Пока не реализован.
+| Правило | Основной документ |
+|---|---|
+| Профиль, сравнение и сохранённые записи | [address-profile](address-profile.md), [address-comparison](address-comparison.md) |
+| Поездки, режимы и хранение ссылок | [trips](trips.md), [trip-privacy](trip-privacy.md) |
+| Машинные причины отказа и проверки доступности маршрута | [diagnostics](local-routing-diagnostics-contract.md), [car](car-street-choice.md), [walking](walking-backend.md) |
+| Источник и GeoJSON слоёв профиля | [остановки](map-stops-layer.md), [площади](map-area-layers.md), [линии](map-linear-layers.md) |

@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AddressProfileController;
 use App\Http\Controllers\Api\V1\AddressResolverController;
 use App\Http\Controllers\Api\V1\AddressSearchController;
+use App\Http\Controllers\Api\V1\AirSnapshotHourController;
 use App\Http\Controllers\Api\V1\AirStationHistoryController;
 use App\Http\Controllers\Api\V1\GeocodingController;
 use App\Http\Controllers\Api\V1\PlaceAnalysisController;
@@ -18,6 +19,10 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('v1/place-analysis', PlaceAnalysisController::class)
     ->middleware([LimitPlaceAnalysisRequest::class, 'throttle:60,1,place-analysis']);
+
+Route::get('v1/air/snapshots/{snapshot}/hour', AirSnapshotHourController::class)
+    ->where('snapshot', '[a-f0-9]{64}')
+    ->middleware('throttle:60,1,air-hour');
 
 Route::get('v1/air/snapshots/{snapshot}/stations/{station}/history', AirStationHistoryController::class)
     ->where(['snapshot' => '[a-f0-9]{64}', 'station' => '[1-9][0-9]{0,15}'])

@@ -6,7 +6,7 @@ verified: not verified
 
 # Переключаемый слой официальных остановок
 
-Действующий контракт слоя профиля. Источники и геометрия ниже — основное место правила; компоновка главной — [home-workspace-map](home-workspace-map.md), отдельного профиля — [address-profile](address-profile.md), `/compare` — [address-comparison](address-comparison.md).
+Действующий контракт слоя профиля. Источники и геометрия ниже — основное место правила; компоновка прежней главной — [home-workspace-map](../history/home-workspace-map-2026-11-04.md), отдельного профиля — [address-profile](address-profile.md), `/compare` — [address-comparison](address-comparison.md).
 
 В профиле есть один переключатель, в сравнении — один общий для двух карт выбранных вариантов. По умолчанию слой выключен. Это точки **официального набора 24bpd**, а не OSM. Карты поиска адресных вариантов не получают этот слой.
 

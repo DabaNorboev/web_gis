@@ -1,27 +1,30 @@
 import { onBeforeUnmount, shallowRef, watch, type Ref } from 'vue'
-import { fetchAirStationHistory } from '@/api/placeAnalysis'
 import { ApiRequestError } from '@/api/errors'
-import type { AirStationHistory } from '@/types/placeAnalysis'
 
-export type AirHistoryState =
+export type AirSnapshotState<T> =
     | { phase: 'idle' | 'loading' | 'error' | 'snapshot-changed' }
-    | { phase: 'ready'; history: AirStationHistory }
+    | { phase: 'ready'; data: T }
 
-export function useAirStationHistory(snapshotVersion: Ref<string | null>, stationId: Ref<string | null>) {
-    const state = shallowRef<AirHistoryState>({ phase: 'idle' })
+export function useAirSnapshotRequest<T>(
+    snapshotVersion: Ref<string | null>,
+    selection: Ref<string | null>,
+    fetchSelection: (version: string, selection: string, signal: AbortSignal) => Promise<T>,
+) {
+    const state = shallowRef<AirSnapshotState<T>>({ phase: 'idle' })
     let controller: AbortController | null = null
 
     async function load() {
         controller?.abort()
         controller = null
-        const snapshot_version = snapshotVersion.value
-        const station_id = stationId.value
-        if (!snapshot_version || !station_id) {
+        const version = snapshotVersion.value
+        const selected = selection.value
+        if (!version || !selected) {
             state.value = { phase: 'idle' }
             return
         }
         const request = new AbortController()
         controller = request
+        const isCurrent = () => controller === request && snapshotVersion.value === version && selection.value === selected
         state.value = { phase: 'loading' }
         let timer: ReturnType<typeof setTimeout> | undefined
         try {
@@ -31,12 +34,10 @@ export function useAirStationHistory(snapshotVersion: Ref<string | null>, statio
                     reject(new ApiRequestError('timeout'))
                 }, 20_000)
             })
-            const history = await Promise.race([
-                fetchAirStationHistory({ snapshot_version, station_id }, request.signal), timeout,
-            ])
-            if (controller === request) state.value = { phase: 'ready', history }
+            const data = await Promise.race([fetchSelection(version, selected, request.signal), timeout])
+            if (isCurrent()) state.value = { phase: 'ready', data }
         } catch (error) {
-            if (controller === request) {
+            if (isCurrent()) {
                 const changed = error instanceof ApiRequestError && error.status === 409 && error.code === 'AIR_SNAPSHOT_CHANGED'
                 state.value = { phase: changed ? 'snapshot-changed' : 'error' }
             }
@@ -46,7 +47,7 @@ export function useAirStationHistory(snapshotVersion: Ref<string | null>, statio
         }
     }
 
-    watch([snapshotVersion, stationId], load, { flush: 'sync' })
+    watch([snapshotVersion, selection], load)
     onBeforeUnmount(() => {
         controller?.abort()
         controller = null

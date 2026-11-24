@@ -1,6 +1,6 @@
 import { validGeocodedPlace, sameSnapshot } from './geocoding'
 import { ApiRequestError, requestJson } from './errors'
-import type { AirStationHistory, AirStationHistoryRequest, AnalysisBlockKey, AnalysisRequest, PlaceAnalysisInput, PlaceAnalysisResponse } from '../types/placeAnalysis'
+import type { AirSnapshotHour, AirSnapshotHourRequest, AirStationHistory, AirStationHistoryRequest, AnalysisBlockKey, AnalysisRequest, AnalysisStation, PlaceAnalysisInput, PlaceAnalysisResponse } from '../types/placeAnalysis'
 
 export const analysisBlockKeys: AnalysisBlockKey[] = ['poi', 'satellite', 'air']
 const categories = ['grocery', 'pharmacy', 'official_stop', 'park'] as const
@@ -210,6 +210,10 @@ function airData(d: any, selectedIds: string[]): boolean {
     const missing = selectedIds.filter(id => !stationIds.has(id))
     const selected = selectedIds.length - missing.length
     const observed = d.stations.map((s: any) => s.history.last_observed_at_raw).filter(Boolean).sort().at(-1) ?? null
+    const lastNumeric = d.last_numeric_observed_at_raw
+    const hasNumeric = d.stations.some((station: AnalysisStation) => station.history.row_count > station.history.null_values)
+    if (lastNumeric !== undefined && (lastNumeric === null ? hasNumeric
+        : !hasNumeric || observed === null || !inAirWindow(lastNumeric, d.window_raw) || lastNumeric > observed)) return false
     return stationIds.size === d.stations.length && sameSet(d.missing_selected_ids, missing)
         && d.last_observed_at_raw === observed && d.counts.selected === selected && d.counts.unlocated === d.stations.length - selected
 }
@@ -217,6 +221,12 @@ export function validateAirStationHistory(v: unknown, request: AirStationHistory
     if (!record(v) || !airSnapshot(v) || v.snapshot_version !== request.snapshot_version || v.station_id !== request.station_id
         || !stationId(v.station_id) || v.source !== airSource || !Array.isArray(v.rows) || v.rows.length !== airWindow(v.window_raw)
         || !v.rows.every((row, i) => airRow(row) && sourceHour(row.observed_at_raw) === sourceHour(v.window_raw.begin_inclusive) + i * hourMs)) {
+        throw new ApiRequestError('invalid_response')
+    }
+    if (v.pm10_rows !== undefined && (!Array.isArray(v.pm10_rows) || v.pm10_rows.length !== v.rows.length
+        || !v.pm10_rows.every((row, index) => airRow(row) && (row.value === null || row.value >= 0)
+            && row.observed_at_raw === v.rows[index].observed_at_raw && row.row_present === v.rows[index].row_present)
+        || !v.pm10_rows.some(row => row.value !== null))) {
         throw new ApiRequestError('invalid_response')
     }
     return v as unknown as AirStationHistory
@@ -227,6 +237,24 @@ export async function fetchAirStationHistory(request: AirStationHistoryRequest, 
     const path = `/api/v1/air/snapshots/${snapshot_version}/stations/${station_id}/history`
     const data = await requestJson(path, { signal, mode: 'same-origin', cache: 'no-store', referrerPolicy: 'no-referrer', headers: { Accept: 'application/json' } })
     return validateAirStationHistory(data, { snapshot_version, station_id })
+}
+export function validateAirSnapshotHour(v: unknown, request: AirSnapshotHourRequest): AirSnapshotHour {
+    if (!record(v) || !airSnapshot(v) || v.snapshot_version !== request.snapshot_version
+        || v.observed_at_raw !== request.observed_at_raw || !inAirWindow(v.observed_at_raw, v.window_raw)
+        || v.source !== airSource || !Array.isArray(v.rows) || v.rows.length !== request.station_ids.length
+        || !v.rows.every(row => airRow(row) && stationId(row.station_id) && row.observed_at_raw === v.observed_at_raw)
+        || !sameSet(v.rows.map(row => row.station_id), request.station_ids)) {
+        throw new ApiRequestError('invalid_response')
+    }
+    return v as unknown as AirSnapshotHour
+}
+export async function fetchAirSnapshotHour(request: AirSnapshotHourRequest, signal?: AbortSignal): Promise<AirSnapshotHour> {
+    const { snapshot_version, observed_at_raw } = request
+    if (!sha256(snapshot_version) || !Number.isFinite(sourceHour(observed_at_raw))) throw new ApiRequestError('http', 422, 'INVALID_REQUEST')
+    const query = new URLSearchParams({ observed_at_raw })
+    const path = `/api/v1/air/snapshots/${snapshot_version}/hour?${query}`
+    const data = await requestJson(path, { signal, mode: 'same-origin', cache: 'no-store', referrerPolicy: 'no-referrer', headers: { Accept: 'application/json' } })
+    return validateAirSnapshotHour(data, request)
 }
 function block(v: any, key: AnalysisBlockKey, requestDate: string | null, selectedIds: string[]): boolean {
     if (!record(v) || !utc(v.calculated_at) || !nullableText(v.message)) return false

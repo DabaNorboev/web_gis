@@ -2,9 +2,10 @@
 import { computed, ref } from 'vue'
 import { Layers, Satellite, Wind, RotateCw, ChevronRight, ShoppingBasket, Pill, BusFront, Trees, TriangleAlert, RadioTower } from '@lucide/vue'
 import type {
-    AnalysisBlockKey, AnalysisPoi, PoiCategory, SatelliteData, SatelliteReleaseRef, SatelliteSelected,
+    AirObservation, AnalysisBlockKey, AnalysisPoi, PoiCategory, SatelliteData, SatelliteReleaseRef, SatelliteSelected,
 } from '@/types/placeAnalysis'
 import type { AnalysisBlockState } from '@/composables/usePlaceAnalysis'
+import { airReadingLabel } from '@/utils/airObservation'
 import type { SatelliteMode } from '@/place-analysis'
 import {
     coverageReasons, formatCircleFraction, formatMeanNdvi, formatObservationDate,
@@ -22,6 +23,7 @@ const props = defineProps<{
     satelliteMode: SatelliteMode
     satelliteCatalog: SatelliteData | null
     selectedStation: string | null
+    airHourRows: ReadonlyMap<string, AirObservation> | null
 }>()
 const emit = defineEmits<{
     open: [key: AnalysisBlockKey]; load: [key: AnalysisBlockKey]; category: [key: PoiCategory | 'all']; poi: [id: string]
@@ -59,6 +61,10 @@ const items = computed<AnalysisPoi[]>(() => poi.value?.status === 'READY' ? poi.
 const visibleCategories = computed(() => props.category === 'all' ? Object.keys(categories) as PoiCategory[] : [props.category])
 const distanceFormat = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 })
 const stationKilometres = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 })
+function stationHour(id: string) {
+    const row = props.airHourRows?.get(id)
+    return row ? airReadingLabel(row) + (row.value === null ? '' : ' мкг/м³') : null
+}
 function stationDistance(distance: number | null) {
     if (distance === null) return 'Расстояние неизвестно'
     return distance < 1000
@@ -296,15 +302,15 @@ function reloadAirSummary() {
         <template v-if="air?.status === 'READY' && air.data.stations.length">
             <p v-if="air.data.stations.some(item => item.crs === 'EPSG:4326')" class="pa-note">Местоположение по данным источника</p>
             <ul class="pa-stations" aria-label="Станции мониторинга воздуха">
-                <li v-for="(item, index) in air.data.stations" :key="item.id">
+                <li v-for="item in air.data.stations" :key="item.id">
                     <button type="button" class="pa-station" :class="{ 'is-selected': selectedStation === item.id }"
                         :aria-pressed="selectedStation === item.id" :aria-label="item.name"
-                        :aria-describedby="`pa-station-distance-${item.id}`" @click="emit('station', item.id)">
-                        <span v-if="item.crs === 'EPSG:4326'" class="pa-station__number" aria-hidden="true">{{ index + 1 }}</span>
-                        <RadioTower v-else :size="16" aria-hidden="true" />
+                        :aria-describedby="`pa-station-distance-${item.id}${airHourRows?.has(item.id) ? ` pa-station-hour-${item.id}` : ''}`" @click="emit('station', item.id)">
+                        <RadioTower :size="16" aria-hidden="true" />
                         <span class="pa-station__body">
                             <strong>{{ item.name }}</strong>
                             <small :id="`pa-station-distance-${item.id}`">{{ stationDistance(item.distance_m) }}</small>
+                            <span v-if="airHourRows?.has(item.id)" :id="`pa-station-hour-${item.id}`" class="pa-station__hour">{{ stationHour(item.id) }}</span>
                         </span>
                         <ChevronRight class="pa-station__chevron" :size="15" aria-hidden="true" />
                     </button>

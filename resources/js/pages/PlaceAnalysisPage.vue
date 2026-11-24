@@ -18,7 +18,10 @@ import type { GeocodingSelection } from '@/types/geocoding'
 import PlaceAnalysisResults from '@/components/place-analysis/PlaceAnalysisResults.vue'
 import PlaceAnalysisAir from '@/components/place-analysis/PlaceAnalysisAir.vue'
 import PlaceAnalysisGuide from '@/components/place-analysis/PlaceAnalysisGuide.vue'
-import { useAirStationHistory } from '@/composables/useAirStationHistory'
+import { useAirSnapshotRequest } from '@/composables/useAirSnapshotRequest'
+import { fetchAirSnapshotHour, fetchAirStationHistory } from '@/api/placeAnalysis'
+import { airHourLabel } from '@/utils/airObservation'
+import { useAirDockHeight } from '@/composables/useAirDockHeight'
 import { usePlaceAnalysis } from '@/composables/usePlaceAnalysis'
 import { useSidebarWidth } from '@/composables/useSidebarWidth'
 import type {
@@ -131,18 +134,52 @@ const activeCategory = ref<PoiCategory | 'all'>('grocery')
 const selectedPoiId = ref<string | null>(null)
 const selectedStationId = ref<string | null>(null)
 const stationContext = shallowRef<AnalysisPoint | null>(null)
-const mapStations = computed(() => airData.value?.stations.flatMap((station, index) =>
-    station.crs === 'EPSG:4326' ? [{ id: station.id, name: station.name, lon: station.lon, lat: station.lat, number: index + 1 }] : [],
+const mapStations = computed(() => airData.value?.stations.flatMap(station =>
+    station.crs === 'EPSG:4326' ? [{ id: station.id, name: station.name, lon: station.lon, lat: station.lat }] : [],
 ) ?? [])
 const historyStation = computed(() => airData.value?.stations.find(station => station.id === selectedStationId.value) ?? null)
-const { state: historyState, load: loadHistory } = useAirStationHistory(
-    computed(() => airData.value?.snapshot_version ?? null),
+const airSnapshotVersion = computed(() => airData.value?.snapshot_version ?? null)
+const { state: historyState, load: loadHistory } = useAirSnapshotRequest(
+    airSnapshotVersion,
     computed(() => historyStation.value?.id ?? null),
+    (snapshot_version, station_id, signal) => fetchAirStationHistory({ snapshot_version, station_id }, signal),
 )
+const pickedHour = ref<string | null>(null)
+const explicitHour = computed(() => {
+    const window = airData.value?.window_raw
+    const hour = pickedHour.value
+    return window && hour && hour >= window.begin_inclusive && hour < window.end_exclusive ? hour : null
+})
+const defaultHour = computed(() => airData.value?.last_numeric_observed_at_raw ?? null)
+const selectedHour = computed(() => explicitHour.value ?? defaultHour.value)
+const { state: hourState, load: loadHour } = useAirSnapshotRequest(
+    airSnapshotVersion,
+    selectedHour,
+    (snapshot_version, observed_at_raw, signal) => fetchAirSnapshotHour({
+        snapshot_version, observed_at_raw, station_ids: airData.value?.stations.map(station => station.id) ?? [],
+    }, signal),
+)
+const hourRows = computed(() => {
+    const state = hourState.value
+    return state.phase === 'ready' && state.data.snapshot_version === airSnapshotVersion.value
+        && state.data.observed_at_raw === selectedHour.value
+        ? new Map(state.data.rows.map(row => [row.station_id, row]))
+        : null
+})
+function clearPickedHour() {
+    pickedHour.value = null
+    mapRef.value?.focusMap()
+}
 const chartDocked = ref(false)
+const airRange = ref<'recent' | 'archive'>('recent')
 const inlineAirHistory = useTemplateRef('inlineAirHistory')
+const airDockPanel = useTemplateRef('airDockPanel')
+const airDockContent = useTemplateRef('airDockContent')
 const chartTarget = computed(() => chartDocked.value ? '#pa-air-dock' : inlineAirHistory.value)
 const workspace = ref<HTMLElement | null>(null)
+const mapWorkspace = useTemplateRef<HTMLElement>('mapWorkspace')
+const airDock = useAirDockHeight(mapWorkspace)
+const { height: airDockHeight, min: airDockMin, max: airDockMax, dragging: airDockDragging } = airDock
 const sidebar = useSidebarWidth(workspace, 'analysis')
 const { enabled: sidebarResizable, width: sidebarWidth, bounds: sidebarBounds, style: sidebarStyle, dragging: sidebarDragging } = sidebar
 const satelliteMode = ref<SatelliteMode>('ndvi')
@@ -150,6 +187,9 @@ const satelliteOpacity = ref(0.7)
 const showObjects = ref(true)
 const showSatellite = ref(true)
 const showStations = ref(true)
+const showAirHour = computed(() => (activeTab.value === 'air' || showStations.value)
+    && !pickMode.value && !pendingPoint.value && !geocodingPreview.value
+    && (selectedHour.value !== null || airData.value?.last_numeric_observed_at_raw === null))
 const showRadius = ref(true)
 const layersOpen = ref(true)
 const ndviLegendOpen = ref(true)
@@ -197,8 +237,10 @@ watch(satelliteData, value => { if (value) satelliteCatalog.value = value }, { f
 watch(place, () => {
     displayedGeometry.value = null; satelliteCatalog.value = null; selectedStationId.value = null
     stationContext.value = null
+    pickedHour.value = null
 }, { flush: 'sync' })
 watch(airData, data => {
+    if (data && !explicitHour.value) pickedHour.value = null
     if (data && !historyStation.value) {
         selectedStationId.value = null
         stationContext.value = null
@@ -350,7 +392,16 @@ function toggleChartDock() {
     chartDocked.value = !chartDocked.value
     if (!chartDocked.value) selectTab('air')
     // Moving a focused button between DOM containers can drop focus.
-    void nextTick(() => document.getElementById('pa-air-dock-toggle')?.focus())
+    void nextTick(() => {
+        const toggle = document.getElementById('pa-air-dock-toggle')
+        toggle?.focus({ preventScroll: chartDocked.value })
+        if (chartDocked.value && airDockContent.value) {
+            const scrollArea = airDockContent.value.querySelector<HTMLElement>('.pa-station-detail__body')
+            if (scrollArea) scrollArea.scrollTop = 0
+            airDockPanel.value?.scrollIntoView({ block: 'nearest' })
+            airDockContent.value.querySelector('.pa-chart__plot')?.scrollIntoView({ block: 'nearest' })
+        }
+    })
 }
 
 onMounted(() => {
@@ -434,7 +485,7 @@ onBeforeUnmount(() => {
                     </div>
                     <PlaceAnalysisResults v-else :tab="activeTab" :blocks="analysis.blocks" :selected-poi="selectedPoiId" :category="activeCategory"
                         :satellite-scope="satelliteScope" :can-load="!!analysis.input.value" :date="realDate" :satellite-mode="satelliteMode" :satellite-catalog="satelliteCatalog"
-                        :selected-station="selectedStationId"
+                        :selected-station="selectedStationId" :air-hour-rows="hourRows"
                         @load="loadBlock" @open="openAnalysisTab" @poi="selectPoi" @category="selectCategory"
                         @date="chooseSatelliteDate" @satellite-mode="satelliteMode = $event" @satellite-scope="satelliteScope = $event"
                         @station="selectStation">
@@ -452,7 +503,7 @@ onBeforeUnmount(() => {
                 @pointerdown="sidebar.pointerDown" @pointermove="sidebar.pointerMove" @pointerup="sidebar.pointerEnd"
                 @pointercancel="sidebar.pointerEnd" @lostpointercapture="sidebar.pointerEnd" @keydown="sidebar.keydown"></div>
 
-            <div class="pa-map-workspace">
+            <div ref="mapWorkspace" class="pa-map-workspace" :class="{ 'is-resizing-dock': airDockDragging }">
             <section class="pa-map-shell" aria-label="Карта анализа">
                 <PlaceAnalysisMap
                     ref="mapRef"
@@ -465,6 +516,7 @@ onBeforeUnmount(() => {
                     :radius="displayedGeometry?.radius_m ?? radius"
                     :pois="mapPois"
                     :stations="mapStations"
+                    :air-hour-rows="showAirHour ? hourRows : null"
                     :poi-distances-known="true"
                     :tab="activeTab"
                     :show-objects="mapShowObjects"
@@ -491,7 +543,31 @@ onBeforeUnmount(() => {
                     @select-poi="selectPoiFromMap"
                     @select-station="selectStationFromMap"
                     @retry-satellite="loadBlock('satellite')"
-                />
+                >
+                    <template v-if="showAirHour" #air-hour>
+                        <section class="pa-air-map-hour" :aria-label="explicitHour ? 'Выбранный час PM₂.₅' : 'Последний час PM₂.₅'">
+                            <div class="pa-air-map-hour__heading">
+                                <div>
+                                    <strong>PM₂.₅, мкг/м³</strong>
+                                    <time v-if="selectedHour" :datetime="selectedHour.replace(' ', 'T')">{{ airHourLabel(selectedHour) }}</time>
+                                </div>
+                                <button v-if="explicitHour" type="button" class="pa-icon-button"
+                                    :aria-label="defaultHour ? 'Вернуться к последнему часу' : 'Снять выбор часа'" @click="clearPickedHour">
+                                    <X :size="15" aria-hidden="true" />
+                                </button>
+                            </div>
+                            <small v-if="selectedHour">Время источника, часовой пояс неизвестен</small>
+                            <div role="status">
+                                <span v-if="!selectedHour">В выпуске нет числовых наблюдений.</span>
+                                <span v-else-if="hourState.phase === 'loading'">Загрузка значений за час…</span>
+                                <span v-else-if="hourState.phase === 'snapshot-changed'">Выпуск изменился. Нажмите «Обновить» у списка станций.</span>
+                                <span v-else-if="hourState.phase === 'error'">Не удалось загрузить значения за час.</span>
+                                <small v-else-if="hourRows">— пропущен час · ∅ пустое значение</small>
+                            </div>
+                            <button v-if="selectedHour && hourState.phase === 'error'" class="pa-outline" type="button" @click="loadHour">Повторить</button>
+                        </section>
+                    </template>
+                </PlaceAnalysisMap>
 
                 <div v-if="pendingPoint" class="pa-point-card" role="dialog" aria-label="Выбранная точка" @keydown.esc="cancelPoint">
                     <div class="pa-point-card__head">
@@ -606,11 +682,21 @@ onBeforeUnmount(() => {
                     </div>
                 </aside>
             </section>
-                <div v-show="chartDocked && historyStation" id="pa-air-dock" class="pa-air-dock"></div>
+                <div v-show="chartDocked && historyStation" ref="airDockPanel" class="pa-air-dock-panel"
+                    :style="{ '--air-dock-height': `${airDockHeight}px` }">
+                    <div class="pa-air-dock-divider" role="separator" tabindex="0"
+                        aria-label="Высота панели графика" aria-orientation="horizontal" aria-controls="pa-air-dock"
+                        :aria-valuemin="airDockMin" :aria-valuemax="airDockMax" :aria-valuenow="airDockHeight"
+                        :aria-valuetext="`${airDockHeight} пикселей`"
+                        @pointerdown="airDock.pointerDown" @pointermove="airDock.pointerMove" @pointerup="airDock.pointerEnd"
+                        @pointercancel="airDock.pointerEnd" @lostpointercapture="airDock.pointerEnd" @keydown="airDock.keydown"></div>
+                    <div id="pa-air-dock" ref="airDockContent" class="pa-air-dock"></div>
+                </div>
             </div>
         </div>
         <Teleport v-if="historyStation && chartTarget" :to="chartTarget">
-            <PlaceAnalysisAir :station="historyStation" :state="historyState" :docked="chartDocked"
+            <PlaceAnalysisAir v-model:range="airRange" :station="historyStation" :state="historyState" :docked="chartDocked"
+                :selected-hour="selectedHour" @hour="pickedHour = $event"
                 @retry="loadHistory" @toggle-dock="toggleChartDock" />
         </Teleport>
     </div>

@@ -16,8 +16,6 @@ class AirProvider
 
     private const OPERATOR_CATALOG = 'af9dbf67d2065b408d4fcc9c496a5b1b59acbf9eab28e4bfde09fe000a187451';
 
-    private const A12_PILOT_RELEASE = '73d6a996a8fa0956ff34146a70cbadb1e5a1fa3b62c36a3741a370df8cb2692d';
-
     private const A11_POSITIONS = [
         '3846' => [92.910795, 56.024966],
         '3858' => [92.97329, 56.01204],
@@ -66,6 +64,7 @@ class AirProvider
             $ids = array_column($stations, 'id');
             $found = array_intersect($selectedIds, $ids);
             $data = $this->metadata($release) + [
+                'last_numeric_observed_at_raw' => $release['last_numeric_observed_at_raw'],
                 'stations' => $stations, 'missing_selected_ids' => array_values(array_diff($selectedIds, $ids)),
                 'counts' => ['selected' => count($found), 'unlocated' => count($stations) - count($found)],
             ];
@@ -103,9 +102,9 @@ class AirProvider
         return ['lon' => null, 'lat' => null, 'crs' => null, 'coordinate_reason' => 'SOURCE_DATUM_CRS_UNCONFIRMED'];
     }
 
-    private function verifiedStationCatalog(string $folder, string $pin, array $manifest, array $inventory): ?string
+    private function verifiedStationCatalog(string $folder, array $manifest, array $inventory): ?string
     {
-        if ($pin === self::A12_PILOT_RELEASE) {
+        if (isset($inventory['input/raw/project.json'])) {
             $catalog = 'raw/project.json';
         } elseif (($manifest['input_manifest_sha256'] ?? null) === self::A11_INPUT) {
             $catalog = 'raw/air-project9-api.json';
@@ -145,7 +144,113 @@ class AirProvider
             $rows[] = $release['series'][$time] ?? $this->observation($time, null, false);
         }
 
-        return $this->metadata($release) + ['station_id' => $id, 'source' => self::SOURCE, 'rows' => $rows];
+        $data = $this->metadata($release) + ['station_id' => $id, 'source' => self::SOURCE, 'rows' => $rows];
+        $pm10 = $this->pm10Rows($release['pm10_source'], $id, $rows);
+
+        return $pm10 === null ? $data : $data + ['pm10_rows' => $pm10];
+    }
+
+    private function pm10Rows(?string $body, string $id, array $primary): ?array
+    {
+        if ($body === null) {
+            return null;
+        }
+
+        try {
+            $payload = $this->json($body);
+            $sourceRows = $payload['data'] ?? null;
+            if (! is_array($sourceRows) || ! array_is_list($sourceRows) || ($payload['status']['code'] ?? null) !== 1) {
+                return null;
+            }
+            $readings = [];
+            $numeric = false;
+            foreach ($sourceRows as $row) {
+                if (! is_array($row) || ! is_int($row['site'] ?? null) || (string) $row['site'] !== $id) {
+                    continue;
+                }
+                $time = $row['time'] ?? null;
+                $value = $row['pm10'] ?? null;
+                if (! is_string($time)
+                    || ($value !== null && ((! is_int($value) && ! is_float($value)) || ! is_finite($value) || $value < 0))) {
+                    return null;
+                }
+                $value = $value === null ? null : (float) $value;
+                if (array_key_exists($time, $readings) && $readings[$time] !== $value) {
+                    return null;
+                }
+                $readings[$time] = $value;
+                $numeric = $numeric || $value !== null;
+            }
+            if (! $numeric) {
+                return null;
+            }
+
+            $rows = [];
+            foreach ($primary as $row) {
+                $time = $row['observed_at_raw'];
+                $present = array_key_exists($time, $readings);
+                if ($present !== $row['row_present']) {
+                    return null;
+                }
+                $rows[] = $this->observation($time, $readings[$time] ?? null, $present);
+                unset($readings[$time]);
+            }
+
+            return $readings === [] ? $rows : null;
+        } catch (JsonException|RuntimeException) {
+            return null;
+        }
+    }
+
+    private function pm10Source(string $folder, array $inventory): ?string
+    {
+        $name = 'input/raw/hourly.json';
+        if (! isset($inventory[$name]) || is_link($folder.'/input') || is_link($folder.'/input/raw')) {
+            return null;
+        }
+
+        try {
+            $body = $this->file($folder.'/'.$name, 2 * 1024 * 1024);
+            $entry = $inventory[$name];
+
+            return strlen($body) === ($entry['bytes'] ?? null) && hash('sha256', $body) === ($entry['sha256'] ?? null)
+                ? $body : null;
+        } catch (RuntimeException) {
+            return null;
+        }
+    }
+
+    public function hour(string $version, mixed $literal): array
+    {
+        if (! is_string($literal) || ! preg_match('/\A[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:00:00\z/', $literal)) {
+            return ['code' => 'AIR_INVALID_HOUR'];
+        }
+
+        try {
+            $this->sourceHour($literal);
+        } catch (RuntimeException) {
+            return ['code' => 'AIR_INVALID_HOUR'];
+        }
+
+        $release = $this->read($version, observedHour: $literal);
+        if ($release === null) {
+            return ['code' => 'AIR_SOURCE_UNAVAILABLE'];
+        }
+        if ($release['snapshot_version'] !== $version) {
+            return ['code' => 'AIR_SNAPSHOT_CHANGED'];
+        }
+        $window = $release['window_raw'];
+        if ($literal < $window['begin_inclusive'] || $literal >= $window['end_exclusive']) {
+            return ['code' => 'AIR_HOUR_OUTSIDE_WINDOW'];
+        }
+
+        $rows = [];
+        foreach ($release['stations'] as $station) {
+            $id = $station['station_id'];
+            $rows[] = ['station_id' => $id] + ($release['series'][$id] ?? $this->observation($literal, null, false));
+        }
+
+        return $this->metadata($release) + ['observed_at_raw' => $literal, 'source' => self::SOURCE, 'rows' => $rows];
     }
 
     private function metadata(array $release): array
@@ -168,7 +273,7 @@ class AirProvider
         ];
     }
 
-    private function read(?string $version = null, ?string $stationId = null): ?array
+    private function read(?string $version = null, ?string $stationId = null, ?string $observedHour = null): ?array
     {
         $root = config('air.root');
         if (! is_string($root) || ! str_starts_with($root, '/')) {
@@ -209,7 +314,7 @@ class AirProvider
                 return ['snapshot_version' => $pin];
             }
             $inventory = array_column($manifest['files'], null, 'path');
-            $stationCatalog = $stationId === null ? $this->verifiedStationCatalog($folder, $pin, $manifest, $inventory) : null;
+            $stationCatalog = $version === null ? $this->verifiedStationCatalog($folder, $manifest, $inventory) : null;
             $metadata = [];
             foreach (['stations.json' => 65536, 'coverage.json' => 65536, 'observations.jsonl' => 8 * 1024 * 1024] as $name => $limit) {
                 $product = $this->file($folder.'/'.$name, $limit);
@@ -219,6 +324,7 @@ class AirProvider
                 }
                 $metadata[$name] = $product;
             }
+            $pm10Source = $stationId === null ? null : $this->pm10Source($folder, $inventory);
         } catch (JsonException|RuntimeException) {
             return null;
         } finally {
@@ -240,6 +346,7 @@ class AirProvider
                 return null;
             }
             $latest = $series = [];
+            $lastNumeric = null;
             foreach (explode("\n", rtrim($metadata['observations.jsonl'], "\n")) as $line) {
                 if ($line === '') {
                     continue;
@@ -250,8 +357,18 @@ class AirProvider
                     continue;
                 }
                 $time = $raw['observed_at_raw'];
+                if ($observedHour !== null) {
+                    if ($time === $observedHour) {
+                        $series[$id] = $this->observation($time, $raw['value'], true);
+                    }
+
+                    continue;
+                }
                 $row = $this->observation($time, $raw['value'], true);
                 $latest[$id] = $row; // A11 sorts observations by station and literal hour.
+                if ($version === null && $row['value'] !== null && ($lastNumeric === null || $time > $lastNumeric)) {
+                    $lastNumeric = $time;
+                }
                 if ($stationId !== null) {
                     $series[$time] = $row;
                 }
@@ -259,7 +376,8 @@ class AirProvider
 
             return [
                 'snapshot_version' => $pin, 'last_success_at' => $lastSuccess, 'last_observed_at_raw' => $lastObserved,
-                'station_catalog' => $stationCatalog,
+                'last_numeric_observed_at_raw' => $lastNumeric, 'station_catalog' => $stationCatalog,
+                'pm10_source' => $pm10Source,
                 'window_raw' => $window, 'stations' => $stations, 'coverage' => $coverage, 'latest' => $latest, 'series' => $series,
             ];
         } catch (JsonException|RuntimeException) {

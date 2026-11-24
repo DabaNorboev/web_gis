@@ -32,7 +32,7 @@ def source(url, params, value=0, *, end=END, hours=4):
     assert params == {'projects': '9', 'sites': '1001,1002', 'time_interval': 'hour',
                       'time_begin': begin.isoformat(sep=' '), 'time_end': end}
     return response([
-        {'site': 1001, 'time': begin.isoformat(sep=' '), 'pm25': value},
+        {'site': 1001, 'time': begin.isoformat(sep=' '), 'pm25': value, 'pm10': 0},
         {'site': 1001, 'time': (begin + dt.timedelta(hours=1)).isoformat(sep=' '), 'pm25': None},
         {'site': 1001, 'time': (begin + dt.timedelta(hours=3)).isoformat(sep=' ')},
     ])
