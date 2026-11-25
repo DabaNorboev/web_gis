@@ -3,6 +3,7 @@
 namespace Tests\Integration;
 
 use App\Services\Analysis\ParkPoiProvider;
+use App\Services\Analysis\PlaceServiceArea;
 use App\Services\Osm\Import\OsmGroceryImporter;
 use App\Services\Osm\Import\OsmParkImporter;
 use App\Services\Osm\Import\OsmParkReader;
@@ -19,6 +20,8 @@ class ParkPoiTest extends PostgisTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // These provider tests use their own synthetic coverage, independent of the city gate.
+        $this->mock(PlaceServiceArea::class, fn ($m) => $m->shouldReceive('requireCovered'));
         $this->artisan('migrate', ['--force' => true])->assertSuccessful();
         DB::beginTransaction();
         DB::table('dataset_imports')->whereIn('dataset_key', ['park', 'grocery', 'pharmacy', OfficialStopsImporter::DATASET])->update(['is_active' => false]);

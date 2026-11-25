@@ -19,7 +19,8 @@ import PlaceAnalysisResults from '@/components/place-analysis/PlaceAnalysisResul
 import PlaceAnalysisAir from '@/components/place-analysis/PlaceAnalysisAir.vue'
 import PlaceAnalysisGuide from '@/components/place-analysis/PlaceAnalysisGuide.vue'
 import { useAirSnapshotRequest } from '@/composables/useAirSnapshotRequest'
-import { fetchAirSnapshotHour, fetchAirStationHistory } from '@/api/placeAnalysis'
+import { checkPlaceServiceArea, fetchAirSnapshotHour, fetchAirStationHistory } from '@/api/placeAnalysis'
+import { ApiRequestError } from '@/api/errors'
 import { airHourLabel } from '@/utils/airObservation'
 import { useAirDockHeight } from '@/composables/useAirDockHeight'
 import { usePlaceAnalysis } from '@/composables/usePlaceAnalysis'
@@ -45,6 +46,7 @@ const geocodingAuthorizationExpired = ref(false)
 const geocodingPreview = shallowRef<AnalysisPoint | null>(null)
 const selectionError = computed(() => Object.values(analysis.blocks).find(b => ['SELECTION_EXPIRED', 'SNAPSHOT_EXPIRED'].includes(b.error?.code ?? ''))?.error?.code ?? null)
 function acceptGeocodingSelection(value: GeocodingSelection) {
+    cancelSelectionCheck()
     const same = geocodingSelection.value?.selection_id === value.selection_id
     geocodingAuthorizationExpired.value = false
     geocodingSelection.value = value
@@ -112,21 +114,55 @@ function chooseSatelliteDate(value: string) {
 
 const tabOrder: AnalysisTab[] = ['overview', 'objects', 'satellite', 'air']
 const activeTab = ref<AnalysisTab>('overview')
-const place = ref<PlaceSelection>({ id: null, label: 'Выберите место', lon: 92.85, lat: 56.01 })
+const cityCenter = { lon: 92.85, lat: 56.01 }
+const place = ref<PlaceSelection>({ id: null, label: 'Выберите место', ...cityCenter })
 const selectedAddressLabel = ref('')
 const radius = ref(500)
 const pendingPoint = ref<AnalysisPoint | null>(null)
 const pickMode = ref(false)
 const referencePoint = computed(() => pendingPoint.value
     ?? (hasSelection.value && !place.value.id ? { lon: place.value.lon, lat: place.value.lat } : null))
+const checkingSelection = ref(false)
+const selectionIssue = ref<'outside' | 'unavailable' | null>(null)
+let selectionRequest: AbortController | null = null
+
+function cancelSelectionCheck() {
+    selectionRequest?.abort()
+    selectionRequest = null
+    checkingSelection.value = false
+    selectionIssue.value = null
+}
+watch([searchMode, searchQuery], cancelSelectionCheck, { flush: 'sync' })
+
+async function validateSelection(point: AnalysisPoint, select: () => void) {
+    cancelSelectionCheck()
+    const controller = new AbortController()
+    selectionRequest = controller
+    checkingSelection.value = true
+    try {
+        await checkPlaceServiceArea(point, AbortSignal.any([controller.signal, AbortSignal.timeout(8000)]))
+        if (selectionRequest === controller) select()
+    } catch (error) {
+        if (selectionRequest !== controller) return
+        selectionIssue.value = error instanceof ApiRequestError && error.code === 'OUTSIDE_SERVICE_AREA' ? 'outside' : 'unavailable'
+    } finally {
+        if (selectionRequest === controller) {
+            selectionRequest = null
+            checkingSelection.value = false
+        }
+    }
+}
+
 function acceptLocalAddress(address: AnalysisAddress) {
-    localSearchRef.value?.clearDraft()
-    geocodingRef.value?.clearSelection(); geocodingSelection.value = null
-    geocodingAuthorizationExpired.value = false
-    selectedAddressLabel.value = localAddressLabel(address.label, address.display)
-    place.value = { id: address.id, label: address.label, lon: address.object.lon, lat: address.object.lat }
-    hasSelection.value = true; pendingPoint.value = null; pickMode.value = false
-    runAnalysis()
+    void validateSelection(address.object, () => {
+        localSearchRef.value?.clearDraft()
+        geocodingRef.value?.clearSelection(); geocodingSelection.value = null
+        geocodingAuthorizationExpired.value = false
+        selectedAddressLabel.value = localAddressLabel(address.label, address.display)
+        place.value = { id: address.id, label: address.label, lon: address.object.lon, lat: address.object.lat }
+        hasSelection.value = true; pendingPoint.value = null; pickMode.value = false
+        runAnalysis()
+    })
 }
 const pointReference = useAnalysisPointAddress(referencePoint, acceptLocalAddress)
 const { candidates: pointCandidates, status: pointStatus, transitionPending, transitionError } = pointReference
@@ -191,6 +227,7 @@ const showAirHour = computed(() => (activeTab.value === 'air' || showStations.va
     && !pickMode.value && !pendingPoint.value && !geocodingPreview.value
     && (selectedHour.value !== null || airData.value?.last_numeric_observed_at_raw === null))
 const showRadius = ref(true)
+const showServiceBoundary = ref(true)
 const layersOpen = ref(true)
 const ndviLegendOpen = ref(true)
 const poiLegendOpen = ref(false)
@@ -328,23 +365,33 @@ function startPointPick() {
         cancelPick()
         return
     }
+    cancelSelectionCheck()
     localSearchRef.value?.clearDraft()
     pickMode.value = true
     void nextTick(() => mapRef.value?.focusMap())
 }
 
 function onMapPoint(point: AnalysisPoint) {
+    void validateSelection(point, () => {
+        pendingPoint.value = point
+        pickMode.value = false
+        void nextTick(() => analyzeButton.value?.focus())
+    })
     localSearchRef.value?.clearDraft()
     pointReference.cancelTransition()
     geocodingRef.value?.clearDraft(); geocodingPreview.value = null
-    pendingPoint.value = point
-    pickMode.value = false
-    void nextTick(() => analyzeButton.value?.focus())
+    pendingPoint.value = null
+}
+
+function returnToCity() {
+    cancelSelectionCheck()
+    mapRef.value?.showCity(cityCenter)
 }
 
 function analyzePoint() {
     pointReference.cancelTransition()
     if (!pendingPoint.value) return
+    cancelSelectionCheck()
     localSearchRef.value?.clearDraft()
     geocodingRef.value?.clearSelection(); geocodingSelection.value = null
     place.value = { id: null, label: 'Точка на карте', ...pendingPoint.value }
@@ -356,6 +403,7 @@ function analyzePoint() {
 }
 
 function cancelPoint() {
+    cancelSelectionCheck()
     pointReference.cancelTransition()
     pendingPoint.value = null
     pickMode.value = false
@@ -363,6 +411,7 @@ function cancelPoint() {
 }
 
 function cancelPick() {
+    cancelSelectionCheck()
     pickMode.value = false
     void nextTick(() => placeButton.value?.focus())
 }
@@ -408,6 +457,7 @@ onMounted(() => {
     document.title = 'Анализ места — PlaceLens'
 })
 onBeforeUnmount(() => {
+    cancelSelectionCheck()
     if (radiusTimer) clearTimeout(radiusTimer)
 })
 </script>
@@ -523,6 +573,7 @@ onBeforeUnmount(() => {
                     :show-satellite="showSatellite"
                     :show-stations="mapShowStations"
                     :show-radius="showRadius"
+                    :show-service-boundary="showServiceBoundary"
                     :layer-order="layerOrder"
                     :satellite-mode="mapSatelliteMode"
                     :satellite-scope="satelliteScope"
@@ -536,6 +587,7 @@ onBeforeUnmount(() => {
                     :pending-point="geocodingPreview ?? pendingPoint"
                     :pending-draggable="!!geocodingPreview"
                     :pick-mode="pickMode"
+                    :checking-selection="checkingSelection"
                     @select-point="onMapPoint"
                     @highlight-address="(id, source) => localSearchRef?.highlightFromMap(id, source)"
                     @select-address="localSearchRef?.choose($event)"
@@ -544,6 +596,15 @@ onBeforeUnmount(() => {
                     @select-station="selectStationFromMap"
                     @retry-satellite="loadBlock('satellite')"
                 >
+                    <template v-if="checkingSelection || selectionIssue" #selection>
+                        <p v-if="checkingSelection" class="pa-map-alert" role="status">Проверяем границу Красноярска…</p>
+                        <p v-else class="pa-map-alert" role="alert">
+                            <TriangleAlert :size="16" aria-hidden="true" />
+                            <span v-if="selectionIssue === 'outside'">Точку для анализа можно выбрать только в пределах Красноярска.</span>
+                            <span v-else>Не удалось проверить границу Красноярска. Выберите точку ещё раз.</span>
+                            <button v-if="selectionIssue === 'outside'" type="button" class="pa-outline" @click="returnToCity">Вернуться к Красноярску</button>
+                        </p>
+                    </template>
                     <template v-if="showAirHour" #air-hour>
                         <section class="pa-air-map-hour" :aria-label="explicitHour ? 'Выбранный час PM2,5' : 'Последний час PM2,5'">
                             <div class="pa-air-map-hour__heading">
@@ -651,6 +712,11 @@ onBeforeUnmount(() => {
                                 <output>{{ Math.round(satelliteOpacity * 100) }}%</output>
                             </label>
                         </div>
+                        <label class="pa-layer-row">
+                            <input v-model="showServiceBoundary" type="checkbox">
+                            <span class="pa-service-boundary-swatch" aria-hidden="true" />
+                            <span>Граница территории анализа</span>
+                        </label>
                         <div class="pa-layer-row pa-layer-row--static">
                             <input type="checkbox" checked disabled>
                             <MapIcon class="pa-layer-icon" :size="15" aria-hidden="true" />

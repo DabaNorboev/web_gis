@@ -69,6 +69,14 @@ try {
         $raw = file_get_contents('http://127.0.0.1:18765/api/v1/place-analysis', false, stream_context_create(['http' => ['method' => 'POST', 'header' => "Content-Type: application/json\r\n", 'content' => $body, 'ignore_errors' => true]]));
         $seconds = microtime(true) - $start;
         $r = json_decode($raw, true);
+        if (str_starts_with($name, 'outside')) {
+            if (! str_contains($http_response_header[0], '422') || ($r['code'] ?? null) !== 'OUTSIDE_SERVICE_AREA'
+                || isset($r['blocks']) || ! in_array('Referrer-Policy: no-referrer', $http_response_header, true)) {
+                throw new RuntimeException('Outside-city request must be rejected before satellite analysis.');
+            }
+            $results[] = ['case' => $name, 'seconds' => $seconds, 'code' => 'OUTSIDE_SERVICE_AREA'];
+            continue;
+        }
         if (! str_contains($http_response_header[0], '200') || ($r['blocks']['satellite']['status'] ?? null) !== 'READY') {
             throw new RuntimeException('HTTP failed '.$name);
         }
@@ -90,9 +98,6 @@ try {
         if ($name === 'edge-1000' && $actual['selected']['coverage']['inside_rectangle_outside_target_pixels'] !== 1) {
             throw new RuntimeException('Unknown edge pixel must survive');
         }
-        if (str_starts_with($name, 'outside') && ($actual['selected']['mean_ndvi'] !== null || $actual['available_dates'] !== [])) {
-            throw new RuntimeException('Unknown case');
-        }
         $results[] = ['case' => $name, 'seconds' => $seconds, 'response_bytes' => strlen($raw), 'reader' => $expected['metrics'], 'selected_coverage' => $actual['selected']['coverage']];
         foreach ($actual['selected']['layers'] ?? [] as $source) {
             $lon = deg2rad((float) $p->lon);
@@ -100,9 +105,6 @@ try {
             $z = 13;
             $tx = (int) floor(($lon + M_PI) / (2 * M_PI) * 2 ** $z);
             $ty = (int) floor((1 - log(tan($lat) + 1 / cos($lat)) / M_PI) / 2 * 2 ** $z);
-            if (str_starts_with($name, 'outside')) {
-                continue;
-            }
             $url = str_replace(['{z}', '{x}', '{y}'], [$z, $tx, $ty], $source['tiles'][0]);
             $tileStart = microtime(true);
             $png = file_get_contents('http://127.0.0.1:18765'.$url, false, stream_context_create(['http' => ['ignore_errors' => true]]));
@@ -113,7 +115,7 @@ try {
         }
     }
     file_put_contents($report, json_encode(['passed' => true, 'cases' => $results], JSON_PRETTY_PRINT));
-    echo 'HTTP passed: '.count($results)." circles + same-origin PNG\n";
+    echo 'HTTP passed: '.count($results)." cases including outside-city guard + same-origin PNG\n";
 } catch (Throwable $e) {
     fwrite(STDERR, $e->getMessage()."\n");
     $failed = true;

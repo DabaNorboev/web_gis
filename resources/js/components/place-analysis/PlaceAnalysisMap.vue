@@ -10,6 +10,7 @@ import {
     setWorkerUrl,
     type ExpressionSpecification,
     type GeoJSONSource,
+    type MapSourceDataEvent,
     type StyleSpecification,
 } from 'maplibre-gl'
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
@@ -49,6 +50,7 @@ const props = withDefaults(defineProps<{
     showStations: boolean
     airHourRows: ReadonlyMap<string, AirObservation> | null
     showRadius: boolean
+    showServiceBoundary: boolean
     layerOrder: AnalysisLayer[]
     satelliteMode: SatelliteMode
     satelliteScope: 'territory' | 'circle'
@@ -61,6 +63,7 @@ const props = withDefaults(defineProps<{
     pendingDraggable?: boolean
     pendingPoint: AnalysisPoint | null
     pickMode: boolean
+    checkingSelection: boolean
 }>(), { satelliteOpacity: .75, showPlacePin: true, geometryStale: false, analysisArea: null, analysisBounds: null, stations: () => [], addressPreview: null, pendingDraggable: false })
 
 const stations = computed(() => props.stations)
@@ -75,6 +78,10 @@ const container = ref<HTMLElement | null>(null)
 const imageryAttributionTarget = ref<HTMLElement | null>(null)
 const mapStatus = ref<'loading' | 'ready' | 'error'>('loading')
 const mapStatusText = ref('Загрузка карты…')
+const vectorBasemapSourceId = 'openmaptiles'
+const serviceBoundarySourceId = 'pa-service-boundary'
+const serviceBoundaryUrl = new URL('../../../gis/krasnoyarsk-boundary.geojson', import.meta.url).href
+const serviceBoundaryLayers = ['pa-service-boundary-casing', 'pa-service-boundary-line']
 const terrainSourceId = 'pa-terrain'
 const buildingsLayerId = 'pa-buildings-3d'
 const buildingsMinZoom = 15
@@ -83,6 +90,9 @@ const terrainEnabled = ref(false)
 const terrainError = ref(false)
 const mapReady = computed(() => mapStatus.value === 'ready')
 let terrainLoadTimer: ReturnType<typeof setTimeout> | undefined
+let basemapRetryTimer: ReturnType<typeof setTimeout> | undefined
+const retriedBasemapTiles = new WeakSet<NonNullable<MapSourceDataEvent['tile']>>()
+const pendingBasemapRetries = new Map<string, { z: number; x: number; y: number }>()
 let map: MapLibreMap | null = null
 const imageryBasemap = useImageryBasemap({
     map: () => map,
@@ -135,6 +145,18 @@ function analysisFeature(): Feature<Polygon> | FeatureCollection {
 
 function addLayers() {
     if (!map || map.getSource('pa-radius')) return
+    map.addSource(serviceBoundarySourceId, { type: 'geojson', data: serviceBoundaryUrl, tolerance: 0 })
+    const boundaryPaint = [
+        { 'line-color': '#241e27', 'line-width': 5 },
+        { 'line-color': '#ffd43b', 'line-width': 2.5 },
+    ]
+    for (const [index, id] of serviceBoundaryLayers.entries()) {
+        map.addLayer({
+            id, type: 'line', source: serviceBoundarySourceId,
+            layout: { 'line-join': 'round', visibility: props.showServiceBoundary ? 'visible' : 'none' },
+            paint: boundaryPaint[index],
+        })
+    }
     map.addSource('pa-address-preview', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
     map.addLayer({ id: 'pa-address-fill', type: 'fill', source: 'pa-address-preview', filter: ['==', '$type', 'Polygon'],
         paint: { 'fill-color': ['case', ['get', 'highlighted'], '#d18c24', '#387d91'], 'fill-opacity': ['case', ['get', 'highlighted'], .5, .18] } })
@@ -198,7 +220,9 @@ function applyLayerOrder() {
             if (map.getLayer(id)) map.moveLayer(id)
         }
     }
-    for (const id of ['pa-address-fill', 'pa-address-outline', 'pa-address-point']) if (map.getLayer(id)) map.moveLayer(id)
+    for (const id of [...serviceBoundaryLayers, 'pa-address-fill', 'pa-address-outline', 'pa-address-point']) {
+        if (map.getLayer(id)) map.moveLayer(id)
+    }
     applyMarkerOrder()
     map.triggerRepaint()
 }
@@ -554,8 +578,7 @@ function syncBuildingsVisibility() {
 }
 
 function addBuildingsLayer(instance: MapLibreMap) {
-    const source = 'openmaptiles'
-    if (!instance.getSource(source)) return
+    if (!instance.getSource(vectorBasemapSourceId)) return
 
     const height: ExpressionSpecification = ['number', ['get', 'render_height'], -1]
     const base: ExpressionSpecification = ['number', ['get', 'render_min_height'], -1]
@@ -563,7 +586,7 @@ function addBuildingsLayer(instance: MapLibreMap) {
     instance.addLayer({
         id: buildingsLayerId,
         type: 'fill-extrusion',
-        source,
+        source: vectorBasemapSourceId,
         'source-layer': 'building',
         minzoom: buildingsMinZoom,
         layout: { visibility: buildingsVisibility(instance) },
@@ -623,6 +646,20 @@ function terrainUnavailable() {
     if (terrainLoadTimer === undefined) return
     setTerrainMode(false)
     terrainError.value = true
+}
+
+function retryBasemapTile(tile: NonNullable<MapSourceDataEvent['tile']>) {
+    if (retriedBasemapTiles.has(tile)) return
+    retriedBasemapTiles.add(tile)
+    const id = tile.tileID.canonical
+    pendingBasemapRetries.set(id.key, id)
+    basemapRetryTimer ??= setTimeout(() => {
+        const tiles = [...pendingBasemapRetries.values()]
+        basemapRetryTimer = undefined
+        pendingBasemapRetries.clear()
+        // MapLibre refreshes only matching tiles that are still in view.
+        map?.refreshTiles(vectorBasemapSourceId, tiles)
+    }, 750)
 }
 
 function initMap() {
@@ -685,7 +722,11 @@ function initMap() {
         if (event.sourceId === terrainSourceId && event.tile?.dem) clearTerrainLoadTimer()
     })
     map.on('error', event => {
-        const sourceId = String((event as unknown as { sourceId?: string }).sourceId ?? '')
+        const { sourceId, tile } = event as typeof event & Partial<Pick<MapSourceDataEvent, 'sourceId' | 'tile'>>
+        const status = (event.error as { status?: number }).status
+        if (sourceId === vectorBasemapSourceId && tile && (status === undefined || status >= 500)) {
+            retryBasemapTile(tile)
+        }
         // Allow other DEM tiles to load. Only a failed initial load returns to 2D.
         if (sourceId === terrainSourceId) return
         const currentSources = new Set(Object.values(rasterLayers).map(value => value.source).filter(Boolean))
@@ -733,7 +774,7 @@ watch(() => props.radius, () => {
 
 watch(() => props.addressPreview, (next, previous) => {
     syncAddressPreview()
-    if (next?.groups[0] !== previous?.groups[0]) fitContext()
+    if ((next || !props.checkingSelection) && next?.groups[0] !== previous?.groups[0]) fitContext()
 })
 
 watch([
@@ -744,6 +785,9 @@ watch([
 watch(() => props.selectedPoi, () => syncPoiSelection())
 watch(() => props.airHourRows, syncStationHourLabels)
 watch(() => props.layerOrder, () => applyLayerOrder(), { deep: true })
+watch(() => props.showServiceBoundary, visible => {
+    for (const id of serviceBoundaryLayers) setVisibility(id, visible)
+})
 watch(() => props.stationContext, point => {
     if (point) fitContext()
 })
@@ -770,11 +814,18 @@ function focusMap() {
     container.value?.focus()
 }
 
-defineExpose({ focusMap, fitContext, mapReady, terrainEnabled, setTerrainMode, basemapMode, selectBasemap })
+function showCity(point: AnalysisPoint) {
+    map?.jumpTo({ center: [point.lon, point.lat], zoom: 12 })
+    focusMap()
+}
+
+defineExpose({ focusMap, showCity, fitContext, mapReady, terrainEnabled, setTerrainMode, basemapMode, selectBasemap })
 
 onMounted(initMap)
 onBeforeUnmount(() => {
     imageryBasemap.dispose()
+    clearTimeout(basemapRetryTimer)
+    pendingBasemapRetries.clear()
     clearTerrainLoadTimer()
     clearMarkers(addressMarkers)
     clearMarkers(poiMarkers)
@@ -807,8 +858,9 @@ onBeforeUnmount(() => {
                 <span>{{ imagery.attribution }}</span>
             </div>
         </Teleport>
-        <div v-if="$slots['air-hour'] || rasterError || terrainError || basemapError" class="pa-map-notices"
-            :class="{ 'has-air-hour': $slots['air-hour'], 'has-map-alert': rasterError || terrainError || basemapError }">
+        <div v-if="$slots.selection || $slots['air-hour'] || rasterError || terrainError || basemapError" class="pa-map-notices"
+            :class="{ 'has-air-hour': $slots['air-hour'], 'has-map-alert': $slots.selection || rasterError || terrainError || basemapError }">
+            <slot name="selection" />
             <slot name="air-hour" />
             <p v-if="basemapError" class="pa-map-alert" role="alert">
                 <TriangleAlert :size="16" aria-hidden="true" />

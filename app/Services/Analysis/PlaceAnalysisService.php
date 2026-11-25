@@ -15,7 +15,12 @@ class PlaceAnalysisService
 {
     public const BLOCKS = ['poi', 'satellite', 'air'];
 
-    public function __construct(private AddressResolverService $resolver, private AnalysisArea $area, private RetailPoiProvider $poi) {}
+    public function __construct(
+        private AddressResolverService $resolver,
+        private AnalysisArea $area,
+        private RetailPoiProvider $poi,
+        private PlaceServiceArea $serviceArea,
+    ) {}
 
     public function analyze(array $input): array
     {
@@ -37,6 +42,8 @@ class PlaceAnalysisService
                 ? $this->resolver->resolve($place['address_id'], $this->resolver->snapshots(true)) : null;
             $point = $selection !== null ? $selection['point'] : ($address ? ['lon' => $address['object']['lon'], 'lat' => $address['object']['lat']]
                 : ['lon' => $place['lon'], 'lat' => $place['lat']]);
+
+            $this->serviceArea->requireCovered($point);
 
             return [$address, $point, $this->area->forPoint($point['lon'], $point['lat'], $radius)];
         });
@@ -75,6 +82,7 @@ class PlaceAnalysisService
         if ($key === 'satellite') {
             return app(SatelliteProvider::class)->analyze($point, $radius, $point['satellite_date'] ?? null);
         }
+
         return app(AirProvider::class)->analyze($point['selected_station_ids'], $point);
     }
 }

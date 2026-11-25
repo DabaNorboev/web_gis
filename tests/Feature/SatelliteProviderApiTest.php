@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Services\Analysis\PlaceServiceArea;
 use App\Services\Analysis\RetailPoiProvider;
 use App\Services\Analysis\SatelliteProvider;
 use App\Services\Gis\AnalysisArea;
@@ -17,6 +18,8 @@ class SatelliteProviderApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // These provider tests use their own synthetic coverage, independent of the city gate.
+        $this->mock(PlaceServiceArea::class, fn ($m) => $m->shouldReceive('requireCovered'));
         $this->root = sys_get_temp_dir().'/a10-api-'.bin2hex(random_bytes(6));
         mkdir($this->root);
         $this->catalog = ['schema_version' => 1, 'format' => 'placelens-satellite-cells-v1', 'status' => 'verified_offline_runtime',

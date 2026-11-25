@@ -848,6 +848,7 @@
 }
 .pa-layer-row input { flex: none; accent-color: var(--pa-accent); }
 .pa-layer-icon { flex: none; color: var(--pa-muted); }
+.pa-service-boundary-swatch { flex: none; width: 15px; height: 5px; border: 1px solid #241e27; border-radius: 2px; background: #ffd43b; }
 .pa-layer-row--static { color: var(--pa-muted); }
 .pa-opacity { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 7px; margin: 3px 0 7px; color: var(--pa-muted); font-size: 10.5px; }
 .pa-opacity input { width: 100%; accent-color: var(--pa-accent); }

@@ -3,6 +3,7 @@
 namespace Tests\Integration;
 
 use App\Services\Analysis\GroceryPoiProvider;
+use App\Services\Analysis\PlaceServiceArea;
 use App\Services\Osm\Import\OsmGroceryImporter;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,8 @@ class GroceryPoiTest extends PostgisTestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // These provider tests use their own synthetic coverage, independent of the city gate.
+        $this->mock(PlaceServiceArea::class, fn ($m) => $m->shouldReceive('requireCovered'));
         $this->artisan('migrate', ['--force' => true])->assertSuccessful();
         DB::beginTransaction();
         // This transaction isolates active snapshots from all prior test contents.

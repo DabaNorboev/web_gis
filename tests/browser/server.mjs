@@ -57,6 +57,11 @@ try {
     const server = createServer(async (req, res) => {
         const pathname = new URL(req.url, 'http://127.0.0.1').pathname
         if (pathname === '/favicon.ico') { res.writeHead(204); res.end(); return }
+        if (pathname === '/api/v1/place-analysis/selection' && req.method === 'POST') {
+            res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+            res.end('{"status":"INSIDE"}')
+            return
+        }
         if (pathname === '/smoke-background.json') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end('{"type":"FeatureCollection","features":[]}'); return }
         if (['/analysis', '/search', '/compare', '/trips'].includes(pathname) || pathname.startsWith('/address/')) { res.writeHead(302, { Location: '/', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' }); res.end(); return }
         if (pathname === '/') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(html); return }
@@ -68,7 +73,7 @@ try {
         }
         if (pathname.startsWith('/assets/') && !pathname.includes('..')) {
             try {
-                const type = { '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2' }[extname(pathname)] ?? 'application/octet-stream'
+                const type = { '.js': 'text/javascript', '.css': 'text/css', '.woff2': 'font/woff2', '.geojson': 'application/geo+json' }[extname(pathname)] ?? 'application/octet-stream'
                 const body = await readFile(join(output, pathname))
                 res.writeHead(200, { 'Content-Type': type }); res.end(body); return
             } catch { /* Explicit failure below, never fall back to a real backend. */ }

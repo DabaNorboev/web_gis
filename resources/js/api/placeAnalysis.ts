@@ -1,6 +1,6 @@
 import { validGeocodedPlace, sameSnapshot } from './geocoding'
 import { ApiRequestError, requestJson } from './errors'
-import type { AirSnapshotHour, AirSnapshotHourRequest, AirStationHistory, AirStationHistoryRequest, AnalysisBlockKey, AnalysisRequest, AnalysisStation, PlaceAnalysisInput, PlaceAnalysisResponse } from '../types/placeAnalysis'
+import type { AirSnapshotHour, AirSnapshotHourRequest, AirStationHistory, AirStationHistoryRequest, AnalysisBlockKey, AnalysisPoint, AnalysisRequest, AnalysisStation, PlaceAnalysisInput, PlaceAnalysisResponse } from '../types/placeAnalysis'
 
 export const analysisBlockKeys: AnalysisBlockKey[] = ['poi', 'satellite', 'air']
 const categories = ['grocery', 'pharmacy', 'official_stop', 'park'] as const
@@ -315,6 +315,15 @@ export function validateAnalysisResponse(v: unknown, request: AnalysisRequest): 
     if (extent.some((n, i) => Math.abs(n - v.analysis_bounds[i]) > 1e-7)) return invalid()
     return v as PlaceAnalysisResponse
 }
+export async function checkPlaceServiceArea({ lon, lat }: AnalysisPoint, signal: AbortSignal): Promise<void> {
+    const response = await requestJson('/api/v1/place-analysis/selection', {
+        method: 'POST', signal, mode: 'same-origin', cache: 'no-store', referrerPolicy: 'no-referrer',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lon, lat }),
+    })
+    if (!record(response) || response.status !== 'INSIDE') throw new ApiRequestError('invalid_response')
+}
+
 export async function fetchPlaceAnalysis(input: PlaceAnalysisInput, signal?: AbortSignal): Promise<PlaceAnalysisResponse> {
     const request = normalizeAnalysisInput(input)
     const body = { ...(request.analysis_version === 2 ? { analysis_version: 2 } : {}), place: request.place, radius_m: request.radius_m, ...(request.date === null ? {} : { date: request.date }), stations: request.stations, blocks: request.blocks }
