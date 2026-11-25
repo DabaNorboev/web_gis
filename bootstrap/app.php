@@ -38,7 +38,7 @@ return Application::configure(basePath: dirname(__DIR__))
             if (app()->bound('request') && request()->is('api/v1/satellite/*')) {
                 return false;
             }
-            if (app()->bound('request') && request()->is('api/v1/place-analysis')) {
+            if (app()->bound('request') && request()->is('api/v1/place-analysis', 'api/v1/place-analysis/selection')) {
                 Log::error('Place analysis request failed.', ['exception_type' => get_class($error)]);
 
                 return false;
@@ -67,7 +67,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 return response()->json(['code' => 'SATELLITE_TILE_UNAVAILABLE'], 404)
                     ->header('Cache-Control', 'no-store')->header('Referrer-Policy', 'no-referrer');
             }
-            if ($request->is('api/v1/place-analysis')) {
+            if ($request->is('api/v1/place-analysis', 'api/v1/place-analysis/selection')) {
                 if ($error instanceof HttpResponseException) {
                     return null; // Fixed validation and address resolver responses.
                 }
@@ -92,7 +92,7 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
         $exceptions->respond(function ($response) {
-            if (request()->is('api/v1/addresses/resolve-point', 'api/v1/place-analysis', 'api/v1/geocoding/*')) {
+            if (request()->is('api/v1/addresses/resolve-point', 'api/v1/place-analysis', 'api/v1/place-analysis/selection', 'api/v1/geocoding/*')) {
                 $response->headers->set('Cache-Control', 'no-store');
                 $response->headers->set('Referrer-Policy', 'no-referrer');
             }

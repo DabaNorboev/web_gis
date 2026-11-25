@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Services\Analysis\PlaceServiceArea;
 use App\Services\Analysis\RetailPoiProvider;
 use App\Services\Analysis\SatelliteProvider;
 use App\Services\Gis\AnalysisArea;
@@ -19,6 +20,8 @@ class AirSnapshotApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        // These provider tests use their own synthetic coverage, independent of the city gate.
+        $this->mock(PlaceServiceArea::class, fn ($m) => $m->shouldReceive('requireCovered'));
 
         $this->assertSame('sqlite', config('database.default'));
         $this->assertSame(':memory:', config('database.connections.sqlite.database'));

@@ -3,11 +3,11 @@ import type { Map as MapLibreMap, MapSourceDataEvent } from 'maplibre-gl'
 
 const imageryBasemapLayer = 'pa-imagery-basemap'
 
-const googleHybridTiles = 'https://mt1.google.com/vt/lyrs=y&hl=ru&x={x}&y={y}&z={z}'
-const googleTiles = '/api/v1/basemap/imagery/{z}/{x}/{y}'
+const googleSatelliteTiles = 'https://mt1.google.com/vt/lyrs=s&hl=ru&x={x}&y={y}&z={z}'
+const googleTiles = '/api/v1/basemap/imagery/{z}/{x}/{y}?style=satellite'
 
 type Imagery = {
-    provider: 'google_hybrid' | 'google'
+    provider: 'google_direct' | 'google'
     attribution: string
     maxZoom: number
     tileSize: number
@@ -36,9 +36,9 @@ async function loadImagery(instance: MapLibreMap, signal: AbortSignal): Promise<
     })
     if (!result.ok) throw new Error('Imagery metadata unavailable')
     const data = await result.json()
-    if (data?.provider === 'google_hybrid') {
+    if (data?.provider === 'google_direct') {
         return {
-            provider: 'google_hybrid', tiles: googleHybridTiles, maxZoom: 21, tileSize: 256,
+            provider: 'google_direct', tiles: googleSatelliteTiles, maxZoom: 21, tileSize: 256,
             attribution: '© Google',
         }
     }
@@ -55,7 +55,7 @@ async function loadImagery(instance: MapLibreMap, signal: AbortSignal): Promise<
 
 export function useImageryBasemap(options: {
     map: () => MapLibreMap | null
-    baseLayers: () => string[]
+    replacedBaseLayers: () => string[]
     beforeLayer: (instance: MapLibreMap) => string | undefined
 }) {
     const mode = ref<'map' | 'loading' | 'satellite'>('map')
@@ -143,7 +143,7 @@ export function useImageryBasemap(options: {
 
         clearTimeout(firstTileTimer)
         if (mode.value !== 'loading') return
-        for (const id of options.baseLayers()) {
+        for (const id of options.replacedBaseLayers()) {
             if (!instance.getLayer(id)) continue
             const visibility = instance.getLayoutProperty(id, 'visibility') === 'none' ? 'none' : 'visible'
             baseVisibility.set(id, visibility)
@@ -154,7 +154,7 @@ export function useImageryBasemap(options: {
     }
 
     function onMoveEnd() {
-        if (mode.value === 'map' || imagery.value?.provider === 'google_hybrid') return
+        if (mode.value === 'map' || imagery.value?.provider === 'google_direct') return
         clearTimeout(moveTimer)
         moveTimer = setTimeout(() => void refresh(), 250)
     }

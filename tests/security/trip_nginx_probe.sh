@@ -76,11 +76,12 @@ grep -qi 'Cache-Control: no-store' "$audit_dir/point-large.txt"
 printf 'STAGE: point label privacy, no-store and size limit checked\n'
 stage='place analysis body limits and headers'
 # Exact 8 KiB is accepted in memory; the next byte is rejected, including chunked input.
+for selection in '' /selection; do
 for length in 8192 8193; do
  payload=$(head -c "$length" /dev/zero | tr '\0' x)
  for framing in length chunked; do
   {
-   printf 'POST /api/v1/place-analysis?private=SYNTHETIC_PRIVATE_CANARY HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nReferer: http://synthetic.invalid/SYNTHETIC_PRIVATE_CANARY\r\nConnection: close\r\n'
+   printf 'POST /api/v1/place-analysis%s?private=SYNTHETIC_PRIVATE_CANARY HTTP/1.1\r\nHost: localhost\r\nContent-Type: application/json\r\nReferer: http://synthetic.invalid/SYNTHETIC_PRIVATE_CANARY\r\nConnection: close\r\n' "$selection"
    if [ "$framing" = length ]; then
     printf 'Content-Length: %s\r\n\r\n%s' "$length" "$payload"
    else
@@ -97,6 +98,7 @@ for length in 8192 8193; do
   grep -q "\"code\":\"$code\"" "$audit_dir/place-client.txt"
   if grep -q 'SYNTHETIC_PRIVATE_CANARY' "$audit_dir/place-client.txt"; then exit 43; fi
  done
+done
 done
 stage='geocoding body limits and safe errors'
 for operation in search reverse confirm reconfirm; do

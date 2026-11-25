@@ -124,7 +124,7 @@ docker compose up -d --no-deps --wait --wait-timeout 90 php node nginx
 
 ### Спутниковая подложка
 
-На `localhost` без `GOOGLE_MAP_TILES_KEY` браузер напрямую запрашивает гибридные тайлы `mt1.google.com` после включения «Спутника». Этот адрес отсутствует в документации Google Map Tiles API. Для развёртывания включите [Map Tiles API и биллинг](https://developers.google.com/maps/documentation/tile/get-api-key), ограничьте ключ по API и исходящему IP, задайте [квоту 2D Tiles](https://developers.google.com/maps/documentation/tile/usage-and-billing). Укажите ключ в локальном `.env` и обновите кеш конфигурации при его использовании.
+На `localhost` без `GOOGLE_MAP_TILES_KEY` браузер напрямую запрашивает спутниковые тайлы `mt1.google.com` после включения «Спутника». Этот адрес отсутствует в документации Google Map Tiles API. Для развёртывания включите [Map Tiles API и биллинг](https://developers.google.com/maps/documentation/tile/get-api-key), ограничьте ключ по API и исходящему IP, задайте [квоту 2D Tiles](https://developers.google.com/maps/documentation/tile/usage-and-billing). Укажите ключ в локальном `.env` и обновите кеш конфигурации при его использовании.
 
 Ключ и токен сессии остаются на сервере. Браузеру передаются тайлы и заголовки кеширования Google. У проектов с платёжным адресом в ЕЭЗ спутниковые тайлы [могут быть недоступны](https://developers.google.com/maps/comms/eea/map-tiles). [Поведение подложки](frontend-structure.md#карты-и-адаптивность).
 

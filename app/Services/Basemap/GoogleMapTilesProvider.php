@@ -84,7 +84,7 @@ final class GoogleMapTilesProvider
             return null;
         }
 
-        $cacheKey = 'google-map-tiles:hybrid:'.hash('sha256', $key);
+        $cacheKey = 'google-map-tiles:satellite:'.hash('sha256', $key);
         $cached = Cache::get($cacheKey);
         if (is_array($cached)) {
             return $cached;
@@ -95,8 +95,6 @@ final class GoogleMapTilesProvider
 
         $reply = $this->request()->withQueryParameters(['key' => $key])->post('/v1/createSession', [
             'mapType' => 'satellite',
-            'layerTypes' => ['layerRoadmap'],
-            'overlay' => false,
             'language' => 'ru-RU',
             'region' => 'RU',
         ]);

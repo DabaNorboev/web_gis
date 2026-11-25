@@ -21,6 +21,9 @@ use Illuminate\Support\Facades\Route;
 Route::post('v1/place-analysis', PlaceAnalysisController::class)
     ->middleware([LimitPlaceAnalysisRequest::class, 'throttle:60,1,place-analysis']);
 
+Route::post('v1/place-analysis/selection', [PlaceAnalysisController::class, 'selection'])
+    ->middleware([LimitPlaceAnalysisRequest::class, 'throttle:120,1,place-selection']);
+
 Route::get('v1/air/snapshots/{snapshot}/hour', AirSnapshotHourController::class)
     ->where('snapshot', '[a-f0-9]{64}')
     ->middleware('throttle:60,1,air-hour');

@@ -6,7 +6,9 @@ use App\Http\Requests\PlaceAnalysisRequest;
 use App\Services\Addresses\AddressProfileService;
 use App\Services\Addresses\AddressResolverService;
 use App\Services\Analysis\PlaceAnalysisService;
+use App\Services\Analysis\PlaceServiceArea;
 use App\Services\Analysis\RetailPoiProvider;
+use App\Services\Geocoding\GeocodingScope;
 use App\Services\Gis\AnalysisArea;
 use Illuminate\Routing\RouteCollection;
 use Illuminate\Support\Facades\Http;
@@ -23,6 +25,48 @@ class PlaceAnalysisApiTest extends TestCase
 
     private const MAP = ['analysis_area' => ['type' => 'Polygon', 'coordinates' => [[[0, 0], [1, 0], [1, 1], [0, 0]]]],
         'analysis_bounds' => [0, 0, 1, 1]];
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->mock(GeocodingScope::class, fn ($m) => $m->shouldReceive('covers')->andReturn(true));
+    }
+
+    public function test_selection_validates_coordinates_and_distinguishes_outside_from_unavailable(): void
+    {
+        $this->mock(GeocodingScope::class, function ($m) {
+            $m->shouldReceive('covers')->with(['lon' => .12, 'lat' => .23])->once()->andReturn(true);
+            $m->shouldReceive('covers')->with(['lon' => .24, 'lat' => .36])->twice()->andReturn(false);
+            $m->shouldReceive('covers')->with(['lon' => .36, 'lat' => .48])->once()->andThrow(new RuntimeException('private-canary'));
+        });
+        $this->mock(AnalysisArea::class, fn ($m) => $m->shouldNotReceive('forPoint'));
+        $path = self::PATH.'/selection';
+        $this->postJson($path, ['lon' => .12, 'lat' => .23])->assertOk()->assertExactJson(['status' => 'INSIDE'])
+            ->assertHeader('Cache-Control', 'no-store, private')->assertHeader('Referrer-Policy', 'no-referrer');
+        $this->postJson($path, ['lon' => .24, 'lat' => .36])->assertUnprocessable()->assertJsonPath('code', 'OUTSIDE_SERVICE_AREA');
+        $this->postJson(self::PATH, ['place' => ['kind' => 'point', 'lon' => .24, 'lat' => .36]])
+            ->assertUnprocessable()->assertJsonPath('code', 'OUTSIDE_SERVICE_AREA')->assertJsonMissingPath('blocks');
+        $this->postJson($path, ['lon' => .36, 'lat' => .48])->assertStatus(503)
+            ->assertJsonPath('code', 'SERVICE_AREA_UNAVAILABLE')->assertDontSee('private-canary');
+        $this->postJson($path.'?private-canary=1', ['lon' => .12, 'lat' => .23])->assertUnprocessable()->assertDontSee('private-canary');
+        $this->postJson($path, ['lon' => '0.12', 'lat' => .23])->assertUnprocessable()->assertJsonPath('code', 'INVALID_REQUEST');
+        $this->postJson($path, ['lon' => .12, 'lat' => .23, 'unexpected' => 'private-canary'])
+            ->assertUnprocessable()->assertDontSee('private-canary');
+    }
+
+    public function test_outside_address_is_rejected_using_the_resolved_coordinates(): void
+    {
+        $address = ['id' => 'osm:way:1', 'object' => ['lon' => .4, 'lat' => .5]];
+        $resolver = Mockery::mock(AddressResolverService::class)->makePartial();
+        $resolver->shouldReceive('snapshots')->once()->with(true)->andReturn([]);
+        $resolver->shouldReceive('resolve')->once()->with('osm:way:1', [])->andReturn($address);
+        $this->app->instance(AddressResolverService::class, $resolver);
+        $this->mock(GeocodingScope::class, fn ($m) => $m->shouldReceive('covers')->once()->with(['lon' => .4, 'lat' => .5])->andReturn(false));
+        $this->mock(AnalysisArea::class, fn ($m) => $m->shouldNotReceive('forPoint'));
+
+        $this->postJson(self::PATH, ['place' => ['kind' => 'address', 'address_id' => 'osm:way:1']])
+            ->assertUnprocessable()->assertJsonPath('code', 'OUTSIDE_SERVICE_AREA')->assertJsonMissingPath('blocks');
+    }
 
     private function area(float $lon = .12, float $lat = .23, int $radius = 500): void
     {
@@ -192,7 +236,7 @@ class PlaceAnalysisApiTest extends TestCase
     public function test_block_failure_is_independent_and_safe(): void
     {
         $this->area();
-        $service = Mockery::mock(PlaceAnalysisService::class, [app(AddressResolverService::class), app(AnalysisArea::class), app(RetailPoiProvider::class)])
+        $service = Mockery::mock(PlaceAnalysisService::class, [app(AddressResolverService::class), app(AnalysisArea::class), app(RetailPoiProvider::class), app(PlaceServiceArea::class)])
             ->makePartial()->shouldAllowMockingProtectedMethods();
         $service->shouldReceive('calculateBlock')->once()->with('poi', Mockery::type('array'), 500)->andThrow(new RuntimeException('private-canary'));
         $this->app->instance(PlaceAnalysisService::class, $service);
@@ -205,7 +249,7 @@ class PlaceAnalysisApiTest extends TestCase
     public function test_satellite_error_does_not_claim_catalog_coverage_or_completeness(): void
     {
         $this->area();
-        $service = Mockery::mock(PlaceAnalysisService::class, [app(AddressResolverService::class), app(AnalysisArea::class), app(RetailPoiProvider::class)])
+        $service = Mockery::mock(PlaceAnalysisService::class, [app(AddressResolverService::class), app(AnalysisArea::class), app(RetailPoiProvider::class), app(PlaceServiceArea::class)])
             ->makePartial()->shouldAllowMockingProtectedMethods();
         $service->shouldReceive('calculateBlock')->once()->with('satellite', Mockery::type('array'), 500)->andThrow(new RuntimeException('private-canary'));
         $this->app->instance(PlaceAnalysisService::class, $service);

@@ -4,6 +4,7 @@ namespace Tests\Integration;
 
 use App\Services\Addresses\AddressResolverService;
 use App\Services\Air\AirStationDistances;
+use App\Services\Gis\GeoJsonBoundary;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -51,11 +52,52 @@ class PlaceAnalysisTest extends PostgisTestCase
         $this->assertEquals($before, DB::selectOne("SELECT current_setting('statement_timeout') AS timeout"));
     }
 
+    public function test_area_accepts_its_real_boundary_and_rejects_the_outside_buffer(): void
+    {
+        $geometry = app(GeoJsonBoundary::class)->geometry(file_get_contents(config('geocoding.scope_path')));
+        $samples = DB::selectOne(<<<'SQL'
+            WITH city AS (SELECT ST_GeomFromGeoJSON(?) AS geom),
+            western_vertex AS (
+                SELECT d.geom AS point FROM city CROSS JOIN LATERAL ST_DumpPoints(city.geom) AS d(path, geom)
+                ORDER BY ST_X(d.geom) LIMIT 1
+            )
+            SELECT ST_X(point) AS lon, ST_Y(point) AS lat,
+                ST_X(ST_Project(point::geography, 50, radians(270))::geometry) AS outside_lon,
+                ST_Y(ST_Project(point::geography, 50, radians(270))::geometry) AS outside_lat
+            FROM western_vertex
+            SQL, [$geometry]);
+        $edge = ['lon' => $samples->lon, 'lat' => $samples->lat];
+        $outside = ['lon' => $samples->outside_lon, 'lat' => $samples->outside_lat];
+        $this->postJson('/api/v1/place-analysis/selection', $edge)->assertOk()->assertExactJson(['status' => 'INSIDE']);
+        foreach ([$outside, ['lon' => 0, 'lat' => 0]] as $point) {
+            $this->postJson('/api/v1/place-analysis/selection', $point)->assertUnprocessable()->assertJsonPath('code', 'OUTSIDE_SERVICE_AREA');
+            $this->postJson('/api/v1/place-analysis', ['place' => ['kind' => 'point'] + $point])
+                ->assertUnprocessable()->assertJsonPath('code', 'OUTSIDE_SERVICE_AREA')->assertJsonMissingPath('analysis_area');
+        }
+        $outsideData = DB::selectOne('SELECT ST_DWithin(ST_GeomFromGeoJSON(?)::geography, ST_SetSRID(ST_MakePoint(?, ?), 4326)::geography, 1000) AS within_buffer',
+            [$geometry, $outside['lon'], $outside['lat']]);
+        $this->assertTrue($outsideData->within_buffer);
+        $response = $this->postJson('/api/v1/place-analysis', ['place' => ['kind' => 'point'] + $edge, 'radius_m' => 1000])
+            ->assertOk()->assertJsonPath('radius_m', 1000);
+        $check = DB::selectOne('SELECT ST_Covers(ST_GeomFromGeoJSON(?), ST_SetSRID(ST_MakePoint(?, ?), 4326)) AS includes_outside',
+            [json_encode($response->json('analysis_area')), $outside['lon'], $outside['lat']]);
+        $this->assertTrue($check->includes_outside);
+    }
+
+    public function test_boundary_unavailability_is_an_explicit_server_error(): void
+    {
+        config(['geocoding.scope_path' => resource_path('gis/missing-test-boundary.geojson')]);
+        $this->postJson('/api/v1/place-analysis/selection', ['lon' => 92.85, 'lat' => 56.01])
+            ->assertStatus(503)->assertJsonPath('code', 'SERVICE_AREA_UNAVAILABLE')->assertDontSee('missing-test-boundary');
+        $this->postJson('/api/v1/place-analysis', ['place' => ['kind' => 'point', 'lon' => 92.85, 'lat' => 56.01]])
+            ->assertStatus(503)->assertJsonPath('code', 'SERVICE_AREA_UNAVAILABLE');
+    }
+
     public function test_real_geography_circle_at_both_limits_without_any_provider_coverage(): void
     {
         $before = DB::selectOne("SELECT current_setting('statement_timeout') AS statement, current_setting('lock_timeout') AS lock");
-        // Synthetic points, including a point far outside the service territory. No imports or fixtures.
-        foreach ([[92.9, 56.0], [0.0, 0.0]] as [$lon, $lat]) {
+        // Synthetic points inside the city. No provider imports or fixtures.
+        foreach ([[92.9, 56.0], [92.8523, 56.0095]] as [$lon, $lat]) {
             foreach ([200, 1000] as $radius) {
                 $r = $this->postJson('/api/v1/place-analysis', [
                     'place' => ['kind' => 'point', 'lon' => $lon, 'lat' => $lat], 'radius_m' => $radius,
