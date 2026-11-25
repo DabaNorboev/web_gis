@@ -21,7 +21,7 @@ final class ImageryBasemapController
 
         $imagery = $provider->configured()
             ? $provider->viewport($input)
-            : (in_array($request->getHost(), ['localhost', '127.0.0.1', '[::1]'], true) ? ['provider' => 'google_hybrid'] : null);
+            : (in_array($request->getHost(), ['localhost', '127.0.0.1', '[::1]'], true) ? ['provider' => 'google_direct'] : null);
         if ($imagery === null) {
             return response()->json(['code' => 'IMAGERY_UNAVAILABLE'], 503, ['Cache-Control' => 'no-store']);
         }

@@ -185,11 +185,11 @@ test('satellite basemap refreshes attribution and preserves terrain and analysis
     expect(analysisRequests).toHaveLength(requestCount)
 })
 
-test('satellite basemap restores the vector map after a failure and retries with Google hybrid', async ({ page }) => {
+test('satellite basemap restores the vector map after a failure and retries with clean Google satellite tiles', async ({ page }) => {
     let available = false
     const tileRequests = []
     await page.route('**/api/v1/basemap/imagery/viewport', route => route.fulfill(available
-        ? { json: { provider: 'google_hybrid' } } : { status: 503, json: { code: 'IMAGERY_UNAVAILABLE' } }))
+        ? { json: { provider: 'google_direct' } } : { status: 503, json: { code: 'IMAGERY_UNAVAILABLE' } }))
     await page.route(/^https:\/\/mt1\.google\.com\/vt\//, route => {
         tileRequests.push(route.request().url())
         return route.fulfill({
@@ -212,7 +212,7 @@ test('satellite basemap restores the vector map after a failure and retries with
     await expect(credit).toContainText('© Google')
     await expect(page.getByText('Дата съёмки не указана', { exact: true })).toBeVisible()
     expect(tileRequests).not.toHaveLength(0)
-    expect(tileRequests[0]).toMatch(/^https:\/\/mt1\.google\.com\/vt\/lyrs=y&hl=ru&x=\d+&y=\d+&z=\d+$/)
+    expect(tileRequests[0]).toMatch(/^https:\/\/mt1\.google\.com\/vt\/lyrs=s&hl=ru&x=\d+&y=\d+&z=\d+$/)
     const firstZoom = Number(tileRequests[0].match(/&z=(\d+)$/)[1])
     await page.evaluate(() => window.__smokeMapIn('.pa-map').jumpTo({ zoom: 18 }))
     await expect.poll(() => tileRequests.some(url => Number(url.match(/&z=(\d+)$/)?.[1]) > Math.max(14, firstZoom))).toBe(true)

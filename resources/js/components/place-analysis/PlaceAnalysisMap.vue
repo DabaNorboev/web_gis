@@ -86,7 +86,7 @@ let terrainLoadTimer: ReturnType<typeof setTimeout> | undefined
 let map: MapLibreMap | null = null
 const imageryBasemap = useImageryBasemap({
     map: () => map,
-    baseLayers: () => baseStyle().layers.map(layer => layer.id),
+    replacedBaseLayers: () => baseStyle().layers.filter(layer => layer.id !== 'road_label').map(layer => layer.id),
     // Anchor inside the basemap. getStyle() omits the custom layers masking NDVI.
     beforeLayer: instance => instance.getLayer(buildingsLayerId)
         ? buildingsLayerId : firstLabelLayer(instance) ?? baseStyle().layers.at(-1)?.id,

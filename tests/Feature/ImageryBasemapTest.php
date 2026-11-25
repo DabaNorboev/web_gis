@@ -25,10 +25,10 @@ final class ImageryBasemapTest extends TestCase
         $this->postJson('/api/v1/basemap/imagery/viewport', self::VIEWPORT)
             ->assertOk()
             ->assertHeader('Cache-Control', 'no-store, private')
-            ->assertExactJson(['provider' => 'google_hybrid']);
+            ->assertExactJson(['provider' => 'google_direct']);
         $this->postJson('http://127.0.0.1/api/v1/basemap/imagery/viewport', self::VIEWPORT)
             ->assertOk()
-            ->assertExactJson(['provider' => 'google_hybrid']);
+            ->assertExactJson(['provider' => 'google_direct']);
         $this->postJson('https://placelens.example/api/v1/basemap/imagery/viewport', self::VIEWPORT)
             ->assertStatus(503)
             ->assertExactJson(['code' => 'IMAGERY_UNAVAILABLE']);
@@ -69,7 +69,7 @@ final class ImageryBasemapTest extends TestCase
 
         Http::assertSentCount(5);
         Http::assertSent(fn (Request $request) => str_contains($request->url(), '/v1/createSession?key=TEST_MAP_KEY')
-            && $request['mapType'] === 'satellite' && $request['layerTypes'] === ['layerRoadmap'] && $request['overlay'] === false);
+            && $request['mapType'] === 'satellite' && ! isset($request['layerTypes']) && ! isset($request['overlay']));
         Http::assertSent(fn (Request $request) => str_contains($request->url(), '/tile/v1/viewport?')
             && str_contains($request->url(), 'north=56.08') && str_contains($request->url(), 'session=TEST_MAP_SESSION'));
         Http::assertSent(fn (Request $request) => str_contains($request->url(), '/v1/2dtiles/14/12417/5101?')
