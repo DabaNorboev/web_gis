@@ -1,6 +1,6 @@
 ---
 status: history
-updated: 2026-11-22
+updated: 2026-11-25
 verified: not verified
 ---
 
@@ -23,6 +23,13 @@ verified: not verified
 - [Исторические фрагменты контрактов и прежние результаты проверок](ui-contract-notes-2026-11-01.md).
 
 ## Протоколы функций и проверок
+
+- [Пилот пеших изохрон для POI](walking-isochrone-pilot-2026-11-25.md).
+
+- [Г6.1. Диагностика адресного поиска](geocoding-g61-2026-11-25.md).
+- [Сравнение Geoapify и Photon на 60 запросах](geocoder-comparison-2026-11-25.md).
+
+- [Замер типового сеанса PlaceLens](place-analysis-performance-2026-11-25.md).
 
 - [Локальные проверки MVP, А11 и карточки PM₂.₅ в А12](mvp-air-checks-2026-11-22.md).
 - [Подбор и подготовка городских спутниковых выпусков А9.4–А9.6](satellite-city-preparation-2026-11-06.md).
