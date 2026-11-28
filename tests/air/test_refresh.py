@@ -4,6 +4,7 @@ import importlib.util
 import multiprocessing
 import os
 from pathlib import Path
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -36,6 +37,13 @@ def source(url, params, value=0, *, end=END, hours=4):
         {'site': 1001, 'time': (begin + dt.timedelta(hours=1)).isoformat(sep=' '), 'pm25': None},
         {'site': 1001, 'time': (begin + dt.timedelta(hours=3)).isoformat(sep=' ')},
     ])
+
+
+def source_single(url, params, end):
+    if url.endswith('/projects/9'):
+        return source(url, params)
+    begin = A11.hour(end) - dt.timedelta(hours=1)
+    return response([{'site': 1001, 'time': begin.isoformat(sep=' '), 'pm25': 0, 'pm10': 0}])
 
 
 def broken_publication(path, state):
@@ -129,6 +137,67 @@ class RefreshTest(unittest.TestCase):
             self.assertEqual(A11.decode((corrected / 'input/raw/hourly.json').read_bytes())['data'][0]['pm25'], 14)
             REFRESH.verify_release(corrected, pin)
 
+    def archive(self, query):
+        with sqlite3.connect(self.root / 'hourly-history.sqlite3') as db:
+            return db.execute(query).fetchall()
+
+    def test_year_archive_deduplicates_tracks_corrections_and_outlives_raw_releases(self):
+        refresh(self.root)
+        first = self.active()['snapshot_version']
+        refresh(self.root)
+        self.assertEqual(self.archive('SELECT COUNT(*) FROM observations'), [(6,)])
+        self.assertEqual(self.archive('SELECT COUNT(*) FROM revisions'), [(0,)])
+        self.assertEqual(self.archive("""
+            SELECT indicator, value, field_present
+            FROM observations WHERE observed_at_raw = '2026-08-09 00:00:00' ORDER BY indicator
+        """), [('pm10', 0, 1), ('pm2_5', 0, 1)])
+        self.assertEqual(self.archive("""
+            SELECT observed_at_raw, field_present FROM observations
+            WHERE indicator = 'pm2_5' AND value IS NULL ORDER BY observed_at_raw
+        """), [('2026-08-09 01:00:00', 1), ('2026-08-09 03:00:00', 0)])
+        old = self.root / 'releases' / first
+        expired = dt.datetime.now(dt.timezone.utc).timestamp() - 2 * 86400
+        os.utime(old, (expired, expired))
+        refresh(self.root, lambda u, p: source(u, p, 14))
+        corrected = self.active()['snapshot_version']
+        self.assertFalse(old.exists())
+        [(value, version, replaced_by, refs)] = self.archive(
+            'SELECT value, snapshot_version, replaced_by, raw_references FROM revisions'
+        )
+        self.assertEqual((value, version, replaced_by), (0, first, corrected))
+        self.assertEqual(A11.decode(refs)[0]['raw_index'], 0)
+        self.assertRegex(A11.decode(refs)[0]['sha256'], '^[a-f0-9]{64}$')
+        self.assertEqual(self.archive("SELECT value FROM observations WHERE snapshot_version = '" + corrected + "'"), [(14,)])
+
+        boundary = '2027-08-09 00:00:00'
+        REFRESH.refresh(self.root, STATIONS, boundary, 1, 1,
+                        lambda u, p: source_single(u, p, boundary))
+        self.assertEqual(self.archive('SELECT COUNT(*) FROM revisions'), [(1,)])
+        later = '2027-08-09 01:00:00'
+        REFRESH.refresh(self.root, STATIONS, later, 1, 1,
+                        lambda u, p: source_single(u, p, later))
+        self.assertEqual(self.archive('SELECT COUNT(*) FROM revisions'), [(0,)])
+        self.assertEqual(self.archive('SELECT MIN(observed_at_raw) FROM observations'), [('2026-08-09 01:00:00',)])
+
+    def test_archive_recovers_active_version_after_interrupted_write(self):
+        refresh(self.root)
+        original_record = REFRESH.history.record
+
+        def fail_new_archive(database, release, pin, manifest, snapshot):
+            if pin == self.active()['snapshot_version'] and manifest['window_raw']['end_exclusive'] != END:
+                raise sqlite3.OperationalError('Synthetic archive failure')
+            original_record(database, release, pin, manifest, snapshot)
+
+        newer = '2026-08-10 04:00:00'
+        with patch.object(REFRESH.history, 'record', side_effect=fail_new_archive):
+            with self.assertRaises(sqlite3.OperationalError):
+                REFRESH.refresh(self.root, STATIONS, newer, 4, 1, lambda u, p: source(u, p, end=newer))
+        self.assertEqual(self.archive('SELECT end_exclusive FROM archive_state'), [(END,)])
+        last = '2026-08-11 04:00:00'
+        REFRESH.refresh(self.root, STATIONS, last, 4, 1, lambda u, p: source(u, p, end=last))
+        self.assertEqual(self.archive('SELECT end_exclusive FROM archive_state'), [(last,)])
+        self.assertEqual(self.archive('SELECT COUNT(*) FROM observations'), [(18,)])
+
     def test_failed_source_inventory_or_publication_does_not_replace_active_release(self):
         refresh(self.root)
         prior = (self.root / 'active.json').read_bytes()
@@ -151,8 +220,24 @@ class RefreshTest(unittest.TestCase):
                 refresh(self.root, lambda u, p: source(u, p, 17))
         self.assertEqual((self.root / 'active.json').read_bytes(), prior)
         self.assertNotEqual((self.root / 'attempt.json').read_bytes(), attempt)
+        self.assertEqual(self.archive('SELECT COUNT(*) FROM revisions'), [(0,)])
         pin = self.active()['snapshot_version']
         REFRESH.verify_release(self.root / 'releases' / pin, pin)
+
+    def test_local_station_list_controls_refresh_and_rejects_invalid_ids_before_fetch(self):
+        profile = self.root / 'station-ids.json'
+        transport = Mock(wraps=source)
+        profile.write_bytes(A11.encode(STATIONS))
+        self.assertEqual(REFRESH.refresh(self.root, [1001], END, 4, 1, transport), 'ready')
+        active = self.active()
+        self.assertEqual(transport.call_args.args[1]['sites'], '1001,1002')
+        transport.reset_mock()
+        for invalid in ([1001, 1001], [True], ['1001'], {'ids': STATIONS}):
+            profile.write_bytes(A11.encode(invalid))
+            with self.assertRaises(ValueError):
+                REFRESH.refresh(self.root, [1001], END, 4, 1, transport)
+        transport.assert_not_called()
+        self.assertEqual(self.active(), active)
 
     def test_network_deadline_applies_to_the_entire_acquisition(self):
         def hanging_source(*_):

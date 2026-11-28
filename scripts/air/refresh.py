@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import shutil
 import signal
+import sqlite3
 import stat
 import sys
 import tempfile
@@ -19,6 +20,9 @@ import urllib.request
 SPEC = importlib.util.spec_from_file_location('air_snapshot', Path(__file__).with_name('import-snapshot.py'))
 snapshot = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(snapshot)
+HISTORY_SPEC = importlib.util.spec_from_file_location('annual_history', Path(__file__).with_name('annual_history.py'))
+history = importlib.util.module_from_spec(HISTORY_SPEC)
+HISTORY_SPEC.loader.exec_module(history)
 BASE_URL = 'https://air.krasn.ru/api/2.0'
 EVIDENCE = Path(__file__).parents[2] / 'tests/Fixtures/air/a11-1-v1'
 MAX_HOURS = 168
@@ -164,11 +168,22 @@ def prune(releases, keep, retention_days):
             shutil.rmtree(entry)
 
 
+def configured_stations(root, fallback):
+    profile = root / 'station-ids.json'
+    if profile.is_symlink():
+        raise ValueError('Station list cannot be a symlink')
+    if profile.exists():
+        snapshot.require(profile.is_file(), 'Invalid station list file')
+        with profile.open('rb') as stream:
+            body = stream.read(2049)
+        snapshot.require(len(body) <= 2048, 'Station list exceeds byte budget')
+        return snapshot.decode(body)
+    return fallback
+
+
 def refresh(root, station_ids, end_raw, hours, retention_days, transport=fetch):
     end = snapshot.hour(end_raw)
     snapshot.require(1 <= hours <= MAX_HOURS and 1 <= retention_days <= 3650, 'Invalid window or retention')
-    snapshot.require(1 <= len(station_ids) <= MAX_STATIONS and len(station_ids) == len(set(station_ids))
-                     and all(1 <= s <= 2**53 - 1 for s in station_ids), 'Invalid station IDs')
     window = {'begin_inclusive': (end - dt.timedelta(hours=hours)).isoformat(sep=' '), 'end_exclusive': end_raw}
     root.mkdir(parents=True, exist_ok=True)
     with (root / '.update.lock').open('a') as update_lock:
@@ -176,11 +191,17 @@ def refresh(root, station_ids, end_raw, hours, retention_days, transport=fetch):
             fcntl.flock(update_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return 'busy'
+        station_ids = configured_stations(root, station_ids)
+        snapshot.require(isinstance(station_ids, list) and 1 <= len(station_ids) <= MAX_STATIONS
+                         and all(type(s) is int and 1 <= s <= 2**53 - 1 for s in station_ids)
+                         and len(station_ids) == len(set(station_ids)), 'Invalid station IDs')
         write_atomic(root / 'attempt.json', {'last_attempt_at': now()})
         releases = root / 'releases'
         releases.mkdir(exist_ok=True)
         active_path = root / 'active.json'
         active_pin = None
+        active_manifest = None
+        archive = root / 'hourly-history.sqlite3'
         try:
             active = snapshot.decode(active_path.read_bytes())
             existing = active.get('snapshot_version') if isinstance(active, dict) else None
@@ -190,6 +211,7 @@ def refresh(root, station_ids, end_raw, hours, retention_days, transport=fetch):
                 if end < active_end:
                     return 'older_window'
                 active_pin = existing
+                active_manifest = manifest
         except (OSError, ValueError, KeyError, TypeError):
             pass  # A new verified release can repair damaged local state.
 
@@ -200,7 +222,7 @@ def refresh(root, station_ids, end_raw, hours, retention_days, transport=fetch):
             candidate = staging / 'release'
             snapshot.import_snapshot(staging / 'input', candidate)
             pin = snapshot.digest((candidate / 'manifest.json').read_bytes())
-            verify_release(candidate, pin)
+            candidate_manifest = verify_release(candidate, pin)
             coverage = snapshot.decode((candidate / 'coverage.json').read_bytes())
             last_observed = max((s['last_observed_at_raw'] for s in coverage if s['last_observed_at_raw']), default=None)
             if active_pin is not None and active.get('fingerprint') == fingerprint:
@@ -211,12 +233,17 @@ def refresh(root, station_ids, end_raw, hours, retention_days, transport=fetch):
                     verify_release(destination, pin)
                 else:
                     candidate.rename(destination)
+            if active_pin is not None and active_pin != pin:
+                history.record(archive, releases / active_pin, active_pin, active_manifest, snapshot)
             with (root / '.publish.lock').open('a') as publish_lock:
                 fcntl.flock(publish_lock, fcntl.LOCK_EX)
                 write_atomic(active_path, {
                     'snapshot_version': pin, 'fingerprint': fingerprint,
                     'last_success_at': now(), 'last_observed_at_raw': last_observed,
                 })
+            # Recover an interrupted archive write from the current active release on the next run.
+            history.record(archive, releases / pin, pin,
+                           active_manifest if pin == active_pin else candidate_manifest, snapshot)
             try:
                 prune(releases, pin, retention_days)
             except OSError:
@@ -234,7 +261,7 @@ def main():
     args = parser.parse_args()
     try:
         print(refresh(args.root, list(map(int, args.stations.split(','))), args.end, args.hours, args.retention_days))
-    except (ValueError, KeyError, TypeError, OSError, OverflowError, AttributeError, IndexError) as error:
+    except (ValueError, KeyError, TypeError, OSError, OverflowError, AttributeError, IndexError, sqlite3.Error) as error:
         print('Air refresh rejected: ' + type(error).__name__, file=sys.stderr)
         return 1
     return 0
