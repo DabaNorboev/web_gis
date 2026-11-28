@@ -811,7 +811,7 @@ test('station markers default to the last numeric hour and restore it after a ma
     const automatic = page.getByRole('region', { name: 'Последний час PM2,5' })
     await expect(automatic.locator('time')).toHaveText(displayedHour(1))
     const marker = stationMarker(page, '1001')
-    await expect(marker).toHaveText('0')
+    await expect(marker.locator('.pa-map-station__hour')).toHaveText('0')
     await expect(marker).toHaveAccessibleName(/PM2,5 · 0 мкг\/м³/)
     await expect(stationMarker(page, '1002')).toHaveText('—')
     await expect(stationMarker(page, '1003')).toHaveText('∅')
@@ -827,10 +827,11 @@ test('station markers default to the last numeric hour and restore it after a ma
     await hours.first().click()
     const manual = page.getByRole('region', { name: 'Выбранный час PM2,5' })
     await expect(manual.locator('time')).toHaveText(displayedHour(0))
-    await expect(marker).toHaveText('18,6')
+    await expect(marker.locator('.pa-map-station__hour')).toHaveText('18,6')
+    await expect(marker.locator('.pa-map-station__name')).toHaveText('Станция Альфа')
     await manual.getByRole('button', { name: 'Вернуться к последнему часу' }).click()
     await expect(automatic.locator('time')).toHaveText(displayedHour(1))
-    await expect(marker).toHaveText('0')
+    await expect(marker.locator('.pa-map-station__hour')).toHaveText('0')
     expect(hourCalls).toEqual([1, 0, 1].map(index => [observed.summary.snapshot_version, hour(index)]))
 
     current = empty
