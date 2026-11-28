@@ -1,3 +1,4 @@
+import { openMapLayers } from './support/map-controls.mjs'
 import { test, expect } from '@playwright/test'
 import { markSelectedSatelliteUnusable, responseFor } from '../frontend/fixtures/place-analysis.mjs'
 
@@ -105,6 +106,7 @@ test('two dates, TCI/NDVI, legend, coverage scope, opacity 0/100%, order and per
     await expect(page.getByText('Версии', { exact: true })).toHaveCount(0)
     await expect(page.getByText('Synthetic early-spring snow and phenology note; not a summer state.')).toBeVisible()
     await expect(page.locator('.pa-sat-meta > div').filter({ hasText: 'Средний NDVI' }).locator('dd')).toContainText('0,31')
+    await openMapLayers(page)
     await expect(page.getByText('Неизвестно / исключено маской')).toBeVisible()
     await expect(page.getByText('NDVI 0.8 … 1')).toBeVisible()
     const guide = page.locator('.pa-guide summary')
@@ -226,6 +228,8 @@ test('an open date comparison refreshes for the new analysis radius', async ({ p
     const radius = page.getByRole('spinbutton', { name: 'Радиус анализа:', exact: true })
     await radius.fill('1000')
     await radius.press('Tab')
+    await expect(table.getByRole('cell', { name: '0,31', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Пересчитать для 1000 м', exact: true }).click()
     await expect.poll(() => !!state.held()).toBe(true)
     await expect(table).toBeHidden()
     const request = state.held().request().postDataJSON()
@@ -368,6 +372,7 @@ test('keyboard controls, short screens and narrow layout keep the satellite UI u
     const mode = page.getByRole('button', { name: 'NDVI', exact: true })
     await mode.focus(); await page.keyboard.press('Enter')
     await expect(mode).toHaveAttribute('aria-pressed', 'true')
+    await openMapLayers(page)
     const checkbox = page.locator('[data-layer-key="satellite"] input[type="checkbox"]')
     await checkbox.focus(); await page.keyboard.press('Space')
     await expect(checkbox).not.toBeChecked()
@@ -412,6 +417,7 @@ test('circle display masks raster pixels only, follows camera, and survives mode
     await expectReady(page)
     const scope = page.getByLabel('Область спутникового слоя')
     await expect(scope).toHaveValue('territory')
+    await openMapLayers(page)
     await page.locator('[data-layer-key="radius"] input[type="checkbox"]').uncheck()
     await setOpacity(page, page.getByLabel('Непрозрачность спутникового слоя'), '1')
     await expect.poll(() => page.evaluate(() => window.__smokeMapIn('.pa-map').areTilesLoaded())).toBe(true)
@@ -471,6 +477,7 @@ test('circle display masks raster pixels only, follows camera, and survives mode
 
 test('satellite controls have one owner and NDVI legend preserves manual state across the page lifecycle', async ({ page }, testInfo) => {
     const state = await setup(page)
+    await openMapLayers(page)
     const layers = page.locator('.pa-layers')
     const legend = layers.getByRole('button', { name: 'Легенда NDVI', exact: true })
     const body = page.locator('#pa-ndvi-legend-body')
@@ -542,6 +549,7 @@ test('satellite controls have one owner and NDVI legend preserves manual state a
     })
     await page.locator('.pa-map').press('Enter')
     await page.getByRole('button', { name: 'Анализировать точку', exact: true }).click()
+    await openMapLayers(page)
     await expect(card(page).getByRole('status')).toHaveText('Наблюдение готово')
     await expect(legend).toHaveAttribute('aria-expanded', 'false')
     await openSatellite(page)
@@ -556,7 +564,8 @@ test('satellite controls have one owner and NDVI legend preserves manual state a
     await legend.focus(); await page.keyboard.press('Enter')
     await expect(body).toBeVisible()
     // The panel itself remains collapsible even when its contents need scrolling.
-    const panelToggle = layers.getByRole('button', { name: 'Слои карты', exact: true })
+    const mobileToggle = page.locator('.pa-map-settings-toggle')
+    const panelToggle = await mobileToggle.isVisible() ? mobileToggle : page.locator('.pa-map-layers-toggle')
     await panelToggle.focus(); await page.keyboard.press('Enter')
     await expect(panelToggle).toHaveAttribute('aria-expanded', 'false')
     await expect(legend).toBeHidden()

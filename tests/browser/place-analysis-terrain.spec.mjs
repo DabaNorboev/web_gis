@@ -1,3 +1,4 @@
+import { openMapLayers, openMapSettings } from './support/map-controls.mjs'
 import { expect, test } from '@playwright/test'
 import { GeoJSONVT } from '@maplibre/geojson-vt'
 import { fromGeojsonVt } from '@maplibre/vt-pbf'
@@ -34,6 +35,7 @@ async function openAnalysis(page) {
     })
     await page.route('**/api/v1/satellite/**', route => route.fulfill({ contentType: 'image/png', body: satellitePng }))
     await page.goto('/')
+    await openMapSettings(page)
     const mode = page.getByRole('group', { name: 'Режим карты' })
     const flat = mode.getByRole('button', { name: '2D', exact: true })
     const relief = mode.getByRole('button', { name: '3D', exact: true })
@@ -45,6 +47,7 @@ async function openAnalysis(page) {
     await page.getByRole('button', { name: 'Анализировать точку', exact: true }).press('Enter')
     const marker = page.locator('.pa-map-marker[data-poi-id="osm:node:1"]')
     await expect(marker).toBeVisible()
+    await openMapSettings(page)
     return { mode, flat, relief, marker, analysisRequests }
 }
 
@@ -73,7 +76,7 @@ test('3D loads terrain on demand and preserves the analysis and camera across mo
     expect(initial.circle.geometry.type).toBe('Polygon')
 
     const controlBounds = await mode.boundingBox()
-    const zoomControls = await page.locator('.pa-map .maplibregl-ctrl-top-right .maplibregl-ctrl-group').boundingBox()
+    const zoomControls = await page.locator('.pa-map-zoom').boundingBox()
     expect(controlBounds.x + controlBounds.width).toBeLessThan(zoomControls.x)
     await relief.press('Space')
     await expect(relief).toHaveAttribute('aria-pressed', 'true')
@@ -131,6 +134,11 @@ test('satellite basemap refreshes attribution and preserves terrain and analysis
     const vectorButton = basemap.getByRole('button', { name: 'Карта', exact: true })
     const imageryButton = basemap.getByRole('button', { name: 'Спутник', exact: true })
     const credit = page.locator('.pa-imagery-credit')
+    const vectorCredit = page.locator('.pa-map .maplibregl-ctrl-attrib-inner')
+    await expect(vectorCredit).toBeVisible()
+    await expect(vectorCredit).toHaveText(/(?:^| \| )© OpenMapTiles · © OpenStreetMap(?: \| |$)/)
+    await expect(vectorCredit.getByRole('link', { name: 'OpenMapTiles' })).toHaveAttribute('href', 'https://openmaptiles.org/')
+    await expect(vectorCredit.getByRole('link', { name: 'OpenStreetMap' })).toHaveAttribute('href', 'https://www.openstreetmap.org/copyright')
     const before = await readMap(page)
     expect(viewports).toHaveLength(0)
     await expect(vectorButton).toHaveAttribute('aria-pressed', 'true')
@@ -273,6 +281,7 @@ test('3D buildings follow the map theme and render on both basemaps', async ({ p
         const map = window.__smokeMapIn('.pa-map')
         return [...new Set(map.queryRenderedFeatures({ layers: ['pa-buildings-3d'] }).map(feature => feature.properties.name))]
     })
+    await openMapLayers(page)
     const note = page.getByText('При приближении видны здания с приблизительными высотами.', { exact: true })
     expect(await layer()).toBeNull()
     await expect(note).toHaveCount(0)
@@ -293,7 +302,7 @@ test('3D buildings follow the map theme and render on both basemaps', async ({ p
     await expect.poll(drawn).toEqual(['complete'])
     const beforeTheme = await readMap(page)
     const color = (await layer()).paint['fill-extrusion-color']
-    await page.getByRole('button', { name: 'Тёмная', exact: true }).press('Enter')
+    await page.getByLabel('Тема подложки карты').selectOption('dark')
     await expect.poll(async () => (await layer()).paint['fill-extrusion-color']).not.toBe(color)
     expect(await readMap(page)).toEqual(beforeTheme)
     await expect.poll(drawn).toEqual(['complete'])

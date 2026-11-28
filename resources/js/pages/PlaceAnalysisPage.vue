@@ -2,10 +2,11 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch, type Component } from 'vue'
 import {
     BusFront, Camera, ChevronDown, ChevronRight, ChevronUp, CircleDashed, Layers, LayoutDashboard,
-    Leaf, Map as MapIcon, MapPin, Palette, Pill, RadioTower, RotateCw, Satellite, Search,
-    ShoppingBasket, Trees, TriangleAlert, Wind, X,
+    Leaf, Map as MapIcon, MapPin, Minus, Pill, Plus, RadioTower, RotateCw, Satellite, Search, SlidersHorizontal,
+    ShoppingBasket, Trees, TriangleAlert, Wind, X, Baby, GraduationCap,
 } from '@lucide/vue'
-import MapThemeControl from '@/components/map/MapThemeControl.vue'
+import { useMapTheme } from '@/composables/useMapTheme'
+import { mapThemes } from '@/utils/mapTheme'
 import PlaceAnalysisMap from '@/components/place-analysis/PlaceAnalysisMap.vue'
 import { categoryMeta, categoryOrder, type AnalysisLayer, type AnalysisTab, type PlaceSelection, type AnalysisPoint, type PoiCategory, type SatelliteMode } from '@/place-analysis'
 import LocalAddressSearch from '@/components/place-analysis/LocalAddressSearch.vue'
@@ -36,14 +37,19 @@ const searchQuery = ref('')
 const analysis = usePlaceAnalysis()
 const hasSelection = ref(false)
 const displayedGeometry = shallowRef<PlaceAnalysisResponse | null>(null)
-const geometryStale = computed(() => !!displayedGeometry.value && !analysis.map.value)
-let radiusTimer: ReturnType<typeof setTimeout> | null = null
+const geometryStale = computed(() => !!displayedGeometry.value && (radiusPending.value || !analysis.map.value))
 const realDate = ref('')
 const localSearchRef = ref<InstanceType<typeof LocalAddressSearch> | null>(null)
 const geocodingRef = ref<{ clearSelection: () => void; clearDraft: () => void } | null>(null)
 const geocodingSelection = shallowRef<GeocodingSelection | null>(null)
 const geocodingAuthorizationExpired = ref(false)
 const geocodingPreview = shallowRef<AnalysisPoint | null>(null)
+const geocodingStreetPreview = ref(false)
+
+function previewGeocoding(point: AnalysisPoint | null, street: boolean) {
+    geocodingPreview.value = point
+    geocodingStreetPreview.value = street
+}
 const selectionError = computed(() => Object.values(analysis.blocks).find(b => ['SELECTION_EXPIRED', 'SNAPSHOT_EXPIRED'].includes(b.error?.code ?? ''))?.error?.code ?? null)
 function acceptGeocodingSelection(value: GeocodingSelection) {
     cancelSelectionCheck()
@@ -84,17 +90,18 @@ function retireGeocodingSelection() {
 }
 function syncInput() {
     if (geocodingSelection.value && !geocodingSelection.value.selection_token) return
-    const valid = hasSelection.value && Number.isInteger(radius.value) && radius.value >= 200 && radius.value <= 1000
-    const input: PlaceAnalysisInput | null = !valid ? null : {
+    const input: PlaceAnalysisInput | null = !hasSelection.value ? null : {
         ...(geocodingSelection.value ? { analysis_version: 2 as const, expected_place: geocodingSelection.value.place } : {}),
         place: geocodingSelection.value ? { kind: 'address', selection_token: geocodingSelection.value.selection_token } : place.value.id ? { kind: 'address', address_id: place.value.id } : { kind: 'point', lon: place.value.lon, lat: place.value.lat },
-        radius_m: radius.value, ...(realDate.value ? { date: realDate.value } : {}),
+        radius_m: appliedRadius.value, ...(realDate.value ? { date: realDate.value } : {}),
     }
     analysis.setInput(input)
 }
 function runAnalysis() {
     if (geocodingSelection.value && (!geocodingSelection.value.selection_token || geocodingAuthorizationExpired.value)) return
-    if (radiusTimer) { clearTimeout(radiusTimer); radiusTimer = null }
+    normalizeRadius()
+    if (appliedRadius.value !== radius.value) satelliteCatalog.value = null
+    appliedRadius.value = radius.value
     stationContext.value = null
     syncInput(); void analysis.loadAll()
     void nextTick(() => mapRef.value?.fitContext())
@@ -118,6 +125,13 @@ const cityCenter = { lon: 92.85, lat: 56.01 }
 const place = ref<PlaceSelection>({ id: null, label: 'Выберите место', ...cityCenter })
 const selectedAddressLabel = ref('')
 const radius = ref(500)
+const appliedRadius = ref(radius.value)
+const nextRadius = computed(() => {
+    const value = Number(radius.value)
+    return Number.isFinite(value) ? Math.min(1000, Math.max(200, Math.round(value))) : 500
+})
+const radiusPending = computed(() => hasSelection.value && nextRadius.value !== appliedRadius.value)
+const mapRadius = computed(() => displayedGeometry.value?.radius_m ?? appliedRadius.value)
 const pendingPoint = ref<AnalysisPoint | null>(null)
 const pickMode = ref(false)
 const referencePoint = computed(() => pendingPoint.value
@@ -167,6 +181,10 @@ function acceptLocalAddress(address: AnalysisAddress) {
 const pointReference = useAnalysisPointAddress(referencePoint, acceptLocalAddress)
 const { candidates: pointCandidates, status: pointStatus, transitionPending, transitionError } = pointReference
 const activeCategory = ref<PoiCategory | 'all'>('grocery')
+const enabledPoiCategories = ref<PoiCategory[]>([...categoryOrder])
+const availablePoiCategories = computed(() => categoryOrder.filter(category =>
+    !['school', 'kindergarten'].includes(category) || realPoi.value?.coverage?.by_category?.[category] !== undefined))
+const shownPoiCategories = computed(() => availablePoiCategories.value.filter(category => enabledPoiCategories.value.includes(category)))
 const selectedPoiId = ref<string | null>(null)
 const selectedStationId = ref<string | null>(null)
 const stationContext = shallowRef<AnalysisPoint | null>(null)
@@ -228,7 +246,25 @@ const showAirHour = computed(() => (activeTab.value === 'air' || showStations.va
     && (selectedHour.value !== null || airData.value?.last_numeric_observed_at_raw === null))
 const showRadius = ref(true)
 const showServiceBoundary = ref(true)
-const layersOpen = ref(true)
+const layersOpen = ref(false)
+const mapSettingsOpen = ref(false)
+const settingsToggle = useTemplateRef<HTMLButtonElement>('settingsToggle')
+const layersToggle = useTemplateRef<HTMLButtonElement>('layersToggle')
+const { theme, setTheme } = useMapTheme()
+const mapTheme = computed({ get: () => theme.value, set: setTheme })
+
+function closeMapControls(event: KeyboardEvent) {
+    if (mapSettingsOpen.value && settingsToggle.value?.getClientRects().length) {
+        mapSettingsOpen.value = false
+        settingsToggle.value.focus()
+    } else if (layersOpen.value) {
+        layersOpen.value = false
+        layersToggle.value?.focus()
+    } else {
+        return
+    }
+    event.stopPropagation()
+}
 const ndviLegendOpen = ref(true)
 const poiLegendOpen = ref(false)
 const ndviLegendVisible = computed(() => showSatellite.value && satelliteOpacity.value > 0
@@ -240,7 +276,7 @@ const analyzeButton = ref<HTMLButtonElement | null>(null)
 const satelliteScope = ref<'territory' | 'circle'>('territory')
 const layerOrder = ref<AnalysisLayer[]>(['objects', 'stations', 'radius', 'satellite'])
 
-const mapPois = realMapPois
+const mapPois = computed(() => realMapPois.value.filter(poi => enabledPoiCategories.value.includes(poi.category)))
 const tabLabels: Record<AnalysisTab, string> = {
     overview: 'Обзор', objects: 'Объекты', satellite: 'Спутник', air: 'Воздух',
 }
@@ -248,7 +284,7 @@ const tabIcons: Record<AnalysisTab, Component> = {
     overview: LayoutDashboard, objects: MapPin, satellite: Satellite, air: Wind,
 }
 const categoryIcons: Record<PoiCategory, Component> = {
-    grocery: ShoppingBasket, pharmacy: Pill, official_stop: BusFront, park: Trees,
+    grocery: ShoppingBasket, pharmacy: Pill, official_stop: BusFront, park: Trees, school: GraduationCap, kindergarten: Baby,
 }
 const layerIcons: Record<AnalysisLayer, Component> = {
     objects: MapPin, satellite: Satellite, stations: RadioTower, radius: CircleDashed,
@@ -257,7 +293,7 @@ function layerLabel(key: AnalysisLayer) {
     if (key === 'objects') return 'Объекты (POI)'
     if (key === 'satellite') return satelliteLayerLabel(mapSatelliteMode.value, satelliteData.value)
     if (key === 'stations') return 'Станции мониторинга'
-    return `Радиус анализа (${radius.value} м)`
+    return `Радиус анализа (${mapRadius.value} м)`
 }
 function moveLayer(index: number, direction: -1 | 1) {
     const target = index + direction
@@ -286,15 +322,7 @@ watch(airData, data => {
 watch(() => Object.values(analysis.blocks).some(block => block.error?.code === 'ADDRESS_POINT_CHANGED'), changed => {
     if (changed) displayedGeometry.value = null
 }, { flush: 'sync' })
-watch([place, radius, realDate, hasSelection], syncInput, { deep: true, flush: 'sync' })
-watch(radius, () => {
-    satelliteCatalog.value = null
-    if (radiusTimer) clearTimeout(radiusTimer)
-    if (hasSelection.value) radiusTimer = setTimeout(() => {
-        radiusTimer = null
-        if (analysis.input.value) void analysis.loadAll()
-    }, 350)
-}, { flush: 'sync' })
+watch([place, realDate, hasSelection], syncInput, { deep: true, flush: 'sync' })
 watch(showObjects, value => { if (!value) selectedPoiId.value = null })
 const mapSatelliteMode = computed<SatelliteMode>(() => satelliteMode.value)
 const mapShowObjects = computed(() => showObjects.value)
@@ -328,13 +356,21 @@ function tabKey(event: KeyboardEvent) {
 }
 
 function normalizeRadius() {
-    const value = Number(radius.value)
-    radius.value = Number.isFinite(value) ? Math.min(1000, Math.max(200, Math.round(value))) : 500
+    radius.value = nextRadius.value
 }
 
 function selectCategory(category: PoiCategory | 'all') {
     activeCategory.value = category
     selectedPoiId.value = null
+}
+
+function togglePoiCategory(category: PoiCategory) {
+    const enabled = enabledPoiCategories.value
+    enabledPoiCategories.value = enabled.includes(category)
+        ? enabled.filter(key => key !== category)
+        : categoryOrder.filter(key => key === category || enabled.includes(key))
+    activeCategory.value = 'all'
+    if (!mapPois.value.some(poi => poi.id === selectedPoiId.value)) selectedPoiId.value = null
 }
 
 function scrollToPoi(id: string, focus = false) {
@@ -361,12 +397,11 @@ function selectPoiFromMap(id: string) {
 }
 
 function startPointPick() {
-    if (pickMode.value) {
-        cancelPick()
-        return
-    }
+    mapSettingsOpen.value = false
+    layersOpen.value = false
     cancelSelectionCheck()
     localSearchRef.value?.clearDraft()
+    geocodingRef.value?.clearDraft()
     pickMode.value = true
     void nextTick(() => mapRef.value?.focusMap())
 }
@@ -458,7 +493,6 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
     cancelSelectionCheck()
-    if (radiusTimer) clearTimeout(radiusTimer)
 })
 </script>
 
@@ -492,20 +526,23 @@ onBeforeUnmount(() => {
         <div ref="workspace" class="pa-body" :class="{ 'is-resizing': sidebarDragging }" :style="sidebarStyle">
             <aside id="pa-panel" class="pa-panel" aria-label="Панель анализа места">
                 <div class="pa-sidebar-search">
-                <LocalAddressSearch ref="localSearchRef" v-model:query="searchQuery" :enabled="searchMode === 'local'" @selected="acceptLocalAddress" />
+                <LocalAddressSearch ref="localSearchRef" v-model:query="searchQuery" :enabled="searchMode === 'local'" @selected="acceptLocalAddress" @pick-point="startPointPick" />
                 <GeocodingSearch ref="geocodingRef" v-model:query="searchQuery" :enabled="searchMode === 'geoapify'" :point="referencePoint" :selection-error="selectionError"
-                    @selected="acceptGeocodingSelection" @retired="retireGeocodingSelection" @authorization-expired="geocodingAuthorizationExpired = $event" @preview="geocodingPreview = $event" @point="onMapPoint" />
+                    @selected="acceptGeocodingSelection" @retired="retireGeocodingSelection" @authorization-expired="geocodingAuthorizationExpired = $event" @preview="previewGeocoding" @point="onMapPoint" @pick-point="startPointPick" />
+                    <button ref="placeButton" class="pa-search-point" type="button" :aria-pressed="pickMode"
+                        @click="pickMode ? cancelPick() : startPointPick()">
+                        <MapPin :size="16" aria-hidden="true" /> Точка на карте
+                    </button>
                 </div>
                 <div class="pa-api-actions">
                     <p v-if="!geocodingSelection && (!referencePoint || pendingPoint)" class="pa-note">{{ hasSelection ? (place.id ? selectedAddressLabel : place.label) : 'Выберите адресный объект или точку карты.' }}</p>
-                    <PointAddressReference v-if="referencePoint && !pendingPoint" :candidates="pointCandidates" :status="pointStatus"
-                        :transition-pending="transitionPending" :transition-error="transitionError"
-                        @analyze="pointReference.analyzeAddress" @retry="pointReference.retry" />
                     <div class="pa-api-actions__main">
-                    <button class="pa-primary" type="button" :disabled="!analysis.input.value || !!geocodingSelection && geocodingAuthorizationExpired" :aria-describedby="!hasSelection ? 'pa-selection-hint' : undefined" @click="runAnalysis">Анализировать место</button>
-
+                        <button class="pa-primary" type="button" :disabled="!analysis.input.value || !!geocodingSelection && geocodingAuthorizationExpired" :aria-describedby="!hasSelection ? 'pa-selection-hint' : undefined" @click="runAnalysis">{{ radiusPending ? `Пересчитать для ${nextRadius} м` : 'Анализировать место' }}</button>
+                        <p v-if="radiusPending && displayedGeometry" class="pa-radius-note" role="status">На карте прежний контур · {{ mapRadius }} м</p>
+                        <PointAddressReference v-if="referencePoint && !pendingPoint" :candidates="pointCandidates" :status="pointStatus"
+                            :transition-pending="transitionPending" :transition-error="transitionError"
+                            @analyze="pointReference.analyzeAddress" @retry="pointReference.retry" />
                     </div>
-
                 </div>
                 <nav class="pa-tabs" role="tablist" aria-label="Разделы анализа">
                     <button
@@ -533,10 +570,10 @@ onBeforeUnmount(() => {
                         <h2>Сначала выберите место</h2>
                         <p>Найдите и выберите адрес в поиске или нажмите «Точка на карте». После выбора станут доступны разделы и анализ места.</p>
                     </div>
-                    <PlaceAnalysisResults v-else :tab="activeTab" :blocks="analysis.blocks" :selected-poi="selectedPoiId" :category="activeCategory"
+                    <PlaceAnalysisResults v-else :tab="activeTab" :blocks="analysis.blocks" :selected-poi="selectedPoiId" :category="activeCategory" :enabled-categories="shownPoiCategories" :available-categories="availablePoiCategories"
                         :satellite-scope="satelliteScope" :can-load="!!analysis.input.value" :date="realDate" :satellite-mode="satelliteMode" :satellite-catalog="satelliteCatalog"
                         :selected-station="selectedStationId" :air-hour-rows="hourRows"
-                        @load="loadBlock" @open="openAnalysisTab" @poi="selectPoi" @category="selectCategory"
+                        @load="loadBlock" @open="openAnalysisTab" @poi="selectPoi" @category="selectCategory" @toggle-category="togglePoiCategory"
                         @date="chooseSatelliteDate" @satellite-mode="satelliteMode = $event" @satellite-scope="satelliteScope = $event"
                         @station="selectStation">
                         <template #air-history>
@@ -555,6 +592,134 @@ onBeforeUnmount(() => {
 
             <div ref="mapWorkspace" class="pa-map-workspace" :class="{ 'is-resizing-dock': airDockDragging }">
             <section class="pa-map-shell" aria-label="Карта анализа">
+                <div class="pa-map-toolbar" role="group" aria-label="Управление картой" @keydown.esc="closeMapControls">
+                    <button ref="settingsToggle" class="pa-map-settings-toggle" type="button" aria-label="Вид карты"
+                        :aria-expanded="mapSettingsOpen" aria-controls="pa-map-settings" @click="mapSettingsOpen = !mapSettingsOpen">
+                        <SlidersHorizontal :size="17" aria-hidden="true" />
+                    </button>
+                    <div id="pa-map-settings" class="pa-map-settings" :class="{ 'is-open': mapSettingsOpen }">
+                        <div class="pa-basemap-control" role="group" aria-label="Подложка карты">
+                            <button type="button" :aria-pressed="!mapRef?.basemapMode || mapRef.basemapMode === 'map'"
+                                @click="mapRef?.selectBasemap(false)">Карта</button>
+                            <button type="button" :disabled="!mapRef?.mapReady" :aria-pressed="!!mapRef?.basemapMode && mapRef.basemapMode !== 'map'"
+                                @click="mapRef?.selectBasemap(true)">Спутник</button>
+                        </div>
+                        <div class="pa-map-view-control" role="group" aria-label="Режим карты">
+                            <button type="button" :aria-pressed="!mapRef?.terrainEnabled" @click="mapRef?.setTerrainMode(false)">2D</button>
+                            <button type="button" :disabled="!mapRef?.mapReady" :aria-pressed="mapRef?.terrainEnabled ?? false"
+                                @click="mapRef?.setTerrainMode(true)">3D</button>
+                        </div>
+                        <label class="pa-map-theme">
+                            <span>Тема</span>
+                            <select v-model="mapTheme" aria-label="Тема подложки карты">
+                                <option v-for="item in mapThemes" :key="item.key" :value="item.key">{{ item.label }}</option>
+                            </select>
+                        </label>
+                        <small v-if="mapRef?.basemapMode === 'loading'" class="pa-map-basemap-status" role="status">Загрузка подложки…</small>
+                        <small v-else-if="mapRef?.basemapMode === 'satellite'" class="pa-map-basemap-status">
+                            Дата съёмки не указана
+                        </small>
+                        <button ref="layersToggle" class="pa-map-layers-toggle" type="button" aria-label="Слои карты" title="Слои карты"
+                            :aria-expanded="layersOpen" aria-controls="pa-layers-body" @click="layersOpen = !layersOpen">
+                            <Layers :size="16" aria-hidden="true" />
+                            <span>Слои карты</span>
+                            <ChevronDown :size="14" aria-hidden="true" />
+                        </button>
+                        <aside id="pa-layers-body" class="pa-layers" :class="{ 'is-open': layersOpen }" aria-label="Слои карты">
+                            <h2 class="pa-layers__title">Слои карты</h2>
+                            <div v-for="(key, index) in layerOrder" :key="key" class="pa-layer-item" :data-layer-key="key">
+                                <label class="pa-layer-row">
+                                    <input v-if="key === 'objects'" v-model="showObjects" type="checkbox">
+                                    <input v-else-if="key === 'satellite'" v-model="showSatellite" type="checkbox">
+                                    <input v-else-if="key === 'stations'" v-model="showStations" type="checkbox">
+                                    <input v-else v-model="showRadius" type="checkbox">
+                                    <component :is="layerIcons[key]" class="pa-layer-icon" :size="15" aria-hidden="true" />
+                                    <span>{{ layerLabel(key) }}</span>
+                                </label>
+                                <div class="pa-layer-order" role="group" :aria-label="`Порядок слоя «${layerLabel(key)}»`">
+                                    <button
+                                        type="button"
+                                        class="pa-layer-move"
+                                        :disabled="index === 0"
+                                        :aria-label="`Поднять слой «${layerLabel(key)}»`"
+                                        @click="moveLayer(index, -1)"
+                                    ><ChevronUp :size="13" aria-hidden="true" /></button>
+                                    <button
+                                        type="button"
+                                        class="pa-layer-move"
+                                        :disabled="index === layerOrder.length - 1"
+                                        :aria-label="`Опустить слой «${layerLabel(key)}»`"
+                                        @click="moveLayer(index, 1)"
+                                    ><ChevronDown :size="13" aria-hidden="true" /></button>
+                                </div>
+                                <label v-if="key === 'satellite' && showSatellite" class="pa-opacity">
+                                    <span>Непрозрачность:</span>
+                                    <input v-model.number="satelliteOpacity" type="range" min="0" max="1" step="0.05" aria-label="Непрозрачность спутникового слоя" title="0% — слой невидим, 100% — полностью непрозрачен">
+                                    <output>{{ Math.round(satelliteOpacity * 100) }}%</output>
+                                </label>
+                            </div>
+                            <label class="pa-layer-row">
+                                <input v-model="showServiceBoundary" type="checkbox">
+                                <span class="pa-service-boundary-swatch" aria-hidden="true" />
+                                <span>Граница территории анализа</span>
+                            </label>
+                            <div class="pa-layer-row pa-layer-row--static">
+                                <input type="checkbox" checked disabled>
+                                <MapIcon class="pa-layer-icon" :size="15" aria-hidden="true" />
+                                <span>
+                                    Базовая карта
+                                    <small v-if="mapRef?.terrainEnabled" class="pa-layer-sub">При приближении видны здания с приблизительными высотами.</small>
+                                </span>
+                            </div>
+
+                            <section v-if="ndviLegendVisible" class="pa-legend" aria-label="Легенда NDVI">
+                                <h3 class="pa-legend__heading">
+                                    <button class="pa-legend__toggle" type="button" :aria-expanded="ndviLegendOpen"
+                                        aria-controls="pa-ndvi-legend-body" @click="ndviLegendOpen = !ndviLegendOpen">
+                                        <span>Легенда NDVI</span>
+                                        <ChevronDown :size="14" :class="{ 'is-open': ndviLegendOpen }" aria-hidden="true" />
+                                    </button>
+                                </h3>
+                                <div v-show="ndviLegendOpen" id="pa-ndvi-legend-body">
+                                    <div v-for="legendClass in satelliteLegend!.classes" :key="legendClass.label" class="pa-legend__row">
+                                        <span class="pa-legend__swatch" :style="{ background: legendClass.color }" aria-hidden="true" />
+                                        {{ legendClass.label }}
+                                    </div>
+                                    <div class="pa-legend__row">
+                                        <span class="pa-legend__swatch pa-legend__swatch--unknown" aria-hidden="true" />
+                                        {{ satelliteLegend!.unknown.label }}
+                                    </div>
+                                </div>
+                            </section>
+                            <div v-if="activeTab === 'air'" class="pa-legend">
+                                <strong class="pa-legend__title">Условные обозначения</strong>
+                                <div class="pa-legend__row"><RadioTower class="pa-legend__icon" :size="14" aria-hidden="true" /> Станция мониторинга</div>
+                                <div class="pa-legend__row"><CircleDashed class="pa-legend__icon" :size="14" aria-hidden="true" /> Радиус анализа ({{ mapRadius }} м)</div>
+                            </div>
+                            <section v-else-if="activeTab !== 'satellite' && shownPoiCategories.length" class="pa-legend" aria-label="Легенда объектов">
+                                <button class="pa-legend__toggle" type="button" :aria-expanded="poiLegendOpen"
+                                    aria-controls="pa-poi-legend-body" @click="poiLegendOpen = !poiLegendOpen">
+                                    Категории POI
+                                    <ChevronDown :size="14" :class="{ 'is-open': poiLegendOpen }" aria-hidden="true" />
+                                </button>
+                                <div v-show="poiLegendOpen" id="pa-poi-legend-body">
+                                    <div v-for="category in shownPoiCategories" :key="category" class="pa-legend__row">
+                                        <component :is="categoryIcons[category]" class="pa-legend__icon" :size="14" :style="{ color: categoryMeta[category].color }" aria-hidden="true" />
+                                        {{ categoryMeta[category].label }}
+                                    </div>
+                                </div>
+                            </section>
+                        </aside>
+                    </div>
+                    <div class="pa-map-zoom" role="group" aria-label="Масштаб карты">
+                        <button type="button" aria-label="Приблизить карту" :disabled="!mapRef?.canZoomIn" @click="mapRef?.zoomMap(1)">
+                            <Plus :size="17" aria-hidden="true" />
+                        </button>
+                        <button type="button" aria-label="Отдалить карту" :disabled="!mapRef?.canZoomOut" @click="mapRef?.zoomMap(-1)">
+                            <Minus :size="17" aria-hidden="true" />
+                        </button>
+                    </div>
+                </div>
                 <PlaceAnalysisMap
                     ref="mapRef"
                     :center="mapCenter"
@@ -563,7 +728,7 @@ onBeforeUnmount(() => {
                     :show-place-pin="hasSelection"
                     :geometry-stale="geometryStale"
                     :analysis-bounds="displayedGeometry?.analysis_bounds ?? null"
-                    :radius="displayedGeometry?.radius_m ?? radius"
+                    :radius="mapRadius"
                     :pois="mapPois"
                     :stations="mapStations"
                     :air-hour-rows="showAirHour ? hourRows : null"
@@ -586,6 +751,7 @@ onBeforeUnmount(() => {
                     :station-context="stationContext"
                     :pending-point="geocodingPreview ?? pendingPoint"
                     :pending-draggable="!!geocodingPreview"
+                    :pending-street="geocodingStreetPreview"
                     :pick-mode="pickMode"
                     :checking-selection="checkingSelection"
                     @select-point="onMapPoint"
@@ -617,13 +783,11 @@ onBeforeUnmount(() => {
                                     <X :size="15" aria-hidden="true" />
                                 </button>
                             </div>
-                            <small v-if="selectedHour">Время источника, часовой пояс неизвестен</small>
                             <div role="status">
                                 <span v-if="!selectedHour">В выпуске нет числовых наблюдений.</span>
                                 <span v-else-if="hourState.phase === 'loading'">Загрузка значений за час…</span>
                                 <span v-else-if="hourState.phase === 'snapshot-changed'">Выпуск изменился. Нажмите «Обновить» у списка станций.</span>
                                 <span v-else-if="hourState.phase === 'error'">Не удалось загрузить значения за час.</span>
-                                <small v-else-if="hourRows">— пропущен час · ∅ пустое значение</small>
                             </div>
                             <button v-if="selectedHour && hourState.phase === 'error'" class="pa-outline" type="button" @click="loadHour">Повторить</button>
                         </section>
@@ -644,127 +808,7 @@ onBeforeUnmount(() => {
                     </PointAddressReference>
                 </div>
 
-                <button ref="placeButton" class="pa-map-pick" type="button" :class="{ 'is-picking': pickMode }" :aria-pressed="pickMode" aria-label="Точка на карте" title="Выбрать точку на карте" @click="startPointPick"><MapPin :size="18" aria-hidden="true" /></button>
-                <div class="pa-map-style">
-                    <span class="pa-map-style__label"><Palette :size="14" aria-hidden="true" /> Тема</span>
-                    <MapThemeControl />
-                    <div class="pa-map-view-control" role="group" aria-label="Режим карты">
-                        <button type="button" :aria-pressed="!mapRef?.terrainEnabled" @click="mapRef?.setTerrainMode(false)">2D</button>
-                        <button type="button" :disabled="!mapRef?.mapReady" :aria-pressed="mapRef?.terrainEnabled ?? false"
-                            @click="mapRef?.setTerrainMode(true)">3D</button>
-                    </div>
-                </div>
                 <div id="pa-search-attribution"></div>
-
-                <aside class="pa-layers" :class="{ 'is-collapsed': !layersOpen }" aria-label="Слои карты">
-                    <h2 class="pa-layers__title">
-                        <button
-                            class="pa-layers__toggle"
-                            type="button"
-                            :aria-expanded="layersOpen"
-                            aria-controls="pa-layers-body"
-                            @click="layersOpen = !layersOpen"
-                        >
-                            <Layers class="pa-layers__icon" :size="16" aria-hidden="true" />
-                            <span>Слои карты</span>
-                            <ChevronDown class="pa-layers__chevron" :class="{ 'is-open': layersOpen }" :size="16" aria-hidden="true" />
-                        </button>
-                    </h2>
-                    <div v-show="layersOpen" id="pa-layers-body" class="pa-layers__body">
-                        <div class="pa-basemap-control" role="group" aria-label="Подложка карты">
-                            <button type="button" :aria-pressed="!mapRef?.basemapMode || mapRef.basemapMode === 'map'"
-                                @click="mapRef?.selectBasemap(false)">Карта</button>
-                            <button type="button" :disabled="!mapRef?.mapReady" :aria-pressed="!!mapRef?.basemapMode && mapRef.basemapMode !== 'map'"
-                                @click="mapRef?.selectBasemap(true)">Спутник</button>
-                        </div>
-                        <small v-if="mapRef?.basemapMode === 'loading'" class="pa-layer-sub" role="status">Загрузка подложки…</small>
-                        <small v-else-if="mapRef?.basemapMode === 'satellite'" class="pa-layer-sub">
-                            Дата съёмки не указана
-                        </small>
-                        <div v-for="(key, index) in layerOrder" :key="key" class="pa-layer-item" :data-layer-key="key">
-                            <label class="pa-layer-row">
-                                <input v-if="key === 'objects'" v-model="showObjects" type="checkbox">
-                                <input v-else-if="key === 'satellite'" v-model="showSatellite" type="checkbox">
-                                <input v-else-if="key === 'stations'" v-model="showStations" type="checkbox">
-                                <input v-else v-model="showRadius" type="checkbox">
-                                <component :is="layerIcons[key]" class="pa-layer-icon" :size="15" aria-hidden="true" />
-                                <span>{{ layerLabel(key) }}</span>
-                            </label>
-                            <div class="pa-layer-order" role="group" :aria-label="`Порядок слоя «${layerLabel(key)}»`">
-                                <button
-                                    type="button"
-                                    class="pa-layer-move"
-                                    :disabled="index === 0"
-                                    :aria-label="`Поднять слой «${layerLabel(key)}»`"
-                                    @click="moveLayer(index, -1)"
-                                ><ChevronUp :size="13" aria-hidden="true" /></button>
-                                <button
-                                    type="button"
-                                    class="pa-layer-move"
-                                    :disabled="index === layerOrder.length - 1"
-                                    :aria-label="`Опустить слой «${layerLabel(key)}»`"
-                                    @click="moveLayer(index, 1)"
-                                ><ChevronDown :size="13" aria-hidden="true" /></button>
-                            </div>
-                            <label v-if="key === 'satellite' && showSatellite" class="pa-opacity">
-                                <span>Непрозрачность:</span>
-                                <input v-model.number="satelliteOpacity" type="range" min="0" max="1" step="0.05" aria-label="Непрозрачность спутникового слоя" title="0% — слой невидим, 100% — полностью непрозрачен">
-                                <output>{{ Math.round(satelliteOpacity * 100) }}%</output>
-                            </label>
-                        </div>
-                        <label class="pa-layer-row">
-                            <input v-model="showServiceBoundary" type="checkbox">
-                            <span class="pa-service-boundary-swatch" aria-hidden="true" />
-                            <span>Граница территории анализа</span>
-                        </label>
-                        <div class="pa-layer-row pa-layer-row--static">
-                            <input type="checkbox" checked disabled>
-                            <MapIcon class="pa-layer-icon" :size="15" aria-hidden="true" />
-                            <span>
-                                Базовая карта
-                                <small v-if="mapRef?.terrainEnabled" class="pa-layer-sub">При приближении видны здания с приблизительными высотами.</small>
-                            </span>
-                        </div>
-
-                        <section v-if="ndviLegendVisible" class="pa-legend" aria-label="Легенда NDVI">
-                            <h3 class="pa-legend__heading">
-                                <button class="pa-legend__toggle" type="button" :aria-expanded="ndviLegendOpen"
-                                    aria-controls="pa-ndvi-legend-body" @click="ndviLegendOpen = !ndviLegendOpen">
-                                    <span>Легенда NDVI</span>
-                                    <ChevronDown :size="14" :class="{ 'is-open': ndviLegendOpen }" aria-hidden="true" />
-                                </button>
-                            </h3>
-                            <div v-show="ndviLegendOpen" id="pa-ndvi-legend-body">
-                                <div v-for="legendClass in satelliteLegend!.classes" :key="legendClass.label" class="pa-legend__row">
-                                    <span class="pa-legend__swatch" :style="{ background: legendClass.color }" aria-hidden="true" />
-                                    {{ legendClass.label }}
-                                </div>
-                                <div class="pa-legend__row">
-                                    <span class="pa-legend__swatch pa-legend__swatch--unknown" aria-hidden="true" />
-                                    {{ satelliteLegend!.unknown.label }}
-                                </div>
-                            </div>
-                        </section>
-                        <div v-if="activeTab === 'air'" class="pa-legend">
-                            <strong class="pa-legend__title">Условные обозначения</strong>
-                            <div class="pa-legend__row"><RadioTower class="pa-legend__icon" :size="14" aria-hidden="true" /> Станция мониторинга</div>
-                            <div class="pa-legend__row"><CircleDashed class="pa-legend__icon" :size="14" aria-hidden="true" /> Радиус анализа ({{ radius }} м)</div>
-                        </div>
-                        <section v-else-if="activeTab !== 'satellite'" class="pa-legend" aria-label="Легенда объектов">
-                            <button class="pa-legend__toggle" type="button" :aria-expanded="poiLegendOpen"
-                                aria-controls="pa-poi-legend-body" @click="poiLegendOpen = !poiLegendOpen">
-                                Категории POI
-                                <ChevronDown :size="14" :class="{ 'is-open': poiLegendOpen }" aria-hidden="true" />
-                            </button>
-                            <div v-show="poiLegendOpen" id="pa-poi-legend-body">
-                                <div v-for="category in categoryOrder" :key="category" class="pa-legend__row">
-                                    <component :is="categoryIcons[category]" class="pa-legend__icon" :size="14" :style="{ color: categoryMeta[category].color }" aria-hidden="true" />
-                                    {{ categoryMeta[category].label }}
-                                </div>
-                            </div>
-                        </section>
-                    </div>
-                </aside>
             </section>
                 <div v-show="chartDocked && historyStation" ref="airDockPanel" class="pa-air-dock-panel"
                     :style="{ '--air-dock-height': `${airDockHeight}px` }">

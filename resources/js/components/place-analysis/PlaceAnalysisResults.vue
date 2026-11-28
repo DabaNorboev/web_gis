@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Layers, Satellite, Wind, RotateCw, ChevronRight, ShoppingBasket, Pill, BusFront, Trees, TriangleAlert, RadioTower } from '@lucide/vue'
+import { Layers, Satellite, Wind, RotateCw, ChevronRight, ShoppingBasket, Pill, BusFront, Trees, TriangleAlert, RadioTower, Baby, GraduationCap } from '@lucide/vue'
 import type {
     AirObservation, AnalysisBlockKey, AnalysisPoi, PoiCategory, SatelliteData, SatelliteReleaseRef, SatelliteSelected,
 } from '@/types/placeAnalysis'
 import type { AnalysisBlockState } from '@/composables/usePlaceAnalysis'
 import { airReadingLabel } from '@/utils/airObservation'
-import type { SatelliteMode } from '@/place-analysis'
+import { categoryMeta, type SatelliteMode } from '@/place-analysis'
 import {
     coverageReasons, formatCircleFraction, formatMeanNdvi, formatObservationDate,
     satelliteCatalogLabel, satelliteReasonLabel, satelliteWarnings,
@@ -19,6 +19,8 @@ const props = defineProps<{
     blocks: Record<AnalysisBlockKey, AnalysisBlockState>
     selectedPoi: string | null
     category: PoiCategory | 'all'
+    enabledCategories: readonly PoiCategory[]
+    availableCategories: readonly PoiCategory[]
     date: string
     satelliteMode: SatelliteMode
     satelliteCatalog: SatelliteData | null
@@ -26,13 +28,13 @@ const props = defineProps<{
     airHourRows: ReadonlyMap<string, AirObservation> | null
 }>()
 const emit = defineEmits<{
-    open: [key: AnalysisBlockKey]; load: [key: AnalysisBlockKey]; category: [key: PoiCategory | 'all']; poi: [id: string]
+    open: [key: AnalysisBlockKey]; load: [key: AnalysisBlockKey]; category: [key: PoiCategory | 'all']; 'toggle-category': [key: PoiCategory]; poi: [id: string]
     date: [value: string]; 'satellite-mode': [value: SatelliteMode]; 'satellite-scope': [value: 'territory' | 'circle']
     station: [id: string]
 }>()
 const airHeading = ref<HTMLHeadingElement | null>(null)
+const categorySettingsOpen = ref(false)
 const names = { poi: 'Объекты (POI)', satellite: 'Спутниковые снимки', air: 'Станции мониторинга воздуха' }
-const categories: Record<PoiCategory, string> = { grocery: 'Продукты', pharmacy: 'Аптеки', official_stop: 'Остановки', park: 'Парки' }
 const keys = computed<AnalysisBlockKey[]>(() => props.tab === 'overview' ? ['poi', 'satellite', 'air'] : props.tab === 'objects' ? ['poi'] : [])
 function status(key: AnalysisBlockKey): string {
     const s = props.blocks[key]
@@ -57,8 +59,11 @@ function status(key: AnalysisBlockKey): string {
     return 'Ошибка загрузки блока'
 }
 const poi = computed(() => props.blocks.poi.response?.blocks.poi)
-const items = computed<AnalysisPoi[]>(() => poi.value?.status === 'READY' ? poi.value.data.items.filter(p => props.category === 'all' || p.category === props.category) : [])
-const visibleCategories = computed(() => props.category === 'all' ? Object.keys(categories) as PoiCategory[] : [props.category])
+const visibleCategories = computed(() => props.category === 'all'
+    ? props.enabledCategories
+    : props.enabledCategories.filter(category => category === props.category))
+const items = computed<AnalysisPoi[]>(() => poi.value?.status === 'READY'
+    ? poi.value.data.items.filter(item => visibleCategories.value.includes(item.category)) : [])
 const distanceFormat = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 })
 const stationKilometres = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 })
 function stationHour(id: string) {
@@ -82,6 +87,7 @@ const foundSummary = computed(() => {
     if (poi.value?.status !== 'READY') return ''
     const data = poi.value.data
     const selected = visibleCategories.value
+    if (!selected.length) return 'Все категории POI скрыты. Включите нужные в настройках категорий.'
     if (selected.some(c => poi.value?.availability_by_category?.[c]?.status === 'ERROR') && selected.length === 1) return 'Не удалось загрузить объекты.'
     if (selected.some(c => poi.value?.availability_by_category?.[c]?.status === 'UNAVAILABLE') && selected.length === 1) return 'Данные этой категории пока недоступны.'
     const counts = selected.map(c => c === 'official_stop' ? stopSummary.value?.found_count : data.counts_by_category[c])
@@ -115,7 +121,7 @@ const comparableSatelliteDates = computed(() => {
 const air = computed(() => props.blocks.air.response?.blocks.air)
 const cardNames = { poi: 'Объекты рядом', satellite: 'Спутник', air: 'Воздух' }
 const cardIcons = { poi: Layers, satellite: Satellite, air: Wind }
-const categoryIcons = { grocery: ShoppingBasket, pharmacy: Pill, official_stop: BusFront, park: Trees }
+const categoryIcons = { grocery: ShoppingBasket, pharmacy: Pill, official_stop: BusFront, park: Trees, school: GraduationCap, kindergarten: Baby }
 const actionNames = { poi: 'объекты', satellite: 'спутник', air: 'воздух' }
 function partial(key: AnalysisBlockKey): boolean {
     if (key === 'satellite') {
@@ -124,8 +130,7 @@ function partial(key: AnalysisBlockKey): boolean {
         return selectedSatellite.value?.status === 'READY' && !!selectedCoverage.value && selectedCoverage.value.usable_fraction < 1
     }
     if (key !== 'poi' || poi.value?.status !== 'READY') return false
-    return Object.keys(categories).some(value => {
-        const c = value as PoiCategory
+    return props.availableCategories.some(c => {
         return (poi.value?.availability_by_category?.[c]?.status ?? 'READY') !== 'READY'
             || poi.value?.coverage?.by_category?.[c]?.status !== 'COVERED'
             || poi.value?.completeness?.by_category?.[c]?.status === 'PARTIAL'
@@ -136,8 +141,11 @@ function countLabel(category: PoiCategory): number | string {
     const state = poi.value?.availability_by_category?.[category]?.status
     if (state === 'ERROR') return 'Ошибка'
     if (state === 'UNAVAILABLE') return 'Нет данных'
+    const coverage = poi.value?.coverage?.by_category?.[category]?.status
+    if (coverage === 'OUTSIDE_SERVICE_AREA') return 'Вне покрытия'
     const count = categoryCount(category)
-    return count === '—' ? 'Неизвестно' : count
+    if (count !== '—') return count
+    return coverage === 'PARTIAL' ? 'Частичное покрытие' : 'Неизвестно'
 }
 function summary(key: AnalysisBlockKey): string {
     const state = props.blocks[key]
@@ -290,7 +298,7 @@ function reloadAirSummary() {
         </div>
         <p class="pa-card__summary">{{ summary(key) }}</p>
         <dl v-if="tab === 'overview' && key === 'poi' && poi?.status === 'READY'" class="pa-card__counts">
-            <div v-for="(label, categoryKey) in categories" :key="categoryKey"><dt><component :is="categoryIcons[categoryKey]" :class="`pa-summary-icon--${categoryKey}`" :size="15" aria-hidden="true" />{{ label }}</dt><dd>{{ countLabel(categoryKey) }}</dd></div>
+            <div v-for="categoryKey in availableCategories" :key="categoryKey"><dt><component :is="categoryIcons[categoryKey]" :class="`pa-summary-icon--${categoryKey}`" :size="15" aria-hidden="true" />{{ categoryMeta[categoryKey].label }}</dt><dd>{{ countLabel(categoryKey) }}</dd></div>
         </dl>
         <button v-if="tab === 'overview'" class="pa-card__open" type="button" :aria-label="`Открыть ${actionNames[key]}`" @click="emit('open', key)">Подробнее<ChevronRight :size="15" aria-hidden="true" /></button>
     </article>
@@ -298,10 +306,19 @@ function reloadAirSummary() {
         <p class="pa-found-summary" :class="{ 'pa-stop-found': category === 'official_stop' && stopSummary?.found_count != null && !['ERROR', 'UNAVAILABLE'].includes(poi.availability_by_category?.official_stop?.status ?? '') }" role="status">{{ foundSummary }}</p>
         <div class="pa-chips" role="group" aria-label="Категории объектов">
             <button class="pa-chip" :class="{ 'is-active': category === 'all' }" :aria-pressed="category === 'all'" type="button" @click="emit('category', 'all')"><Layers :size="14" aria-hidden="true" />Все</button>
-            <button v-for="(label, key) in categories" :key="key" class="pa-chip" :class="{ 'is-active': category === key }" :aria-pressed="category === key" type="button" @click="emit('category', key)"><component :is="categoryIcons[key]" :size="14" aria-hidden="true" />{{ label }} ({{ categoryCount(key) }})</button>
+            <button v-for="key in enabledCategories" :key="key" class="pa-chip" :class="{ 'is-active': category === key }" :aria-pressed="category === key" type="button" @click="emit('category', key)"><component :is="categoryIcons[key]" :size="14" aria-hidden="true" />{{ categoryMeta[key].label }} ({{ categoryCount(key) }})</button>
+        </div>
+        <button class="pa-outline pa-poi-settings" type="button" :aria-expanded="categorySettingsOpen"
+            aria-controls="pa-poi-category-settings" @click="categorySettingsOpen = !categorySettingsOpen">Настроить категории</button>
+        <div v-show="categorySettingsOpen" id="pa-poi-category-settings" class="pa-poi-category-settings" role="group" aria-label="Показывать категории POI">
+            <label v-for="key in availableCategories" :key="key" class="pa-layer-row pa-poi-category">
+                <input type="checkbox" :checked="enabledCategories.includes(key)" @change="emit('toggle-category', key)">
+                <component :is="categoryIcons[key]" :class="`pa-summary-icon--${key}`" :size="15" aria-hidden="true" />
+                <span>{{ categoryMeta[key].label }}</span>
+            </label>
         </div>
         <template v-for="categoryKey in visibleCategories" :key="categoryKey">
-            <p v-if="poi.availability_by_category?.[categoryKey]?.status !== undefined && poi.availability_by_category[categoryKey].status !== 'READY'" class="pa-note" role="status">{{ categories[categoryKey] }}: {{ poi.availability_by_category[categoryKey].status === 'ERROR' ? 'Ошибка категории' : 'Категория недоступна' }}: {{ poi.availability_by_category[categoryKey].message }}</p>
+            <p v-if="poi.availability_by_category?.[categoryKey]?.status !== undefined && poi.availability_by_category[categoryKey].status !== 'READY'" class="pa-note" role="status">{{ categoryMeta[categoryKey].label }}: {{ poi.availability_by_category[categoryKey].status === 'ERROR' ? 'Ошибка категории' : 'Категория недоступна' }}: {{ poi.availability_by_category[categoryKey].message }}</p>
             <p v-if="categoryKey === 'official_stop' && unlocatedStops" class="pa-note pa-stop-unlocated">В исходном наборе {{ unlocatedStops }} {{ unlocatedWord }} без координат. Неизвестно, относятся ли они к этой окрестности</p>
         </template>
         <ul class="pa-objects">

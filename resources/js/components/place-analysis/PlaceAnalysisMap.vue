@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed, h, onBeforeUnmount, onMounted, ref, render, watch, type Component } from 'vue'
-import { BusFront, Pill, ShoppingBasket, Trees, TriangleAlert } from '@lucide/vue'
+import { BusFront, Pill, ShoppingBasket, Trees, TriangleAlert, Baby, GraduationCap } from '@lucide/vue'
 import {
     Map as MapLibreMap,
     LngLatBounds,
     Marker,
-    NavigationControl,
     ScaleControl,
     setWorkerUrl,
     type ExpressionSpecification,
@@ -61,6 +60,7 @@ const props = withDefaults(defineProps<{
     selectedStation: string | null
     stationContext: AnalysisPoint | null
     pendingDraggable?: boolean
+    pendingStreet?: boolean
     pendingPoint: AnalysisPoint | null
     pickMode: boolean
     checkingSelection: boolean
@@ -72,7 +72,7 @@ const poiCategory = computed(() => props.tab === 'objects' ? props.categoryFilte
 const emit = defineEmits<{ 'select-point': [point: AnalysisPoint]; 'select-station': [id: string]; 'select-poi': [id: string]; 'cancel-pick': []; 'highlight-address': [id: string | null, source: 'pointer' | 'focus']; 'select-address': [id: string]; 'retry-satellite': [] }>()
 const { theme } = useMapTheme()
 const categoryIcons: Record<PoiCategory, Component> = {
-    grocery: ShoppingBasket, pharmacy: Pill, official_stop: BusFront, park: Trees,
+    grocery: ShoppingBasket, pharmacy: Pill, official_stop: BusFront, park: Trees, school: GraduationCap, kindergarten: Baby,
 }
 const container = ref<HTMLElement | null>(null)
 const imageryAttributionTarget = ref<HTMLElement | null>(null)
@@ -89,6 +89,8 @@ const buildingsColors = { light: '#a0aba4', streets: '#aea396', dark: '#657589' 
 const terrainEnabled = ref(false)
 const terrainError = ref(false)
 const mapReady = computed(() => mapStatus.value === 'ready')
+const canZoomIn = ref(false)
+const canZoomOut = ref(false)
 let terrainLoadTimer: ReturnType<typeof setTimeout> | undefined
 let basemapRetryTimer: ReturnType<typeof setTimeout> | undefined
 const retriedBasemapTiles = new WeakSet<NonNullable<MapSourceDataEvent['tile']>>()
@@ -546,12 +548,13 @@ function fitContext() {
     }
     const area = container.value.getBoundingClientRect()
     if (!area.width || !area.height) return
-    const layers = container.value.closest('.pa-map-shell')?.querySelector('.pa-layers')?.getBoundingClientRect()
+    const shell = container.value.closest('.pa-map-shell')
+    const layers = shell?.querySelector('.pa-layers')?.getBoundingClientRect()
     const stacked = window.matchMedia('(max-width: 820px)').matches
-    // Reserve the space occupied by the layer panel so fitted markers remain usable.
-    const padding = stacked
-        ? { top: 24, left: 24, right: 24, bottom: Math.min((layers?.height ?? area.height * .42) + 56, area.height - 100) }
-        : { top: 40, left: 40, bottom: 40, right: Math.min((layers?.width ?? 300) + 32, area.width - 120) }
+    const padding = {
+        top: 32, left: 32, bottom: 32,
+        right: stacked ? 60 : Math.min((layers?.width ?? 0) + 32, area.width - 120),
+    }
     map.fitBounds(bounds, { padding, maxZoom: previewBounds ? 16.5 : 15.15, duration: 0 })
 }
 
@@ -680,7 +683,8 @@ function initMap() {
             mapStatusText.value = 'Не удалось загрузить подложку. Проверьте сеть и повторите страницу.'
         }
     }, 8000)
-    map.addControl(new NavigationControl({ showCompass: false }), 'top-right')
+    syncZoom()
+    map.on('zoom', syncZoom)
     map.addControl(new ScaleControl({ maxWidth: 90, unit: 'metric' }), 'bottom-left')
     imageryAttributionTarget.value = container.value.querySelector('.maplibregl-ctrl-bottom-right')
     map.on('move', clipPoiMarkers)
@@ -763,7 +767,13 @@ watch([() => props.center.lon, () => props.center.lat], () => {
 })
 
 watch(() => props.pendingPoint, p => {
-    if (p && props.pendingDraggable && map) map.easeTo({ center: [p.lon, p.lat], duration: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 } })
+    if (!p || !props.pendingDraggable || !map) return
+    map.easeTo({
+        center: [p.lon, p.lat],
+        zoom: props.pendingStreet ? Math.max(15, map.getZoom()) : map.getZoom(),
+        duration: 0,
+        padding: { top: 0, bottom: 0, left: 0, right: 0 },
+    })
 })
 
 watch(() => props.radius, () => {
@@ -810,6 +820,17 @@ watch(
     },
 )
 
+function syncZoom() {
+    if (!map) return
+    canZoomIn.value = map.getZoom() < map.getMaxZoom()
+    canZoomOut.value = map.getZoom() > map.getMinZoom()
+}
+
+function zoomMap(step: 1 | -1) {
+    if (step === 1) map?.zoomIn()
+    else map?.zoomOut()
+}
+
 function focusMap() {
     container.value?.focus()
 }
@@ -819,7 +840,7 @@ function showCity(point: AnalysisPoint) {
     focusMap()
 }
 
-defineExpose({ focusMap, showCity, fitContext, mapReady, terrainEnabled, setTerrainMode, basemapMode, selectBasemap })
+defineExpose({ focusMap, showCity, fitContext, mapReady, terrainEnabled, setTerrainMode, basemapMode, selectBasemap, canZoomIn, canZoomOut, zoomMap })
 
 onMounted(initMap)
 onBeforeUnmount(() => {

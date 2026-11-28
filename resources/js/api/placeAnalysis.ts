@@ -3,7 +3,8 @@ import { ApiRequestError, requestJson } from './errors'
 import type { AirSnapshotHour, AirSnapshotHourRequest, AirStationHistory, AirStationHistoryRequest, AnalysisBlockKey, AnalysisPoint, AnalysisRequest, AnalysisStation, PlaceAnalysisInput, PlaceAnalysisResponse } from '../types/placeAnalysis'
 
 export const analysisBlockKeys: AnalysisBlockKey[] = ['poi', 'satellite', 'air']
-const categories = ['grocery', 'pharmacy', 'official_stop', 'park'] as const
+const coreCategories = ['grocery', 'pharmacy', 'official_stop', 'park'] as const
+const educationCategories = [...coreCategories, 'school', 'kindergarten'] as const
 type Value = Record<string, any>
 const record = (v: unknown): v is Value => !!v && typeof v === 'object' && !Array.isArray(v)
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
@@ -261,6 +262,7 @@ function block(v: any, key: AnalysisBlockKey, requestDate: string | null, select
     if (key === 'satellite' ? v.coverage !== null || v.completeness !== null
         : key === 'air' ? v.coverage !== null || !completeness(v.completeness)
             : (v.coverage !== null && !coverage(v.coverage)) || !completeness(v.completeness)) return false
+    const categories = v.method_version === 'poi-v4-geography-source-geometry-education' ? educationCategories : coreCategories
     if (key === 'poi' && v.availability_by_category !== undefined && (!record(v.availability_by_category)
         || !categories.every(c => { const s = v.availability_by_category[c]; return record(s)
             && ['READY', 'UNAVAILABLE', 'ERROR'].includes(s.status) && typeof s.message === 'string'

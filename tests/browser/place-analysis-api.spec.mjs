@@ -1,3 +1,4 @@
+import { openMapLayers } from './support/map-controls.mjs'
 import { fixtures as geocodingFixtures, preview as geocodingPreview } from './support/geocoding.mjs'
 import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
@@ -37,6 +38,7 @@ test('satellite opacity and POI category filters leave independent map markers i
     await poi.evaluate(element => { element.dataset.markerProbe = 'poi' })
     await stationMarker.evaluate(element => { element.dataset.markerProbe = 'station' })
 
+    await openMapLayers(page)
     await page.getByLabel('Непрозрачность спутникового слоя').press('ArrowLeft')
     await expect(page.locator('.pa-opacity output')).toHaveText('65%')
     await expect(poi).toHaveAttribute('data-marker-probe', 'poi')
@@ -147,8 +149,17 @@ test('date change reloads only satellite; late replies are discarded and radius 
     expect(calls).toHaveLength(4)
     await page.getByRole('spinbutton', { name: 'Радиус анализа:' }).fill('1000')
     await page.getByRole('spinbutton', { name: 'Радиус анализа:' }).press('Tab')
+    const applyRadius = page.getByRole('button', { name: 'Пересчитать для 1000 м', exact: true })
+    await expect(applyRadius).toBeVisible()
+    await expect(page.locator('.pa-map-marker')).toHaveCount(1)
+    await expect(card(page, 'poi').getByRole('status')).toHaveText('Готово')
+    await expect(page.locator('.pa-map-radius-label')).toHaveText('R = 500 м · предыдущий')
+    await expect(page.getByText('На карте прежний контур · 500 м', { exact: true })).toBeVisible()
+    await page.waitForTimeout(450) // The old debounce would already have sent a request.
+    expect(calls).toHaveLength(4)
+    await applyRadius.click()
     await expect(page.locator('.pa-map-marker')).toHaveCount(0)
-    await expect(page.locator('.pa-map-radius-label')).toContainText('предыдущий')
+    await expect(page.locator('.pa-map-radius-label')).toHaveText('R = 500 м · предыдущий')
     await expect.poll(() => calls.length).toBe(7)
     expect(calls.slice(4).every(r => r.radius_m === 1000 && r.date === '2024-05-07')).toBe(true)
     for (const route of routes.slice(4)) await fixture(route, { poi: 'READY', air: 'READY', satellite: 'READY' })
@@ -412,11 +423,14 @@ test('only an explicit station choice fits the circle and docking keeps the load
     await airRoute.fulfill({ json: analysisWithAir(airRoute.request().postDataJSON(), summary) })
     await expect(page.locator('.pa-map-station')).toHaveCount(2)
     expect(await camera()).toEqual(initialCamera)
+    await openMapLayers(page)
     const toggleStations = page.locator('[data-layer-key="stations"] input[type=checkbox]')
     await toggleStations.uncheck()
     await expect(page.locator('.pa-map-station')).toHaveCount(0)
     await toggleStations.check()
     await expect(page.locator('.pa-map-station')).toHaveCount(2)
+    const mobileControls = page.locator('.pa-map-settings-toggle')
+    if (await mobileControls.isVisible()) await mobileControls.click()
     expect(await camera()).toEqual(initialCamera)
 
     await airTab(page).click()
@@ -677,6 +691,7 @@ test.describe('one hour for all stations', () => {
         await expect(markerReading('1001')).toHaveText('0')
         await expect(stationMarker(page, '1001')).toHaveAccessibleName(/PM2,5 · 0 мкг\/м³/)
         await expect(markerReading('1002')).toHaveText('—')
+        await expect(legend).not.toContainText(/часовой пояс неизвестен|∅ пустое значение/)
         await expect(selectedReading('Станция без координат')).toHaveText('7 мкг/м³')
         await expect(stationMarker(page, '1003')).toHaveCount(0)
         const rasterAlert = page.locator('.pa-map-alert')

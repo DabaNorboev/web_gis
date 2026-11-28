@@ -1,3 +1,4 @@
+import { openMapLayers } from './support/map-controls.mjs'
 import { test, expect } from '@playwright/test'
 import { responseFor } from '../frontend/fixtures/place-analysis.mjs'
 import { pointReference } from '../frontend/fixtures/point-address-reference.mjs'
@@ -57,5 +58,84 @@ test('all categories, icons, numbered summaries and linked map selection', async
     await expect(page.locator('.pa-map-marker')).toHaveCount(1)
     await all.click()
     await expect(rows).toHaveCount(3)
+    const panel = page.getByRole('tabpanel', { name: 'Объекты', exact: true })
+    const settings = panel.getByRole('button', { name: 'Настроить категории', exact: true })
+    await settings.press('Enter')
+    await expect(settings).toHaveAttribute('aria-expanded', 'true')
+    const categories = panel.getByRole('group', { name: 'Показывать категории POI' })
+    const pharmacy = categories.getByRole('checkbox', { name: 'Аптеки', exact: true })
+    const grocery = categories.getByRole('checkbox', { name: 'Продукты', exact: true })
+    const stops = categories.getByRole('checkbox', { name: /Остановки/ })
+    const parks = categories.getByRole('checkbox', { name: /Парки/ })
+    await expect(settings).toBeFocused()
+    await page.keyboard.press('Tab')
+    await expect(grocery).toBeFocused()
+    await expect(categories.getByRole('checkbox', { checked: true })).toHaveCount(4)
+    await page.locator('.pa-map-marker[data-poi-id="osm:node:102"]').evaluate(el => el.click())
+    await pharmacy.uncheck()
+    await parks.uncheck()
+    await expect(rows).toHaveCount(2)
+    await expect(rows.getByText('Аптека', { exact: true })).toHaveCount(0)
+    await expect(page.locator('.pa-map-marker')).toHaveCount(2)
+    await expect(rows.getByRole('button', { pressed: true })).toHaveCount(0)
+    await page.getByRole('tab', { name: 'Обзор', exact: true }).click()
+    await expect(page.locator('.pa-map-marker')).toHaveCount(2)
+    await expect(categories).toHaveCount(0)
+    await openMapLayers(page)
+    await page.getByRole('button', { name: 'Категории POI', exact: true }).press('Enter')
+    await expect(page.getByRole('region', { name: 'Легенда объектов' }).getByRole('checkbox')).toHaveCount(0)
+    await expect(page.locator('.pa-card__counts')).toContainText('Аптеки')
+    await page.getByRole('tab', { name: 'Объекты', exact: true }).click()
+    await expect(pharmacy).not.toBeChecked()
+    await grocery.uncheck()
+    await stops.uncheck()
+    await expect(page.locator('.pa-found-summary')).toContainText('Все категории POI скрыты')
+    await expect(page.locator('.pa-map-marker')).toHaveCount(0)
+    await pharmacy.check()
+    await expect(rows).toHaveCount(1)
+    await expect(page.locator('.pa-map-marker[data-poi-id="osm:node:102"]')).toHaveCount(1)
     expect(calls).toBe(3) // Filtering and selecting never reload blocks.
+})
+
+test('schools and kindergartens appear in overview, list and map with independent filters', async ({ page }) => {
+    await page.route('**/api/v1/addresses/resolve-point', route => route.fulfill({ json: pointReference() }))
+    await page.route('**/api/v1/place-analysis', route => {
+        const result = responseFor(route.request().postDataJSON(), { poi: 'READY' })
+        const block = result.blocks.poi
+        if (block) {
+            block.method_version = 'poi-v4-geography-source-geometry-education'
+            const { data } = block
+            for (const [category, name, id] of [
+                ['school', 'Тестовая школа', 'osm:node:115'],
+                ['kindergarten', 'Тестовый детский сад', 'osm:node:116'],
+            ]) {
+                data.items.push({ ...data.items[0], id, category, name })
+                block.coverage.by_category[category] = block.coverage.by_category.park
+                block.completeness.by_category[category] = block.completeness.by_category.park
+                data.counts_by_category[category] = 1
+                data.count++
+            }
+        }
+        return route.fulfill({ json: result })
+    })
+    await page.goto('/')
+    await page.getByRole('button', { name: 'Точка на карте', exact: true }).press('Enter')
+    await page.keyboard.press('Enter')
+    await page.getByRole('button', { name: 'Анализировать точку', exact: true }).click()
+    const overview = page.locator('.pa-card__counts')
+    await expect(overview.getByText('Школы', { exact: true })).toBeVisible()
+    await expect(overview.getByText('Детские сады', { exact: true })).toBeVisible()
+    const school = page.locator('.pa-map-marker--school')
+    const kindergarten = page.locator('.pa-map-marker--kindergarten')
+    await expect(school).toHaveCount(1)
+    await expect(kindergarten).toHaveCount(1)
+    await page.getByRole('tab', { name: 'Объекты', exact: true }).click()
+    await page.getByRole('button', { name: 'Все', exact: true }).click()
+    await expect(page.locator('.pa-objects')).toContainText('Тестовая школа')
+    await expect(page.locator('.pa-objects')).toContainText('Тестовый детский сад')
+    await page.getByRole('button', { name: 'Настроить категории', exact: true }).press('Enter')
+    await page.getByRole('checkbox', { name: 'Школы', exact: true }).uncheck()
+    await expect(school).toHaveCount(0)
+    await expect(kindergarten).toHaveCount(1)
+    await expect(page.locator('.pa-objects')).not.toContainText('Тестовая школа')
 })

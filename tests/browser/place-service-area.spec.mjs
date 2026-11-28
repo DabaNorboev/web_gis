@@ -1,3 +1,4 @@
+import { openMapLayers, openMapSettings } from './support/map-controls.mjs'
 import { readFile } from 'node:fs/promises'
 import { expect, test } from '@playwright/test'
 import { addressObject, places, searchResponse } from './fixtures.mjs'
@@ -21,6 +22,7 @@ async function setup(page) {
         contentType: 'image/png', headers: { 'access-control-allow-origin': '*' }, body: pixel,
     }))
     await page.goto('/')
+    await openMapSettings(page)
     await expect(page.getByRole('button', { name: '3D', exact: true })).toBeEnabled()
     return analyses
 }
@@ -69,6 +71,7 @@ test('outside clicks and taps preserve the analyzed place and both basemaps are 
     expect(outside.circle).toEqual(before.circle)
     expect(analyses).toHaveLength(3)
 
+    await openMapSettings(page)
     const basemap = page.getByRole('group', { name: 'Подложка карты' })
     await basemap.getByRole('button', { name: 'Спутник', exact: true }).press('Enter')
     await expect(page.locator('.pa-imagery-credit')).toBeVisible()
@@ -92,6 +95,7 @@ test('the service boundary uses the server geometry and toggles independently of
         window.__smokeMapIn('.pa-map').jumpTo({ center: [92.69, 56.04], zoom: 8 })
     })
     const before = await mapState(page)
+    await openMapLayers(page)
     const boundary = page.getByRole('checkbox', { name: 'Граница территории анализа' })
     const visibleSegments = () => page.evaluate(() => window.__smokeMapIn('.pa-map')
         .queryRenderedFeatures({ layers: ['pa-service-boundary-line'] }).length)

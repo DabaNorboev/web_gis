@@ -63,6 +63,7 @@ test('official found count follows radius and place; failed category never becom
     await choose();await page.getByRole('button',{name:'Остановки (2)',exact:true}).click()
     await expect(page.locator('.pa-stop-found')).toHaveText('Найдено 2 остановочных точек')
     await page.locator('#pa-radius-number').fill('1000');await page.locator('#pa-radius-number').press('Tab')
+    await page.getByRole('button', { name: 'Пересчитать для 1000 м', exact: true }).click()
     await expect(page.locator('.pa-stop-found')).toHaveText('Найдено 7 остановочных точек')
     await expect(page.locator('.pa-objects > li')).toHaveCount(2) // A limited list must not redefine found_count.
     // Pan after entering pick mode: focusing the map can resize/refit its viewport.

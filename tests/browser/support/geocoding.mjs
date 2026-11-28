@@ -40,5 +40,5 @@ export async function point(page) {
 export async function preview(page) {
     const input = page.getByRole('combobox', { name: 'Поиск адреса' })
     await input.fill(''); await input.fill('Синтетическая 10')
-    await page.getByRole('option').first().click()
+    await page.getByRole('listbox').getByRole('option').first().click()
 }

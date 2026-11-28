@@ -6,7 +6,7 @@ test('keyboard candidate preview never selects a first result; Enter confirms on
     const f = await fixtures(page); await page.goto('/'); await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click()
     const input = page.getByRole('combobox', { name: 'Поиск адреса' })
     await input.fill('Синтетическая 10')
-    await expect(page.getByRole('option')).toHaveCount(1)
+    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(1)
     expect(f.requests).toHaveLength(0)
     await input.press('ArrowDown'); await input.press('Enter')
     await expect(page.getByRole('button', { name: 'Подтвердить положение', exact: true })).toBeFocused()
@@ -24,27 +24,27 @@ test('Geoapify Enter searches the preserved query once after cancelling keyboard
     const input = page.getByRole('combobox', { name: 'Поиск адреса' })
     const query = 'Синтетическая 10'
     await input.fill(query)
-    await expect(page.getByRole('option')).toHaveCount(1)
+    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(1)
     await input.press('ArrowDown')
     await input.press('Enter')
     await expect(page.getByRole('region', { name: 'Подтверждение адреса' })).toBeVisible()
     await page.getByRole('button', { name: 'Отмена выбора адреса' }).click()
     await expect(input).toBeFocused()
     await expect(input).toHaveValue(query)
-    await expect(page.getByRole('option')).toHaveCount(0)
+    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(0)
     await input.press('ArrowDown')
     await page.clock.fastForward(500)
     expect(f.calls).toHaveLength(1)
     await expect(input).not.toHaveAttribute('aria-activedescendant', /.+/)
 
     await input.press('Enter')
-    await expect(page.getByRole('option')).toHaveCount(1)
+    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(1)
     await page.clock.fastForward(500)
     expect(f.calls.map(({ op, req }) => [op, req.mode, req.q])).toEqual([
         ['search', 'autocomplete', query],
         ['search', 'search', query],
     ])
-    await expect(page.getByRole('option', { selected: true })).toHaveCount(0)
+    await expect(page.getByRole('listbox').getByRole('option', { selected: true })).toHaveCount(0)
 })
 test('editing cancels candidate confirmation and clear removes preview without changing selected results', async ({ page }) => {
     const f = await fixtures(page); await page.goto('/'); await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click(); await preview(page)
@@ -88,7 +88,10 @@ test('Geoapify keeps full numbers and distinguishes duplicate labels through key
     const input = page.getByRole('combobox', { name: 'Поиск адреса' })
     const label = 'Синтетическая улица, 10/2А к3 стр4, Условный район'
     await input.fill('Синтетическая 10')
-    await expect(page.getByRole('option')).toHaveText([label + ' · Вариант 1', label + ' · Вариант 2'])
+    const options = page.getByRole('listbox').getByRole('option')
+    await expect(options.locator('strong')).toHaveText([label + ' · Вариант 1', label + ' · Вариант 2'])
+    await expect(options.nth(0)).toContainText('0.7000, 0.6000')
+    await expect(options.nth(1)).toContainText('0.5000, 0.4000')
     await input.press('ArrowUp')
     await input.press('Enter')
     const region = page.getByRole('region', { name: 'Подтверждение адреса' })

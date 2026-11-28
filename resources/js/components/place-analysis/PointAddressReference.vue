@@ -30,7 +30,7 @@ const addressId = computed(() => props.candidates.length === 1 ? props.candidate
         <p v-else-if="status === 'loading'" class="pa-note" role="status">Ищем адрес…</p>
         <p v-else-if="status === 'error'" class="pa-note" role="status">Адрес-ориентир недоступен.</p>
         <p v-else-if="!$slots.point" class="pa-note">Точка на карте</p>
-        <p v-if="transitionError" class="pa-note" role="status">Не удалось получить адрес.</p>
+        <p v-if="transitionError" class="pa-note pa-point-reference__error" role="status">Не удалось получить адрес.</p>
         <div v-if="$slots.point || candidates.length || status === 'error'" class="pa-point-actions">
             <slot name="point" />
             <button v-if="candidates.length" class="pa-outline" type="button" :disabled="!addressId || transitionPending"
