@@ -192,7 +192,7 @@ test('unavailable providers never display demo objects or measurements; malforme
     await expect(card(page, 'poi').getByRole('status')).toHaveText('Получен несогласованный ответ')
     await card(page, 'poi').locator('#pa-load-poi').click()
     await expect(card(page, 'poi').getByRole('status')).toHaveText('Данные недоступны')
-    for (const tab of ['Объекты', 'Спутник', 'Воздух']) {
+    for (const tab of ['Объекты', 'Снимки и NDVI', 'Воздух']) {
         await page.getByRole('tab', { name: tab, exact: true }).click()
         await expect(page.locator('.pa-map-marker, .pa-map-station, .pa-history')).toHaveCount(0)
         await expect(page.getByText('PM2,5 18,6', { exact: false })).toHaveCount(0)

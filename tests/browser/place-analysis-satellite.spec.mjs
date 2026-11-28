@@ -165,7 +165,7 @@ test('comparing two dates switches the satellite layer without changing the circ
     await openSatellite(page)
     const comparison = page.getByText('Сравнить даты', { exact: true })
     await comparison.press('Enter')
-    const table = page.getByRole('table', { name: 'NDVI и покрытие круга по датам' })
+    const table = page.getByRole('table', { name: /^Растительность в круге \d+ м$/u })
     const spring = table.getByRole('button', { name: '07.05.2024', exact: true })
     const summer = table.getByRole('button', { name: '15.08.2024', exact: true })
     const springRow = table.getByRole('row').filter({ has: page.getByRole('button', { name: '07.05.2024', exact: true }) })
@@ -223,7 +223,7 @@ test('an open date comparison refreshes for the new analysis radius', async ({ p
     await openSatellite(page)
     await chooseDate(page, '2024-08-15')
     await expectReady(page)
-    const table = page.getByRole('table', { name: 'NDVI и покрытие круга по датам' })
+    const table = page.getByRole('table', { name: /^Растительность в круге \d+ м$/u })
     await page.getByText('Сравнить даты', { exact: true }).click()
     await expect(table.getByRole('cell', { name: '0,31', exact: true })).toBeVisible()
 
@@ -241,6 +241,7 @@ test('an open date comparison refreshes for the new analysis radius', async ({ p
     const response = responseFor(request, { poi: 'READY', satellite: 'READY' })
     response.blocks.satellite.data.releases[0].mean_ndvi = 0.19
     await state.held().fulfill({ json: response })
+    await expect(table).toHaveAccessibleName('Растительность в круге 1000 м')
     await expect(table.getByRole('cell', { name: '0,19', exact: true })).toBeVisible()
     await expect(table.getByRole('cell', { name: '0,31', exact: true })).toHaveCount(0)
     await expect(table.getByRole('button', { name: '15.08.2024', exact: true })).toHaveAttribute('aria-pressed', 'true')

@@ -51,7 +51,7 @@ test('overview shows real counts and independent states; refresh and details are
  await expect(page.getByText('Полнота: PARTIAL.',{exact:false})).toHaveCount(0)
  const old=calls.length;await poi.getByRole('button',{name:'Обновить объекты',exact:true}).click();await expect.poll(()=>calls.length).toBe(old+1);expect(calls.at(-1).blocks).toEqual(['poi'])
  await poi.getByRole('button',{name:'Открыть объекты',exact:true}).click();await expect(page.getByRole('tab',{name:'Объекты',exact:true})).toHaveAttribute('aria-selected','true');await expect(page.getByRole('tab',{name:'Объекты',exact:true})).toBeFocused()
- await page.getByRole('tab',{name:'Обзор',exact:true}).click();await sat.getByRole('button',{name:'Открыть спутник',exact:true}).click();await expect(page.getByRole('tab',{name:'Спутник',exact:true})).toHaveAttribute('aria-selected','true')
+ await page.getByRole('tab',{name:'Обзор',exact:true}).click();await sat.getByRole('button',{name:'Открыть спутник',exact:true}).click();await expect(page.getByRole('tab',{name:'Снимки и NDVI',exact:true})).toHaveAttribute('aria-selected','true')
  await page.getByRole('tab',{name:'Обзор',exact:true}).click();await air.getByRole('button',{name:'Открыть воздух',exact:true}).click();await expect(page.getByRole('tab',{name:'Воздух',exact:true})).toHaveAttribute('aria-selected','true')
  expect(calls.length).toBe(old+1)
 })

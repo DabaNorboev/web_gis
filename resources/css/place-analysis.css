@@ -1054,10 +1054,10 @@
 .pa-search-feedback > p:first-child { color: var(--pa-ink); font-weight: 600; }
 
 /* Give expanded address controls and results a single sidebar scroll area. */
-.pa-panel:has(.pa-geocoding-preview, .pa-geocoding section, .pa-search-feedback, .pa-geocoding .pa-suggestions) {
+.pa-panel:has(.pa-geocoding-preview, .pa-geocoding-reverse, .pa-geocoding section, .pa-search-feedback, .pa-geocoding .pa-suggestions) {
     overflow: auto;
 }
-.pa-panel:has(.pa-geocoding-preview, .pa-geocoding section, .pa-search-feedback, .pa-geocoding .pa-suggestions) .pa-panel__scroll {
+.pa-panel:has(.pa-geocoding-preview, .pa-geocoding-reverse, .pa-geocoding section, .pa-search-feedback, .pa-geocoding .pa-suggestions) .pa-panel__scroll {
     flex: none;
     overflow: visible;
 }
