@@ -37,16 +37,22 @@ test('runtime accepts bounded scope exclusions and rejects inconsistent values',
 test('UI hides only excluded records; unknown records still warn and found count is not list length', async () => {
     const satellite = loadModule(new URL('../../resources/js/utils/satellite.ts', import.meta.url))
     const airObservation = loadModule(new URL('../../resources/js/utils/airObservation.ts', import.meta.url))
+    const placeAnalysis = loadModule(new URL('../../resources/js/place-analysis.ts', import.meta.url))
     const component = loadComponent(new URL('../../resources/js/components/place-analysis/PlaceAnalysisResults.vue', import.meta.url), {
-        '@lucide/vue': icons, '@/utils/satellite': satellite, '@/utils/airObservation': airObservation,
+        '@lucide/vue': icons, '@/utils/satellite': satellite, '@/utils/airObservation': airObservation, '@/place-analysis': placeAnalysis,
     })
     async function render(excluded) {
         const response = fixture(excluded)
         const blocks = Object.fromEntries(['poi', 'satellite', 'air'].map(key => [key, { phase: key === 'poi' ? 'ready' : 'unavailable', response, error: null }]))
-        return renderToString(h(component, { canLoad: true, tab: 'objects', blocks, selectedPoi: null, category: 'official_stop', date: '', satelliteMode: 'ndvi', satelliteCatalog: null, selectedStation: null, airHourRows: null }))
+        return renderToString(h(component, {
+            canLoad: true, tab: 'objects', blocks, selectedPoi: null, category: 'official_stop',
+            enabledCategories: ['official_stop'], availableCategories: ['official_stop'],
+            date: '', satelliteMode: 'ndvi', satelliteScope: 'circle', appliedRadius: input.radius_m,
+            satelliteCatalog: null, selectedStation: null, airHourRows: null,
+        }))
     }
     const excluded = await render(2)
-    assert.ok(excluded.includes('Найдено 7 остановочных точек'))
+    assert.ok(excluded.includes('Остановки · 7 в круге'))
     assert.ok(!excluded.includes('pa-stop-unlocated'))
     assert.ok((await render(undefined)).includes('2 записи без координат'))
     assert.ok((await render(1)).includes('1 запись без координат'))
