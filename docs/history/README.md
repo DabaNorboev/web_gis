@@ -1,6 +1,6 @@
 ---
 status: history
-updated: 2026-11-25
+updated: 2026-11-28
 verified: not verified
 ---
 
@@ -23,6 +23,8 @@ verified: not verified
 - [Исторические фрагменты контрактов и прежние результаты проверок](ui-contract-notes-2026-11-01.md).
 
 ## Протоколы функций и проверок
+
+- [Аудит перехода к анализу одного места от 04.11.2026](final-transition-audit-2026-11-04.md).
 
 - [Пилот пеших изохрон для POI](walking-isochrone-pilot-2026-11-25.md).
 
