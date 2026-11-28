@@ -46,8 +46,8 @@ test('grocery source polygons and points share list/map selection; missing categ
     await expect.poll(() => page.locator('.pa-map-marker[data-poi-id="osm:way:200"]').evaluate(el => el.style.display)).not.toBe('none')
     await expect(page.locator('.pa-object-details')).toHaveCount(0)
     await page.getByRole('button', { name: 'Аптеки (—)', exact: true }).click()
-    await expect(page.locator('.pa-found-summary').filter({ hasText: 'Показано объектов: 0. Данные загружены частично.' })).toBeVisible()
-    await expect(page.getByText('Объектов рядом: 0', { exact: true })).toHaveCount(0)
+    await expect(page.locator('.pa-found-summary').filter({ hasText: 'Аптеки · показано 0 в круге. Данные загружены частично.' })).toBeVisible()
+    await expect(page.getByText('Продукты · 0 в круге', { exact: true })).toHaveCount(0)
     await expect(page.locator('.pa-map-marker')).toHaveCount(0)
     await expect.poll(() => page.evaluate(() => window.__smokeMapIn('.pa-map').getSource('pa-poi').serialize().data.features.length)).toBe(0)
     await page.getByRole('tab', { name: 'Обзор', exact: true }).click()
@@ -68,10 +68,10 @@ for (const mode of ['zero','partial','error']) {
         await page.goto('/analysis'); await choosePoint(page)
         await page.getByRole('tab', { name: 'Объекты', exact: true }).click()
         if (mode === 'zero') {
-            await expect(page.getByText('Объектов рядом: 0', { exact: true })).toBeVisible()
+            await expect(page.getByText('Продукты · 0 в круге', { exact: true })).toBeVisible()
             await expect(page.getByRole('button', { name: 'Продукты (0)', exact: true })).toBeVisible()
         } else if (mode === 'partial') {
-            await expect(page.getByRole('status').filter({ hasText: 'Показано объектов: 2. Данные загружены частично.' })).toBeVisible()
+            await expect(page.getByRole('status').filter({ hasText: 'Продукты · показано 2 в круге. Данные загружены частично.' })).toBeVisible()
             await expect(page.getByRole('button', { name: 'Продукты (—)', exact: true })).toBeVisible()
             await expect(page.locator('.pa-objects > li')).toHaveCount(2)
         } else {

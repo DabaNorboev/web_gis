@@ -36,7 +36,7 @@ for(const mode of ['ready','zero','partial','error','unavailable'])test(`park ${
         await expect(page.locator('.pa-objects [data-poi-id="osm:way:200"] > button')).toHaveAttribute('aria-pressed','true')
     }else{
         await expect(page.locator('.pa-map-marker')).toHaveCount(0)
-        if(mode==='zero')await expect(page.getByText('Объектов рядом: 0',{exact:true})).toBeVisible()
+        if(mode==='zero')await expect(page.getByText('Парки · 0 в круге',{exact:true})).toBeVisible()
         else await expect(page.getByRole('status').filter({hasText:mode==='error'?'Ошибка категории:':'Категория недоступна:'})).toBeVisible()
     }
     for(const [label,id,count] of [['Продукты','osm:node:1','1'],['Аптеки','osm:node:2','1'],['Остановки','official-stop:3','—']]){

@@ -567,6 +567,7 @@
 .pa-chart__reading.is-above { --tooltip-y: calc(var(--pointer-y) - 8px - var(--tooltip-height)); }
 .pa-chart__reading time { font-variant-numeric: tabular-nums; }
 .pa-chart__reading strong { font-size: 12px; }
+.pa-air-dock .pa-chart__plot { scroll-margin-block: 3px; }
 .pa-chart__plot { display: grid; grid-template: auto auto / max-content minmax(0, 1fr); gap: 4px 6px; }
 .pa-chart__scale, .pa-chart__grid { display: flex; flex-direction: column; justify-content: space-between; }
 .pa-chart__scale { align-items: end; margin-block: -0.5em; line-height: 1; }

@@ -36,7 +36,7 @@ test('all categories, icons, numbered summaries and linked map selection', async
     const all = filters.getByRole('button', { name: 'Все', exact: true })
     await all.click()
     await expect(all).toHaveAttribute('aria-pressed', 'true')
-    await expect(page.locator('.pa-found-summary')).toHaveText('Объектов рядом: 9')
+    await expect(page.locator('.pa-found-summary')).toHaveText('Все категории · 9 в круге')
     await expect(page.locator('.pa-stop-found')).toHaveCount(0)
     await expect(page.getByText(/Покрытие категории:|Полнота категории:|Найдено записей в используемом наборе/)).toHaveCount(0)
     const rows = page.locator('.pa-objects > li')

@@ -111,7 +111,6 @@ defineExpose({ clearSelection: geo.clearSelection, clearDraft: geo.resetDraft })
             </p>
             <div v-if="phase === 'error' && !preview && enabled !== false" class="pa-search-feedback__actions">
                 <button v-if="canRetry" type="button" class="pa-outline" @click="queryInput?.focus(); opened = true; geo.retry()">Повторить поиск</button>
-                <button type="button" class="pa-outline" @click="emit('pickPoint')">Выбрать точку</button>
             </div>
             <button v-else-if="canRetry" type="button" class="pa-outline" @click="opened = true; geo.retry()">Повторить поиск</button>
         </template>

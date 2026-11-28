@@ -85,11 +85,20 @@ const foundSummary = computed(() => {
     if (selected.some(c => poi.value?.availability_by_category?.[c]?.status === 'ERROR') && selected.length === 1) return 'Не удалось загрузить объекты.'
     if (selected.some(c => poi.value?.availability_by_category?.[c]?.status === 'UNAVAILABLE') && selected.length === 1) return 'Данные этой категории пока недоступны.'
     const counts = selected.map(c => c === 'official_stop' ? stopSummary.value?.found_count : data.counts_by_category[c])
-    if (counts.some(n => n == null)) return `Показано объектов: ${items.value.length}. Данные загружены частично.`
+    const label = props.category === 'all' ? 'Все категории' : categoryMeta[props.category].label
+    if (counts.some(n => n == null)) return `${label} · показано ${items.value.length} в круге. Данные загружены частично.`
     const count = counts.reduce<number>((sum, n) => sum + (n ?? 0), 0)
-    if (props.category === 'official_stop') return count === 0 ? 'Найдено 0 точек с координатами' : `Найдено ${count} остановочных точек`
-    return `Объектов рядом: ${count}`
+    return `${label} · ${count} в круге`
 })
+function sourceDate(item: AnalysisPoi) {
+    for (const value of [item.source_version, item.source_updated_at]) {
+        const iso = value?.match(/^\d{4}-\d{2}-\d{2}(?=$|[T ])/)
+        const compact = value?.match(/^(\d{4})(\d{2})(\d{2})(?=$|T)/)
+        const date = iso?.[0] ?? (compact && `${compact[1]}-${compact[2]}-${compact[3]}`)
+        if (date && Number.isFinite(Date.parse(date))) return formatObservationDate(date)
+    }
+    return 'неизвестна'
+}
 const sources = computed(() => [...new Map(items.value.map(item => [
     `${item.source}:${item.dataset_import_id}:${item.source_version ?? item.source_updated_at}`,
     item,
@@ -326,7 +335,11 @@ function reloadAirSummary() {
             <summary>Источники данных</summary>
             <div v-for="source in sources" :key="`${source.source}:${source.dataset_import_id}:${source.source_version ?? source.source_updated_at}`">
                 <p>Источник: {{ source.source === 'official-stops' ? 'Официальный набор остановок (24bpd)' : source.source }} · снимок {{ source.dataset_import_id ?? 'неизвестен' }}</p>
-                <p>Версия источника: {{ source.source_version ?? source.source_updated_at ?? 'неизвестна' }}</p>
+                <p>Дата источника: {{ sourceDate(source) }}</p>
+                <details v-if="source.source_version || source.source_updated_at">
+                    <summary>Полная версия источника</summary>
+                    <p>{{ source.source_version ?? source.source_updated_at }}</p>
+                </details>
                 <a v-if="source.source_url" :href="source.source_url" target="_blank" rel="noopener noreferrer">Паспорт набора</a>
             </div>
         </details>

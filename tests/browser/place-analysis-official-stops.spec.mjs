@@ -30,13 +30,17 @@ for(const mode of ['ready','zero','partial','limited','error'])test(`official st
     await page.getByRole('button',{name:`Остановки (${mode==='error'?'—':mode==='zero'?'0':mode==='limited'?'7':'2'})`,exact:true}).click()
     if(mode==='ready'||mode==='partial'||mode==='limited'){
         await expect(page.locator('.pa-objects > li')).toHaveCount(2)
-        await expect(page.locator('.pa-stop-found')).toHaveText(`Найдено ${mode==='limited'?7:2} остановочных точек`)
+        await expect(page.locator('.pa-stop-found')).toHaveText(`Остановки · ${mode==='limited'?7:2} в круге`)
         await expect(page.locator('.pa-stop-unlocated')).toHaveText('В исходном наборе 2 записи без координат. Неизвестно, относятся ли они к этой окрестности')
         await expect(page.locator('.pa-map-marker')).toHaveCount(2)
         const row=page.locator('.pa-objects [data-poi-id="official-stop:3965"] > button');await row.click()
         await expect(page.locator('.pa-map-marker[data-poi-id="official-stop:3965"]')).toHaveAttribute('aria-pressed','true')
-        await page.locator('.pa-sources summary').click()
-        await expect(page.getByText(/Версия источника: 20250531T1612/)).toBeVisible()
+        await page.getByText('Источники данных', { exact: true }).click()
+        await expect(page.getByText('Дата источника: 31.05.2025', { exact: true })).toBeVisible()
+        const fullVersion = page.getByText('20250531T1612', { exact: true })
+        await expect(fullVersion).toBeHidden()
+        await page.getByText('Полная версия источника', { exact: true }).click()
+        await expect(fullVersion).toBeVisible()
         await expect(page.getByText(/Официальный набор остановок \(24bpd\)/)).toBeVisible()
         await expect(page.getByRole('link',{name:'Паспорт набора'})).toHaveAttribute('href','https://www.24bpd.ru/opendata/2466231215-stoppingpoints/')
         await expect(page.locator('.pa-object-details')).toHaveCount(0)
@@ -45,7 +49,7 @@ for(const mode of ['ready','zero','partial','limited','error'])test(`official st
         await expect(page.locator('.pa-objects [data-poi-id="official-stop:3966"] > button')).toHaveAttribute('aria-pressed','true')
     }else{
         await expect(page.locator('.pa-map-marker')).toHaveCount(0)
-        if(mode==='zero')await expect(page.getByText('Найдено 0 точек с координатами',{exact:true})).toBeVisible()
+        if(mode==='zero')await expect(page.getByText('Остановки · 0 в круге',{exact:true})).toBeVisible()
         else {await expect(page.getByRole('status').filter({hasText:'Ошибка категории:'})).toBeVisible();await expect(page.locator('.pa-stop-found')).toHaveCount(0)}
     }
     for(const [label,id] of [['Продукты','osm:node:1'],['Аптеки','osm:node:2']]){
@@ -61,14 +65,14 @@ test('official found count follows radius and place; failed category never becom
     await expect.poll(()=>page.evaluate(()=>!!window.__smokeMapIn('.pa-map')?.isStyleLoaded())).toBe(true)
     async function choose(center){await page.getByRole('button',{name:'Точка на карте',exact:true}).focus();await page.keyboard.press('Enter');if(center)await page.evaluate(async center=>{await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));window.__smokeMapIn('.pa-map').jumpTo({center})},center);await page.keyboard.press('Enter');await page.getByRole('button',{name:'Анализировать точку',exact:true}).click();await expect(page.locator('[data-analysis-block="poi"] [role="status"]')).toHaveText('Готово');await page.getByRole('tab',{name:'Объекты',exact:true}).click()}
     await choose();await page.getByRole('button',{name:'Остановки (2)',exact:true}).click()
-    await expect(page.locator('.pa-stop-found')).toHaveText('Найдено 2 остановочных точек')
+    await expect(page.locator('.pa-stop-found')).toHaveText('Остановки · 2 в круге')
     await page.locator('#pa-radius-number').fill('1000');await page.locator('#pa-radius-number').press('Tab')
     await page.getByRole('button', { name: 'Пересчитать для 1000 м', exact: true }).click()
-    await expect(page.locator('.pa-stop-found')).toHaveText('Найдено 7 остановочных точек')
+    await expect(page.locator('.pa-stop-found')).toHaveText('Остановки · 7 в круге')
     await expect(page.locator('.pa-objects > li')).toHaveCount(2) // A limited list must not redefine found_count.
     // Pan after entering pick mode: focusing the map can resize/refit its viewport.
     await choose([93.1,56.1]);await page.getByRole('button',{name:'Остановки (0)',exact:true}).click()
-    await expect(page.locator('.pa-stop-found')).toHaveText('Найдено 0 точек с координатами');await expect(page.locator('.pa-map-marker')).toHaveCount(0)
+    await expect(page.locator('.pa-stop-found')).toHaveText('Остановки · 0 в круге');await expect(page.locator('.pa-map-marker')).toHaveCount(0)
     fail=true;await page.getByRole('button',{name:'Обновить объекты',exact:true}).click()
     await expect(page.getByRole('status').filter({hasText:'Ошибка категории:'})).toBeVisible();await expect(page.locator('.pa-stop-found')).toHaveCount(0)
 })

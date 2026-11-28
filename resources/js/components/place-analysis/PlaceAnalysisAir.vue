@@ -66,15 +66,25 @@ const chart = computed(() => {
     const primaryValues = rows.value.flatMap(row => row.value === null ? [] : [row.value])
     const secondaryValues = comparedRows.value.flatMap(row => row.value === null ? [] : [row.value])
     const values = [...primaryValues, ...secondaryValues]
-    const min = Math.min(0, ...values)
-    const max = Math.max(0, ...values)
+    const lowest = Math.min(0, ...values)
+    const highest = Math.max(0, ...values)
+    const roughStep = highest / 4 - lowest / 4
+    const magnitude = 10 ** Math.floor(Math.log10(roughStep))
+    const factor = [1, 2, 2.5, 5, 10].find(candidate => candidate >= roughStep / magnitude) ?? 10
+    const step = magnitude * factor
+    const first = Math.floor(lowest / step)
+    const last = Math.ceil(highest / step)
+    const rounded = step > 0 && Number.isFinite(first * step) && Number.isFinite(last * step)
+    const min = rounded ? first * step : lowest
+    const max = rounded ? last * step : highest
     // Scale around zero even if a source supplied a negative reading.
     const scale = Math.max(-min, max) || 1
     const range = max / scale - min / scale || 1
     const position = (value: number) => 100 * (value / scale - min / scale) / range
     const zero = position(0)
     const ticks = !values.length ? [] : min === max ? [0] :
-        [1, 0.75, 0.5, 0.25, 0].map(fraction => (1 - fraction) * min + fraction * max)
+        rounded ? Array.from({ length: last - first + 1 }, (_, i) => (last - i) * step)
+            : [1, 0.75, 0.5, 0.25, 0].map(fraction => (1 - fraction) * min + fraction * max)
     function bar(row: AirObservation) {
         if (row.value === null) return null
         if (row.value === 0) return { bottom: `min(${zero}%, calc(100% - 2px))`, height: '2px' }
