@@ -3,7 +3,10 @@ import type { GeocodedPlace } from './geocoding'
 import type { Point, Polygon, MultiPolygon } from 'geojson'
 
 export type AnalysisBlockKey = 'poi' | 'satellite' | 'air'
-export type PoiCategory = 'grocery' | 'pharmacy' | 'official_stop' | 'park'
+type CorePoiCategory = 'grocery' | 'pharmacy' | 'official_stop' | 'park'
+type EducationPoiCategory = 'school' | 'kindergarten'
+export type PoiCategory = CorePoiCategory | EducationPoiCategory
+type PoiCategories<T> = Record<CorePoiCategory, T> & Partial<Record<EducationPoiCategory, T>>
 export interface AnalysisPoint { lon: number; lat: number }
 export type AnalysisPlace = { kind: 'address'; address_id: string } | ({ kind: 'point' } & AnalysisPoint) | { kind: 'address'; selection_token: string }
 export interface StationSelection { selected_ids: string[]; radius_m: number }
@@ -34,11 +37,11 @@ export interface AnalysisAddress {
 export interface AnalysisCoverage {
     status: 'COVERED' | 'PARTIAL' | 'OUTSIDE_SERVICE_AREA' | 'UNKNOWN'
     reason: string; available_radius_m: number | null
-    by_category?: Record<PoiCategory, AnalysisCoverage>
+    by_category?: PoiCategories<AnalysisCoverage>
 }
 export interface AnalysisCompleteness {
     status: 'COMPLETE' | 'PARTIAL' | 'UNKNOWN'; reason: string
-    by_category?: Record<PoiCategory, AnalysisCompleteness>
+    by_category?: PoiCategories<AnalysisCompleteness>
 }
 export interface AnalysisPoi {
     source_version?: string | null
@@ -50,7 +53,7 @@ export interface AnalysisPoi {
     access: string | null; source: string; dataset_import_id: number | null
     observed_at: string | null; source_updated_at: string | null
 }
-export interface PoiData { official_stop_summary?: { found_count: number | null; source_without_coordinates: number | null; excluded_outside_scope?: number }; items: AnalysisPoi[]; count: number | null; counts_by_category: Record<PoiCategory, number | null> }
+export interface PoiData { official_stop_summary?: { found_count: number | null; source_without_coordinates: number | null; excluded_outside_scope?: number }; items: AnalysisPoi[]; count: number | null; counts_by_category: PoiCategories<number | null> }
 export interface SatelliteScene {
     scene_id: string; product_uri: string; tile: string; platform: string; baseline: string; datatake: string
     acquired_at_catalog: string; acquired_at_granule: string
@@ -200,7 +203,7 @@ export interface AirSnapshotHour extends AirSnapshotRef {
 }
 export interface BlockData { poi: PoiData; satellite: SatelliteData; air: AirData }
 export type AnalysisBlock<K extends AnalysisBlockKey = AnalysisBlockKey> = {
-    availability_by_category?: Record<PoiCategory, { status: 'READY' | 'UNAVAILABLE' | 'ERROR'; code: string | null; message: string }>
+    availability_by_category?: PoiCategories<{ status: 'READY' | 'UNAVAILABLE' | 'ERROR'; code: string | null; message: string }>
     method_version?: string
     calculated_at: string; coverage: AnalysisCoverage | null; completeness: AnalysisCompleteness | null
 } & ({ status: 'READY'; code: null; message: string | null; data: BlockData[K] }

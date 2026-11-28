@@ -1,5 +1,14 @@
 import type { AirObservation } from '@/types/placeAnalysis'
 
+const metres = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 })
+const kilometres = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 })
+
+export function airStationDistanceLabel(distance: number | null, kilometresOnly = false) {
+    if (distance === null) return 'Расстояние неизвестно'
+    if (kilometresOnly) return `${kilometres.format(distance / 1000)} км`
+    return distance < 1000 ? `${metres.format(distance)} м по прямой` : `${kilometres.format(distance / 1000)} км по прямой`
+}
+
 const number = new Intl.NumberFormat('ru-RU', { maximumSignificantDigits: 15 })
 
 export function airDateLabel(value: string, withYear = true) {

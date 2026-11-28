@@ -21,7 +21,7 @@ async function pickPoint(page) {
     await page.getByRole('button', { name: 'Анализировать точку', exact: true }).press('Enter')
 }
 async function openSatellite(page) {
-    await page.getByRole('tab', { name: 'Спутник', exact: true }).click()
+    await page.getByRole('tab', { name: 'Снимки и NDVI', exact: true }).click()
     await expect(page.getByRole('heading', { name: 'Спутниковые снимки', exact: true })).toBeVisible()
     await expect(page.getByLabel('Дата снимка', { exact: true })).toBeVisible()
 }
@@ -130,7 +130,7 @@ test('real API and a controlled satellite refusal stay independent and retry', a
     await page.getByRole('tab', { name: 'Обзор', exact: true }).click()
     await expect(page.locator('[data-analysis-block="air"]').getByRole('status')).toHaveText('Данные недоступны')
     await expect(page.getByText('Данные о станциях и наблюдениях пока недоступны.')).toBeVisible()
-    await page.getByRole('tab', { name: 'Спутник', exact: true }).click()
+    await page.getByRole('tab', { name: 'Снимки и NDVI', exact: true }).click()
     fail = false
     await page.getByRole('button', { name: 'Повторить загрузку спутника', exact: true }).click()
     await expect(page.locator('[data-satellite-coverage]')).toBeVisible()

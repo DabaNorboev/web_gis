@@ -14,6 +14,8 @@ watch(() => props.query, value => { query.value = value }, { flush: 'sync' })
 watch(query, value => emit('update:query', value), { flush: 'sync' })
 const search = useAddressSearch(query, () => props.enabled)
 const { results, meta, status, open, activeIndex } = search
+const empty = computed(() => status.value === 'ready' && !results.value.length)
+const unavailable = computed(() => meta.value?.quality.availability === 'UNAVAILABLE')
 const groups = computed(() => {
     let index = 0
     return results.value.map(result => {
@@ -27,7 +29,10 @@ const groups = computed(() => {
                 const number = position + 1
                 const type = addresses.length > 1 ? `${localAddressType[object.object_type]} ${number}` : null
                 const label = type ? `${address} · ${type}` : address
-                return { id: object.id, result, index: index++, number, label, text: commonAddress ? type! : label }
+                return {
+                    id: object.id, result, index: index++, number, label, text: commonAddress ? type! : label,
+                    detail: type ? null : localAddressType[object.object_type],
+                }
             }),
         }
     })
@@ -135,16 +140,27 @@ function key(event: KeyboardEvent) {
                         <button class="pa-suggestion" :class="{ 'is-active': highlighted === option }" type="button" :aria-label="option.label" :aria-disabled="pending"
                             @pointermove="listHover = option.index" @pointerleave="listHover = null" @focus="focusOption(option.index)" @click="choose(option.id)">
                             <span v-if="group.options.length > 1" class="pa-address-number" aria-hidden="true">{{ option.number }}</span>
-                            <span>{{ option.text }}</span>
+                            <span class="pa-suggestion__body">
+                                <strong v-if="group.options.length === 1">{{ option.text }}</strong>
+                                <span v-else>{{ option.text }}</span>
+                                <small v-if="option.detail">{{ option.detail }}</small>
+                            </span>
                         </button>
                     </div>
                 </div>
             </div>
         </form>
         <p v-if="status === 'loading' || pending" class="pa-note" role="status">{{ pending ? 'Получаем адрес…' : 'Поиск…' }}</p>
-        <p v-else-if="status === 'ready' && !results.length" class="pa-note" role="status">
-            {{ meta?.quality.availability === 'UNAVAILABLE' ? 'Локальный поиск недоступен.' : 'Адреса не найдены.' }}
-        </p>
-        <p v-else-if="status === 'error' || error" class="pa-note" role="status">{{ error ? 'Не удалось получить адрес.' : 'Не удалось выполнить поиск.' }}</p>
+        <div v-else-if="empty || status === 'error' || error" class="pa-search-feedback">
+            <p class="pa-note" role="status">
+                {{ empty ? (unavailable ? 'Локальный поиск недоступен.' : 'Адреса не найдены.')
+                    : error ? 'Не удалось получить адрес.' : 'Не удалось выполнить поиск.' }}
+            </p>
+            <p v-if="empty && !unavailable" class="pa-note">Проверьте название улицы и номер дома.</p>
+            <div class="pa-search-feedback__actions">
+                <button v-if="empty && !unavailable" class="pa-outline" type="button" @click="queryInput?.focus()">Уточнить адрес</button>
+                <button v-if="status === 'error'" class="pa-outline" type="button" @click="queryInput?.focus(); submit()">Повторить поиск</button>
+            </div>
+        </div>
     </div>
 </template>

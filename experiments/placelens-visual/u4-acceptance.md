@@ -16,4 +16,4 @@ U4.5: расчёт, отказ/повтор через ⓘ, причины/ис�
 
 Воспроизводимых функциональных дефектов в этих границах не обнаружено. API/подложка синтетические, Vue/MapLibre настоящие. GIS/OSRM/ORS, физический телефон и screen reader не проверены; живой localhost только открыт. Build предупреждает о chunk >500 kB.
 
-Снимки: [desktop](screenshots/u4-filled-1440x900.png), [телефон](screenshots/u4-filled-390x844.png), [320 px](screenshots/u4-stress-320x740.png), [карточки](screenshots/u4-editor-390.png).
+Снимки: [desktop](screenshots/u3-filled-1440x900.png), [телефон](screenshots/u3-filled-390x844.png), [320 px](screenshots/u3-stress-320x740.png), [карточки](screenshots/u3-editor-390.png).

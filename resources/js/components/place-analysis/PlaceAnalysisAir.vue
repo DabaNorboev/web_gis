@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { AirSnapshotState } from '@/composables/useAirSnapshotRequest'
-import { airDateLabel as dateLabel, airHourLabel as observationLabel, airReadingLabel as rowLabel } from '@/utils/airObservation'
+import { airDateLabel as dateLabel, airHourLabel as observationLabel, airReadingLabel as rowLabel, airStationDistanceLabel } from '@/utils/airObservation'
 import type { AirObservation, AirStationHistory, AnalysisStation } from '@/types/placeAnalysis'
 
 const props = defineProps<{
@@ -60,15 +60,25 @@ const chart = computed(() => {
     const primaryValues = rows.value.flatMap(row => row.value === null ? [] : [row.value])
     const secondaryValues = comparedRows.value.flatMap(row => row.value === null ? [] : [row.value])
     const values = [...primaryValues, ...secondaryValues]
-    const min = Math.min(0, ...values)
-    const max = Math.max(0, ...values)
+    const lowest = Math.min(0, ...values)
+    const highest = Math.max(0, ...values)
+    const roughStep = highest / 4 - lowest / 4
+    const magnitude = 10 ** Math.floor(Math.log10(roughStep))
+    const factor = [1, 2, 2.5, 5, 10].find(candidate => candidate >= roughStep / magnitude) ?? 10
+    const step = magnitude * factor
+    const first = Math.floor(lowest / step)
+    const last = Math.ceil(highest / step)
+    const rounded = step > 0 && Number.isFinite(first * step) && Number.isFinite(last * step)
+    const min = rounded ? first * step : lowest
+    const max = rounded ? last * step : highest
     // Scale around zero even if a source supplied a negative reading.
     const scale = Math.max(-min, max) || 1
     const range = max / scale - min / scale || 1
     const position = (value: number) => 100 * (value / scale - min / scale) / range
     const zero = position(0)
     const ticks = !values.length ? [] : min === max ? [0] :
-        [1, 0.75, 0.5, 0.25, 0].map(fraction => (1 - fraction) * min + fraction * max)
+        rounded ? Array.from({ length: last - first + 1 }, (_, i) => (last - i) * step)
+            : [1, 0.75, 0.5, 0.25, 0].map(fraction => (1 - fraction) * min + fraction * max)
     function bar(row: AirObservation) {
         if (row.value === null) return null
         if (row.value === 0) return { bottom: `min(${zero}%, calc(100% - 2px))`, height: '2px' }
@@ -124,7 +134,10 @@ function retry() {
 <template>
     <section class="pa-station-detail" aria-labelledby="pa-air-station">
         <div class="pa-station-detail__header">
-            <h2 id="pa-air-station" ref="stationHeading" tabindex="-1">{{ station.name }}</h2>
+            <div class="pa-station-detail__identity">
+                <h2 id="pa-air-station" ref="stationHeading" tabindex="-1">Станция «{{ station.name }}»</h2>
+                <p class="pa-note" data-station-distance>{{ station.distance_m === null ? 'Расстояние до выбранного места неизвестно' : '· ' + airStationDistanceLabel(station.distance_m, true) + ' от выбранной точки' }}</p>
+            </div>
             <button id="pa-air-dock-toggle" class="pa-outline" type="button"
                 :aria-label="docked ? 'Вернуть в боковую панель' : undefined" @click="emit('toggle-dock')">
                 {{ docked ? 'В боковую панель' : 'Открыть график внизу' }}
@@ -141,7 +154,7 @@ function retry() {
                 <div class="pa-history__overview">
                     <div class="pa-history__summary">
                         <div class="pa-air-latest">
-                            <p>Последнее значение {{ metricLabel }} в архиве</p>
+                            <p>Последнее измерение {{ metricLabel }} на станции:</p>
                             <template v-if="latest">
                                 <strong>{{ rowLabel(latest) }} мкг/м³</strong>
                                 <time class="pa-air-hour" :datetime="latest.observed_at_raw.replace(' ', 'T')">
@@ -230,21 +243,23 @@ function retry() {
                 </div>
                 <details class="pa-air-values">
                     <summary>Часовые значения и пропуски</summary>
-                    <table>
-                        <caption class="sr-only">Часовые значения {{ comparisons ? 'PM2,5 и PM₁₀' : metricLabel }}. {{ station.name }}</caption>
-                        <thead><tr><th scope="col">Время источника</th><th scope="col">{{ metricLabel }}, мкг/м³</th>
-                            <th v-if="comparisons" scope="col">PM₁₀, мкг/м³</th></tr></thead>
-                        <tbody>
-                            <tr v-for="(row, index) in rows" :key="row.observed_at_raw">
-                                <td>{{ observationLabel(row.observed_at_raw) }}</td><td>{{ rowLabel(row) }}</td>
-                                <td v-if="comparedRows[index]">{{ rowLabel(comparedRows[index]!) }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <div class="pa-air-values__scroll" role="region" aria-label="Почасовая таблица" tabindex="0">
+                        <table>
+                            <caption class="sr-only">Часовые значения {{ comparisons ? 'PM2,5 и PM₁₀' : metricLabel }}. {{ station.name }}</caption>
+                            <thead><tr><th scope="col">Время источника</th><th scope="col">{{ metricLabel }}, мкг/м³</th>
+                                <th v-if="comparisons" scope="col">PM₁₀, мкг/м³</th></tr></thead>
+                            <tbody>
+                                <tr v-for="(row, index) in rows" :key="row.observed_at_raw">
+                                    <td>{{ observationLabel(row.observed_at_raw) }}</td><td>{{ rowLabel(row) }}</td>
+                                    <td v-if="comparedRows[index]">{{ rowLabel(comparedRows[index]!) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </details>
             </section>
             <p class="pa-note">Источник: <a href="https://air.krasn.ru/" target="_blank" rel="noopener noreferrer">{{ station.source }}</a></p>
-            <p class="pa-note">Архивные измерения на станции. Часовой пояс исходных меток и контроль качества неизвестны.</p>
+            <p class="pa-note">Измерения на станции. Значение в выбранной точке неизвестно. Часовой пояс исходных меток и контроль качества неизвестны.</p>
             <p v-if="station.crs !== 'EPSG:4326'" class="pa-note">Для этого выпуска положение станции неизвестно.</p>
         </div>
     </section>

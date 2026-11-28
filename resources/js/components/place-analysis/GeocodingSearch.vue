@@ -3,19 +3,35 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { distinguishAddressLabels, geocodingAddressLabel } from '@/utils/addressLabels'
 import { useGeocoding } from '@/composables/useGeocoding'
 import type { AnalysisPoint } from '@/types/placeAnalysis'
-import type { GeocodingSelection } from '@/types/geocoding'
+import type { GeocodingCandidate, GeocodingSelection } from '@/types/geocoding'
 const props = defineProps<{ point: AnalysisPoint | null; selectionError?: string | null; enabled?: boolean; query?: string }>()
-const emit = defineEmits<{ selected: [GeocodingSelection]; preview: [AnalysisPoint | null]; point: [AnalysisPoint]; retired: []; authorizationExpired: [boolean]; 'update:query': [string] }>()
+const emit = defineEmits<{ selected: [GeocodingSelection]; preview: [AnalysisPoint | null, boolean]; point: [AnalysisPoint]; retired: []; authorizationExpired: [boolean]; 'update:query': [string] }>()
 const query = ref(props.query ?? '')
 watch(() => props.query, value => { query.value = value ?? '' }, { flush: 'sync' })
 watch(query, value => emit('update:query', value), { flush: 'sync' })
-const geo = useGeocoding(v => emit('selected', v), p => emit('preview', p), query, () => props.enabled !== false)
+const geo = useGeocoding(v => emit('selected', v), (p, street = false) => emit('preview', p, street), query, () => props.enabled !== false)
 const { phase, message, preview, selection, expired, absoluteExpired, waitSeconds, canRetry, confirming } = geo
 const opened = ref(false), active = ref(-1), confirmButton = ref<HTMLButtonElement | null>(null), pointButton = ref<HTMLButtonElement | null>(null), queryInput = ref<HTMLInputElement | null>(null)
 const candidates = computed(() => geo.lookup.value?.candidates ?? [])
 const hasActiveCandidate = computed(() => opened.value && !!candidates.value[active.value])
 watch(geo.lookup, () => { active.value = -1 }, { flush: 'sync' })
-const labels = computed(() => distinguishAddressLabels(candidates.value.map(c => geocodingAddressLabel(c.components, c.precision.level)), 'Вариант'))
+const baseLabels = computed(() => candidates.value.map(c => geocodingAddressLabel(c.components, c.precision.level)))
+const labels = computed(() => distinguishAddressLabels(baseLabels.value, 'Вариант'))
+const emptyAddressSearch = computed(() => geo.lookup.value?.status === 'EMPTY' && !geo.lookup.value.point)
+const levelLabels = { house: 'Дом', street: 'Улица', locality: 'Местность' }
+function suggestionDetail(candidate: GeocodingCandidate, index: number) {
+    const level = candidate.precision.level
+    const type = level ? levelLabels[level] : 'Тип адреса не подтверждён'
+    const { locality } = candidate.components
+    const duplicate = labels.value[index] !== baseLabels.value[index]
+    const settlement = locality && (duplicate || locality.trim().toLocaleLowerCase('ru') !== 'красноярск') ? locality : null
+    const note = level === 'house'
+        ? candidate.number_match === 'MISMATCH' ? 'Номер отличается' : !candidate.can_confirm ? 'Требуется уточнение' : null
+        : level === 'street' && candidate.number_match !== 'NOT_REQUESTED' ? 'Без номера дома' : null
+    const position = duplicate && candidate.point
+        ? `${candidate.point.lat.toFixed(4)}, ${candidate.point.lon.toFixed(4)}` : null
+    return [type, settlement, note, position].filter(Boolean).join(' · ')
+}
 const previewLabel = computed(() => {
     const c = preview.value
     return c ? labels.value[candidates.value.indexOf(c)] ?? geocodingAddressLabel(c.components, c.precision.level) : ''
@@ -25,8 +41,6 @@ watch(phase, value => {
     void nextTick(() => {
         queryInput.value?.focus()
         opened.value = false
-        const box = queryInput.value?.closest('.pa-sidebar-search')
-        if (box) box.scrollTop = 0
     })
 })
 watch(query, () => { opened.value = true; active.value = -1 })
@@ -75,15 +89,28 @@ defineExpose({ clearSelection: geo.clearSelection, clearDraft: geo.resetDraft })
                 <div id="pa-geocoding-options" role="listbox" aria-label="Адреса Geoapify">
                     <button v-for="(c, i) in candidates" :id="`pa-geocoding-${i}`" :key="c.candidate_id" type="button" role="option" :aria-selected="active === i"
                         class="pa-suggestion" :class="{ 'is-active': active === i }" @click="choose(i)" @focus="active = i">
-                        <span class="pa-suggestion__body"><strong>{{ labels[i] }}</strong><small v-if="c.precision.level === 'street' && labels[i] !== 'Улица'">Улица</small></span>
+                        <span class="pa-suggestion__body"><strong>{{ labels[i] }}</strong><small>{{ suggestionDetail(c, i) }}</small></span>
                     </button>
                 </div>
             </div>
         </form>
         <p v-if="phase === 'loading' || phase === 'debouncing'" class="pa-note" role="status">Поиск…</p>
-        <p v-if="message" class="pa-note" role="status">{{ message }}</p>
-        <p v-if="waitSeconds" class="pa-note">Повтор не ранее чем через {{ waitSeconds }} с.</p>
-        <button v-if="canRetry" type="button" class="pa-outline" @click="geo.retry()">Повторить поиск</button>
+        <div v-if="emptyAddressSearch" class="pa-search-feedback">
+            <p class="pa-note" role="status">{{ message }}</p>
+            <p class="pa-note">Укажите тип улицы, полный номер дома и город.</p>
+            <div class="pa-search-feedback__actions">
+                <button type="button" class="pa-outline" @click="queryInput?.focus()">Уточнить адрес</button>
+            </div>
+        </div>
+        <template v-else>
+            <p v-if="message || waitSeconds" class="pa-note" role="status">
+                {{ message }} <template v-if="waitSeconds">Повтор не ранее чем через {{ waitSeconds }} с.</template>
+            </p>
+            <div v-if="phase === 'error' && !preview && enabled !== false" class="pa-search-feedback__actions">
+                <button v-if="canRetry" type="button" class="pa-outline" @click="queryInput?.focus(); opened = true; geo.retry()">Повторить поиск</button>
+            </div>
+            <button v-else-if="canRetry" type="button" class="pa-outline" @click="opened = true; geo.retry()">Повторить поиск</button>
+        </template>
         <div v-if="point && enabled !== false" class="pa-geocoding-reverse">
             <p id="pa-geocoding-point-notice" class="pa-note">Координаты передаются Geoapify</p>
             <button type="button" class="pa-outline" aria-describedby="pa-geocoding-point-notice" :disabled="phase === 'loading' || confirming"
@@ -91,13 +118,13 @@ defineExpose({ clearSelection: geo.clearSelection, clearDraft: geo.resetDraft })
         </div>
         <section v-if="preview" class="pa-geocoding-preview" aria-label="Подтверждение адреса">
             <strong>{{ geo.lookup.value?.point ? 'Адрес поблизости: ' : '' }}{{ previewLabel }}</strong>
+            <p class="pa-note">Проверьте метку на карте.</p>
             <p v-if="preview.precision.level === 'street' && previewLabel !== 'Улица'" class="pa-note">Улица</p>
-            <button v-if="preview.can_confirm" ref="confirmButton" type="button" class="pa-primary" :disabled="confirming" @click="geo.confirm()">{{ confirming ? 'Подтверждение…' : 'Подтвердить положение' }}</button>
+            <button v-if="preview.can_confirm" ref="confirmButton" type="button" class="pa-primary" :disabled="confirming" @click="geo.confirm()">{{ confirming ? 'Подтверждение…' : 'Анализировать по этому адресу' }}</button>
             <button v-if="preview.point" ref="pointButton" type="button" class="pa-outline" @click="pointInstead">Уточнить свободную точку</button>
             <button type="button" class="pa-outline" @click="cancelPreview">Отмена выбора адреса</button>
         </section>
-        <section v-if="selection" aria-label="Выбранный адрес">
-            <strong>{{ geocodingAddressLabel(selection.place.address.components, selection.place.address.precision.level) }}</strong>
+        <section v-if="selection && (absoluteExpired || selectionError === 'SNAPSHOT_EXPIRED' || needsReconfirm)" aria-label="Подтверждение выбранного адреса">
             <p v-if="absoluteExpired || selectionError === 'SNAPSHOT_EXPIRED'" class="pa-note" role="status">Срок снимка истёк. Найдите и выберите адрес заново. Полученные результаты сохранены.</p>
             <template v-else-if="needsReconfirm">
                 <p class="pa-note">Для новых расчётов подтвердите прежнее положение. Данные адреса не обновляются.</p>

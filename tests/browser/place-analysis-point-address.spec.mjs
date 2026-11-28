@@ -23,8 +23,8 @@ for (const reason of ['NO_RESULTS', 'OUTSIDE_SCOPE', 'NO_NEARBY_RESULTS']) {
 test('confirm failure preserves the point without exposing private error bodies', async ({ page }) => {
     const f = await fixtures(page, { confirmError: 'INVALID_SELECTION' }); await page.goto('/'); await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click(); await point(page)
     await page.getByRole('button', { name: 'Найти адрес поблизости', exact: true }).click()
-    await page.getByRole('option').first().click()
-    await page.getByRole('button', { name: 'Подтвердить положение', exact: true }).click()
+    await page.getByRole('listbox').getByRole('option').first().click()
+    await page.getByRole('button', { name: 'Анализировать по этому адресу', exact: true }).click()
     await expect(page.getByText('Не удалось подтвердить адрес. Выберите его заново.', { exact: true })).toBeVisible()
     await expect(page.locator('body')).not.toContainText('PRIVATE_CANARY')
     await expect(page.locator('[data-analysis-block="poi"]').getByRole('status')).toHaveText('Готово')

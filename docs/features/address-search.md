@@ -1,6 +1,6 @@
 ---
 status: current
-updated: 2026-11-24
+updated: 2026-11-28
 verified: code
 ---
 
@@ -13,6 +13,8 @@ verified: code
 `data` — до десяти групп `{id,label,match_type,object_count,bounds,objects}`. Объект: OSM `id` (например, `osm:way:403615986`), `lon/lat`, исходная `geometry`, `point_method`, `object_type`, известная `levels`, необязательный `display`. `address:<sha256>` — хэш нормализованных населённого пункта, улицы, места и номера. `meta`: источник, ID снимка, даты, качество. `observed_at` неизвестна, `freshness=UNKNOWN`. Без снимка `availability=UNAVAILABLE`.
 
 У конкретного OSM-объекта необязательный `display: {address_line, house_number, district}`: сохранённые `street` (включая `associatedStreet`) или `place`, полный номер и `addr:district` либо `null`. Поля также доступны в `address.display` resolver и [ориентире точки](point-address.md#api-и-пространственная-методика). Старый ответ без `display` показывает `label` целиком.
+
+Предпросмотр Geoapify предлагает «Анализировать по этому адресу». Для ручного выбора есть одна постоянная кнопка «Точка на карте», в том числе при отказе поиска.
 
 ## Правила поиска
 
@@ -58,8 +60,8 @@ verified: code
 - В Geoapify Enter в поле поиска открывает предпросмотр выделенной подсказки из открытой выдачи. Без такой подсказки Enter запускает один явный поиск по текущему тексту. Сброс выдачи, в том числе при смене режима или отмене предпросмотра, снимает выделение и очищает `aria-activedescendant`.
 - Режим сохраняет место/радиус/результаты и сроки/reconfirm внешнего выбора. Поздние search/reverse/confirm/errors/finally другого режима игнорируются.
 - Локальный выбор — OSM-объект/resolver/v1, внешний — snapshot/token/v2. Группа не ID; сопоставление по тексту/близости и общая серверная идентичность не вводятся.
-- Короткие статусы различают сбой, недоступность и пустую выдачу. При пустом HTTP 200 учитывается `meta.quality.availability`. Анализ точки доступен независимо от поиска.
-- [Компактное представление Г6](../frontend-structure.md#план-компактного-поиска-г6) используется в подсказках, предпросмотре и выбранном адресе. Одинаковые подписи получают номера вариантов в пределах выдачи.
+- Пустая выдача предлагает уточнить адрес или выбрать точку. Сбой и недоступность отмечены отдельно. При пустом HTTP 200 учитывается `meta.quality.availability`.
+- [Подсказки и действия поиска](../frontend-structure.md#план-компактного-поиска-г6) сохраняют подтверждённое место и результаты до нового анализа.
 - [Карточка точки](point-address.md#план-единая-карточка-точки-г6) одинакова в обоих режимах: анализ исходной точки или явный переход к локальному адресу.
 
 ## Переход на внешние геокодеры
@@ -106,7 +108,7 @@ Scope закреплён по [общему полигону Красноярс�
 
 UI: `idle → debouncing → loading → results|empty|error`, выбор → `preview → confirming → selected`; timeout — `error`, отмена — `idle`. Черновик/preview не заменяют выбранное место и его анализ до успешного подтверждения. Смена черновика отменяет его подтверждение.
 
-Кандидат → предпросмотр точки/подписи/уровня/источника → «Подтвердить положение» → confirm; строка сама не подтверждает. Сервер берёт снимок только из candidate-token (Laravel Crypt/APP_KEY, JSON v1, `purpose:geocoding_candidate`, снимок/проверки номера/scope/issued_at/expires_at). Bearer-секрет, без хранения; проверяются MAC/схема/purpose/срок/provider, критерии выбора и текущий scope (смена — 409 `SCOPE_CHANGED`). `position_confirmed:true` подтверждает действие UI, не точность.
+Кандидат → предпросмотр точки/подписи/уровня/источника → «Анализировать по этому адресу» → confirm и расчёт; строка сама не подтверждает. Сервер берёт снимок только из candidate-token (Laravel Crypt/APP_KEY, JSON v1, `purpose:geocoding_candidate`, снимок/проверки номера/scope/issued_at/expires_at). Bearer-секрет, без хранения; проверяются MAC/схема/purpose/срок/provider, критерии выбора и текущий scope (смена — 409 `SCOPE_CHANGED`). `position_confirmed:true` подтверждает действие UI, не точность.
 
 Confirm выдаёт `selection_id` (UUID), `selection_token` (≤6144 байт, JSON v1, `purpose:geocoding_selection`, ID/снимок/issued_at/expires_at/snapshot_created_at/snapshot_expires_at). При первом выборе `snapshot_created_at=now`, `snapshot_expires_at=now+7 суток`, `expires_at=now+24 часа` (UTC). Это технические сроки, не лицензионные TTL. Повтор confirm может дать новый ID; для прежнего выбора — reconfirm. `place` имеет `{kind:"address", selection_id, label, point, address, building:null}`; `address` содержит `provider_id`, `components`, `precision`, `number_match`, `source`, `scope_id`, `scope_sha256`. Токен/внешний OSM-ID не локальная идентичность.
 
@@ -176,7 +178,7 @@ Upstream 401/403 выключает сеть до исправления; generi
 
 Кэш не меняет ID/точку/подпись/происхождение/точность выбора. Необязательный `components.district` сохраняется от кандидата до снимка и при переподтверждении. Старые записи кэша и токены читаются с прежним набором полей, версия схемы и сроки сохраняются. Снимок/токен — память экрана, не storage/URL. Старые OSM API/ID/данные сохраняются. Старый `place.address_id` разрешается только локальным resolver; provider ID и токены туда не принимаются, соответствие по тексту/координатам не создаётся.
 
-До ввода — уведомление о передаче текста в API Geoapify. У карты — `Powered by Geoapify` со ссылкой `https://www.geoapify.com/` и атрибуция источников; OSM — `© OpenStreetMap contributors`, `https://www.openstreetmap.org/copyright`. Массив `{text,url}` включён в `source.attribution` защищённого снимка, показывается при использовании; атрибуция подложки его не заменяет. [FAQ хранения](https://www.geoapify.com/geocoding-api/) разрешает хранение с атрибуцией; тариф проверяется до подключения. Reverse — по [явному действию](point-address.md#внешний-ориентир-г5). Во внешний API передаются только текст либо lon/lat, язык/scope/limit, серверный ключ/IP; без browser IP/ID, cookies, Referer, selection_token, радиуса, станций и результатов.
+До ввода видимо уведомление о передаче текста. Карта показывает `Powered by Geoapify` и атрибуцию источников из массива `source.attribution` защищённого снимка. Ссылка `https://www.openstreetmap.org/copyright` общая для поиска и подложки. Хранение допускается при атрибуции по [FAQ Geoapify](https://www.geoapify.com/geocoding-api/); тариф проверяется до подключения. Reverse — по [явному действию](point-address.md#внешний-ориентир-г5). Во внешний API передаются текст либо lon/lat, язык/scope/limit, серверный ключ/IP; без browser IP/ID, cookies, Referer, selection_token, радиуса, станций и результатов.
 
 Новые пути/анализ v2 наследуют [защиты POST](place-analysis.md#21-приватность-нового-post): no-store/no-referrer, безопасные логи/ошибки, без spool тел. Nginx/FPM/APM/HTTP-клиент не журналируют тела/заголовки/токены/исходящие URL с ключом и вводом; только фиксированный код/метод/длительность/счётчики. Исключения без message/arguments, включая debug; CORS чужим origin закрыт. Ключи не попадают в bundle/отчёты, .env не перезаписывается.
 

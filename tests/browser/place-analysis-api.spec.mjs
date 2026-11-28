@@ -1,3 +1,4 @@
+import { openMapLayers } from './support/map-controls.mjs'
 import { fixtures as geocodingFixtures, preview as geocodingPreview } from './support/geocoding.mjs'
 import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
@@ -37,6 +38,7 @@ test('satellite opacity and POI category filters leave independent map markers i
     await poi.evaluate(element => { element.dataset.markerProbe = 'poi' })
     await stationMarker.evaluate(element => { element.dataset.markerProbe = 'station' })
 
+    await openMapLayers(page)
     await page.getByLabel('Непрозрачность спутникового слоя').press('ArrowLeft')
     await expect(page.locator('.pa-opacity output')).toHaveText('65%')
     await expect(poi).toHaveAttribute('data-marker-probe', 'poi')
@@ -62,8 +64,8 @@ test('analysis guides explain air and NDVI without reloading results', async ({ 
     await expect.poll(() => calls.length).toBe(3)
     await expect(page.getByText('Как это работает', { exact: true })).toHaveCount(0)
     for (const [tab, title, explanation] of [
-        ['Воздух', 'Как читать график PM2,5', 'Почему станция может быть только в списке?'],
-        ['Спутник', 'Как читать снимок и NDVI', 'NDVI сам по себе не показывает долю растительности'],
+        ['Воздух', 'Как читать график воздуха', 'Почему станция может быть только в списке?'],
+        ['Снимки и NDVI', 'Как читать снимок и NDVI', 'NDVI сам по себе не показывает долю растительности'],
     ]) {
         await page.getByRole('tab', { name: tab, exact: true }).click()
         const guide = page.getByText('Как это работает', { exact: true })
@@ -73,6 +75,11 @@ test('analysis guides explain air and NDVI without reloading results', async ({ 
         await expect(heading).toBeVisible()
         await expect(page.getByText(explanation, { exact: tab === 'Воздух' })).toBeVisible()
         await expect(page.locator('.pa-guide figure')).toBeVisible()
+        if (tab === 'Воздух') {
+            await expect(page.locator('.pa-guide')).toContainText('частицы до 2,5 мкм')
+            await expect(page.locator('.pa-guide')).toContainText('частицы до 10 мкм')
+            await expect(page.locator('.pa-guide')).toContainText('на общей шкале')
+        }
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
         await page.keyboard.press('Space')
         await expect(heading).not.toBeVisible()
@@ -131,7 +138,7 @@ test('date change reloads only satellite; late replies are discarded and radius 
     await page.goto('/analysis'); await choosePoint(page)
     await expect.poll(() => calls.length).toBe(3)
     for (const route of routes) await fixture(route, { poi: 'READY', satellite: 'READY' })
-    await page.getByRole('tab', { name: 'Спутник', exact: true }).click()
+    await page.getByRole('tab', { name: 'Снимки и NDVI', exact: true }).click()
     await expect(page.getByLabel('Дата снимка').locator('option:checked')).toHaveText('Выберите дату')
     await expect(card(page, 'satellite')).toHaveCount(0)
     await page.getByLabel('Дата снимка', { exact: true }).selectOption('2024-05-07')
@@ -147,12 +154,25 @@ test('date change reloads only satellite; late replies are discarded and radius 
     expect(calls).toHaveLength(4)
     await page.getByRole('spinbutton', { name: 'Радиус анализа:' }).fill('1000')
     await page.getByRole('spinbutton', { name: 'Радиус анализа:' }).press('Tab')
+    const applyRadius = page.getByRole('button', { name: 'Пересчитать для 1000 м', exact: true })
+    await expect(applyRadius).toBeVisible()
+    const context = page.getByRole('region', { name: 'Анализируемое место' })
+    await expect(context).toContainText('Точка на карте')
+    await expect(context).toContainText('Радиус анализа 500 м')
+    await expect(page.locator('.pa-map-marker')).toHaveCount(1)
+    await expect(card(page, 'poi').getByRole('status')).toHaveText('Готово')
+    await expect(page.locator('.pa-map-radius-label')).toHaveText('R = 500 м · предыдущий')
+    await expect(page.getByText('На карте прежний контур · 500 м', { exact: true })).toBeVisible()
+    await page.waitForTimeout(450) // The old debounce would already have sent a request.
+    expect(calls).toHaveLength(4)
+    await applyRadius.click()
     await expect(page.locator('.pa-map-marker')).toHaveCount(0)
-    await expect(page.locator('.pa-map-radius-label')).toContainText('предыдущий')
+    await expect(page.locator('.pa-map-radius-label')).toHaveText('R = 500 м · предыдущий')
     await expect.poll(() => calls.length).toBe(7)
     expect(calls.slice(4).every(r => r.radius_m === 1000 && r.date === '2024-05-07')).toBe(true)
     for (const route of routes.slice(4)) await fixture(route, { poi: 'READY', air: 'READY', satellite: 'READY' })
     await expect(page.locator('.pa-map-radius-label')).toHaveText('R = 1000 м')
+    await expect(context).toContainText('Радиус анализа 1000 м')
     for (const key of ['poi', 'air']) await expect(card(page, key).getByRole('status')).toHaveText('Готово')
     await expect(card(page, 'satellite').getByRole('status')).toHaveText('Наблюдение готово')
     await expect.poll(() => page.evaluate(() => window.__smokeMapIn('.pa-map')?.getSource('pa-radius')?.serialize().data)).toEqual({ type: 'Feature', properties: {}, geometry: responseFor(calls[4]).analysis_area })
@@ -172,7 +192,7 @@ test('unavailable providers never display demo objects or measurements; malforme
     await expect(card(page, 'poi').getByRole('status')).toHaveText('Получен несогласованный ответ')
     await card(page, 'poi').locator('#pa-load-poi').click()
     await expect(card(page, 'poi').getByRole('status')).toHaveText('Данные недоступны')
-    for (const tab of ['Объекты', 'Спутник', 'Воздух']) {
+    for (const tab of ['Объекты', 'Снимки и NDVI', 'Воздух']) {
         await page.getByRole('tab', { name: tab, exact: true }).click()
         await expect(page.locator('.pa-map-marker, .pa-map-station, .pa-history')).toHaveCount(0)
         await expect(page.getByText('PM2,5 18,6', { exact: false })).toHaveCount(0)
@@ -255,7 +275,7 @@ test('exact address and keyboard station choice show zero and two distinct gaps'
     await page.goto('/analysis')
     await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click()
     await geocodingPreview(page)
-    await page.getByRole('button', { name: 'Подтвердить положение', exact: true }).click()
+    await page.getByRole('button', { name: 'Анализировать по этому адресу', exact: true }).click()
     await expect.poll(() => calls.length).toBe(3)
     await expect(card(page, 'poi').getByRole('status')).toHaveText('Готово')
     expect(calls.every(r => r.place.kind === 'address' && r.analysis_version === 2 && r.place.selection_token === geo.selected.selection_token && !('lon' in r.place))).toBe(true)
@@ -412,19 +432,24 @@ test('only an explicit station choice fits the circle and docking keeps the load
     await airRoute.fulfill({ json: analysisWithAir(airRoute.request().postDataJSON(), summary) })
     await expect(page.locator('.pa-map-station')).toHaveCount(2)
     expect(await camera()).toEqual(initialCamera)
+    await openMapLayers(page)
     const toggleStations = page.locator('[data-layer-key="stations"] input[type=checkbox]')
     await toggleStations.uncheck()
     await expect(page.locator('.pa-map-station')).toHaveCount(0)
     await toggleStations.check()
     await expect(page.locator('.pa-map-station')).toHaveCount(2)
+    const mobileControls = page.locator('.pa-map-settings-toggle')
+    if (await mobileControls.isVisible()) await mobileControls.click()
     expect(await camera()).toEqual(initialCamera)
 
     await airTab(page).click()
     await expect(page.locator('.pa-station small')).toHaveText(['3,5 км по прямой', '4,4 км по прямой', 'Расстояние неизвестно'])
     await stationButton(page, 'Станция Альфа').click()
     await expect.poll(() => fit()).toEqual([circle[0], circle[1], first[0], first[1]])
+    await expect(page.locator('#pa-panel [data-station-distance]')).toHaveText('· 3,5 км от выбранной точки')
     await expect(airSeries(page)).toBeVisible()
     await stationButton(page, 'Станция Бета').click()
+    await expect(page.locator('.pa-map-station.is-selected .pa-map-station__name')).toHaveText('Станция Бета')
     const secondFit = [second[0], circle[1], circle[2], second[1]]
     await expect.poll(() => fit()).toEqual(secondFit)
     await expect(airSeries(page)).toBeVisible()
@@ -433,6 +458,7 @@ test('only an explicit station choice fits the circle and docking keeps the load
     await page.getByRole('button', { name: 'Открыть график внизу' }).click()
     const dock = page.locator('#pa-air-dock')
     await expect(dock.locator('.pa-history')).toBeVisible()
+    await expect(dock.locator('[data-station-distance]')).toHaveText('· 4,4 км от выбранной точки')
     const plot = dock.locator('.pa-chart__plot')
     await expect(plot).toBeInViewport({ ratio: 0.99 })
     expect(await dock.evaluate(element => {
@@ -573,7 +599,7 @@ test('409 refreshes only the summary and a history failure retries only the GET'
         return route.fulfill({ json: analysisWithAir(request, current.summary) })
     })
     await openPointAir(page)
-    await page.getByRole('tab', { name: 'Спутник', exact: true }).click()
+    await page.getByRole('tab', { name: 'Снимки и NDVI', exact: true }).click()
     await page.getByLabel('Дата снимка', { exact: true }).selectOption('2024-05-07')
     await expect(page.locator('[data-satellite-coverage]')).toBeVisible()
     await airTab(page).click()
@@ -644,7 +670,7 @@ test.describe('one hour for all stations', () => {
         await page.route('**/api/v1/satellite/**/*.png', route => route.abort())
 
         await openPointAir(page)
-        await page.getByRole('tab', { name: 'Спутник', exact: true }).click()
+        await page.getByRole('tab', { name: 'Снимки и NDVI', exact: true }).click()
         await page.getByLabel('Дата снимка', { exact: true }).selectOption('2024-05-07')
         await expect(page.locator('[data-satellite-coverage]')).toBeVisible()
         await airTab(page).click()
@@ -677,6 +703,7 @@ test.describe('one hour for all stations', () => {
         await expect(markerReading('1001')).toHaveText('0')
         await expect(stationMarker(page, '1001')).toHaveAccessibleName(/PM2,5 · 0 мкг\/м³/)
         await expect(markerReading('1002')).toHaveText('—')
+        await expect(legend).not.toContainText(/часовой пояс неизвестен|∅ пустое значение/)
         await expect(selectedReading('Станция без координат')).toHaveText('7 мкг/м³')
         await expect(stationMarker(page, '1003')).toHaveCount(0)
         const rasterAlert = page.locator('.pa-map-alert')
@@ -734,7 +761,7 @@ test.describe('one hour for all stations', () => {
         await expect(legend).toHaveCount(0)
         await expect(page.locator('.pa-map')).toBeFocused()
         await expect(markerReading('1001')).toBeHidden()
-        await page.getByRole('tab', { name: 'Спутник', exact: true }).click()
+        await page.getByRole('tab', { name: 'Снимки и NDVI', exact: true }).click()
         await expect(page.getByLabel('Дата снимка', { exact: true })).toHaveValue('2024-05-07')
         await expect(page.locator('[data-satellite-coverage]')).toBeVisible()
         await page.getByRole('tab', { name: 'Обзор', exact: true }).click()
@@ -784,7 +811,7 @@ test('station markers default to the last numeric hour and restore it after a ma
     const automatic = page.getByRole('region', { name: 'Последний час PM2,5' })
     await expect(automatic.locator('time')).toHaveText(displayedHour(1))
     const marker = stationMarker(page, '1001')
-    await expect(marker).toHaveText('0')
+    await expect(marker.locator('.pa-map-station__hour')).toHaveText('0')
     await expect(marker).toHaveAccessibleName(/PM2,5 · 0 мкг\/м³/)
     await expect(stationMarker(page, '1002')).toHaveText('—')
     await expect(stationMarker(page, '1003')).toHaveText('∅')
@@ -800,10 +827,11 @@ test('station markers default to the last numeric hour and restore it after a ma
     await hours.first().click()
     const manual = page.getByRole('region', { name: 'Выбранный час PM2,5' })
     await expect(manual.locator('time')).toHaveText(displayedHour(0))
-    await expect(marker).toHaveText('18,6')
+    await expect(marker.locator('.pa-map-station__hour')).toHaveText('18,6')
+    await expect(marker.locator('.pa-map-station__name')).toHaveText('Станция Альфа')
     await manual.getByRole('button', { name: 'Вернуться к последнему часу' }).click()
     await expect(automatic.locator('time')).toHaveText(displayedHour(1))
-    await expect(marker).toHaveText('0')
+    await expect(marker.locator('.pa-map-station__hour')).toHaveText('0')
     expect(hourCalls).toEqual([1, 0, 1].map(index => [observed.summary.snapshot_version, hour(index)]))
 
     current = empty
@@ -943,9 +971,10 @@ test('archive ranges preserve station history across panels and count numeric ho
     expect(historyRequests).toEqual(['1001', '1002'])
 })
 
-test('short mobile screen can scroll through the graph and hourly values', async ({ page }) => {
-    await page.setViewportSize({ width: 320, height: 500 })
+test('short screen can scroll through the graph and hourly values', async ({ page, viewport }) => {
+    await page.setViewportSize(viewport.width > 820 ? { width: 1280, height: 560 } : { width: 320, height: 500 })
     const { summary, histories: [history] } = airFixture(airSnapshot.snapshot_version, 0, [Array(168).fill(12)])
+    history.pm10_rows = history.rows.map(row => ({ ...row, value: 16 }))
     await page.route(`**${historyPath(history.snapshot_version, history.station_id)}`, route => route.fulfill({ json: history }))
     await page.route('**/api/v1/place-analysis', route => route.fulfill({ json: analysisWithAir(route.request().postDataJSON(), summary) }))
     await openPointAir(page)
@@ -957,14 +986,28 @@ test('short mobile screen can scroll through the graph and hourly values', async
     const last = airSeries(page).getByRole('cell', { name: '12', exact: true }).last()
     await last.scrollIntoViewIfNeeded()
     await expect(last).toBeInViewport()
+    const table = page.getByRole('region', { name: 'Почасовая таблица' })
+    expect(await table.evaluate(element => element.scrollTop)).toBeGreaterThan(0)
+    expect(await table.evaluate(element =>
+        element.querySelector('thead').getBoundingClientRect().top - element.getBoundingClientRect().top)).toBeCloseTo(0, 0)
     const horizontalOverflow = await page.locator('.pa-panel__scroll').evaluate(panel =>
         panel.scrollWidth > panel.clientWidth || document.documentElement.scrollWidth > window.innerWidth)
     expect(horizontalOverflow).toBe(false)
     await page.getByRole('button', { name: 'Открыть график внизу' }).click()
+    await expect(page.locator('#pa-air-dock [data-station-distance]')).toHaveText('Расстояние до выбранного места неизвестно')
     await expect(page.locator('#pa-air-dock .pa-chart__plot')).toBeInViewport({ ratio: 0.99 })
-    await airRange(page).selectOption('archive')
-    await expect(airSeries(page).getByText('168 из 168 часов со значениями')).toBeVisible()
+    await page.getByRole('button', { name: 'Вместе', exact: true }).click()
+    await page.getByLabel('Период общего графика').selectOption('archive')
+    await expect(airSeries(page).getByText(/PM2,5 168 из 168 часов со значениями/)).toBeVisible()
     await expect(page.locator('#pa-air-dock .pa-chart__labels')).toBeInViewport({ ratio: 0.99 })
+    await expect(page.locator('#pa-air-history')).toBeInViewport({ ratio: 0.99 })
+    await expect(page.locator('#pa-air-dock .pa-air-latest')).toBeInViewport({ ratio: 0.99 })
+    if (viewport.width > 820) {
+        expect(await page.evaluate(() => {
+            const page = document.scrollingElement
+            return [page.scrollTop, page.scrollHeight - page.clientHeight]
+        })).toEqual([0, 0])
+    }
 })
 
 test('pinned A11 map and list open the same station weeks', async ({ page }) => {
@@ -995,7 +1038,7 @@ test('pinned A11 map and list open the same station weeks', async ({ page }) => 
     }
 
     await page.goto('/analysis'); await choosePoint(page)
-    await page.getByRole('tab', { name: 'Спутник', exact: true }).click()
+    await page.getByRole('tab', { name: 'Снимки и NDVI', exact: true }).click()
     await page.getByLabel('Дата снимка', { exact: true }).selectOption('2024-05-07')
     await expect(page.locator('[data-satellite-coverage]')).toBeVisible()
     await expect(page.locator('.pa-map-station')).toHaveCount(3)

@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, type Ref } from 'vue'
 
 export function useAirDockHeight(workspace: Ref<HTMLElement | null>) {
-    const preferred = ref(380)
+    const preferred = ref(480)
     const max = ref(560)
     const min = computed(() => Math.min(220, max.value))
     const height = computed(() => Math.max(min.value, Math.min(max.value, preferred.value)))
@@ -14,7 +14,7 @@ export function useAirDockHeight(workspace: Ref<HTMLElement | null>) {
         const available = Math.floor(workspace.value?.clientHeight ?? 0)
         desktop = window.matchMedia('(width > 820px)').matches
         max.value = desktop
-            ? Math.max(1, Math.min(560, Math.floor(available * 0.68), available - 140))
+            ? Math.max(1, Math.min(560, Math.floor(available * 0.74), available - 140))
             : Math.max(1, Math.min(560, window.innerHeight - 44))
     }
     function resize(value: number) {

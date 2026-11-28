@@ -5,7 +5,7 @@ import type { AnalysisPoint } from '@/types/placeAnalysis'
 import type { GeocodingCandidate, GeocodingLookup, GeocodingSelection } from '@/types/geocoding'
 
 type Job = { epoch: number; operation: 'search' | 'reverse'; fields: Record<string, unknown> }
-export function useGeocoding(onSelection: (value: GeocodingSelection) => void, onPreview: (value: AnalysisPoint | null) => void, query: Ref<string> = ref(''), enabled: MaybeRefOrGetter<boolean> = true) {
+export function useGeocoding(onSelection: (value: GeocodingSelection) => void, onPreview: (value: AnalysisPoint | null, street?: boolean) => void, query: Ref<string> = ref(''), enabled: MaybeRefOrGetter<boolean> = true) {
     const phase = ref('idle'), message = ref(''), now = ref(Date.now()), retryAt = ref(0), retried = ref(false)
     const lookup = shallowRef<GeocodingLookup | null>(null), preview = shallowRef<GeocodingCandidate | null>(null), selection = shallowRef<GeocodingSelection | null>(null)
     let epoch = 0, disposed = false, active = false, queued: Job | null = null, lastJob: Job | null = null
@@ -30,7 +30,7 @@ export function useGeocoding(onSelection: (value: GeocodingSelection) => void, o
         now.value = Date.now()
         retryAt.value = now.value + Math.min(86400, Math.max(0, Number(e.retryAfter) || 0)) * 1000
         message.value = e.kind === 'invalid_response' ? 'Ответ поиска не прошёл проверку.'
-            : e.kind === 'timeout' ? 'Время ожидания истекло.'
+            : e.kind === 'timeout' || e.code === 'PROVIDER_TIMEOUT' ? 'Время ожидания истекло.'
                 : e.code === 'GEOCODING_QUOTA_EXHAUSTED' ? 'Лимит поиска исчерпан.'
                     : e.status === 429 ? 'Поиск временно занят.'
                         : e.code === 'SNAPSHOT_EXPIRED' ? 'Срок снимка истёк. Найдите и выберите адрес заново.'
@@ -92,7 +92,7 @@ export function useGeocoding(onSelection: (value: GeocodingSelection) => void, o
     function choose(candidate: GeocodingCandidate) {
         if (!lookup.value?.candidates.some(c => c.candidate_id === candidate.candidate_id)) return
         epoch++; confirmationController?.abort(); lookupController?.abort(); queued = null; clearTimeout(debounce)
-        preview.value = candidate; phase.value = 'preview'; message.value = ''; errorCode.value = null; onPreview(candidate.point)
+        preview.value = candidate; phase.value = 'preview'; message.value = ''; errorCode.value = null; onPreview(candidate.point, candidate.precision.level === 'street')
     }
     async function confirm(reconfirm = false) {
         const expected = reconfirm ? selection.value : preview.value

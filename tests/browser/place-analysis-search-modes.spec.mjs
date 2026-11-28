@@ -1,3 +1,4 @@
+import { openMapLayers } from './support/map-controls.mjs'
 import { test, expect } from '@playwright/test'
 import { fixtures, point, preview } from './support/geocoding.mjs'
 import { pointReference } from '../frontend/fixtures/point-address-reference.mjs'
@@ -34,6 +35,7 @@ async function local(page) {
 test('local starts by default; explicit OSM object uses v1 and mode preserves text, place and ready results', async ({ page }) => {
     const f = await local(page); await page.goto('/')
     await expect(mode(page)).toHaveText('Поиск: локальный')
+    await openMapLayers(page)
     const legend = page.getByRole('button', { name: 'Категории POI' })
     await expect(legend).toHaveAttribute('aria-expanded', 'false')
     await legend.press('Enter')
@@ -54,7 +56,7 @@ test('local starts by default; explicit OSM object uses v1 and mode preserves te
     await mode(page).click(); await expect(input(page)).toHaveValue('Тестовая улица, 1')
     await expect(ready(page)).toHaveText('Готово'); expect(f.calls).toHaveLength(0)
     await mode(page).click(); await expect(input(page)).toHaveValue('Тестовая улица, 1')
-    await expect(page.getByRole('option')).toHaveCount(0); expect(f.requests).toHaveLength(3)
+    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(0); expect(f.requests).toHaveLength(3)
 })
 test('Geoapify Enter searches the preserved query once after switching modes', async ({ page }) => {
     const f = await local(page)
@@ -67,9 +69,9 @@ test('Geoapify Enter searches the preserved query once after switching modes', a
     await mode(page).click()
     const query = 'Синтетическая 10'
     await input(page).fill(query)
-    await expect(page.getByRole('option')).toHaveCount(1)
+    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(1)
     await input(page).press('ArrowDown')
-    await expect(page.getByRole('option', { selected: true })).toHaveCount(1)
+    await expect(page.getByRole('listbox').getByRole('option', { selected: true })).toHaveCount(1)
 
     await mode(page).click()
     await expect(mode(page)).toHaveText('Поиск: локальный')
@@ -79,19 +81,19 @@ test('Geoapify Enter searches the preserved query once after switching modes', a
     await expect(input(page)).toHaveValue(query)
     await input(page).focus()
     await page.clock.fastForward(500)
-    await expect(page.getByRole('option')).toHaveCount(0)
+    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(0)
     expect(localSearches).toHaveLength(0)
     expect(f.calls).toHaveLength(1)
     await expect(input(page)).not.toHaveAttribute('aria-activedescendant', /.+/)
 
     await input(page).press('Enter')
-    await expect(page.getByRole('option')).toHaveCount(1)
+    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(1)
     await page.clock.fastForward(500)
     expect(f.calls.map(({ op, req }) => [op, req.mode, req.q])).toEqual([
         ['search', 'autocomplete', query],
         ['search', 'search', query],
     ])
-    await expect(page.getByRole('option', { selected: true })).toHaveCount(0)
+    await expect(page.getByRole('listbox').getByRole('option', { selected: true })).toHaveCount(0)
 })
 for (const op of ['search', 'confirm', 'reverse']) {
     test(`mode A-B-A rejects late Geoapify ${op}`, async ({ page }) => {
@@ -102,7 +104,7 @@ for (const op of ['search', 'confirm', 'reverse']) {
             await point(page)
             await page.getByRole('button', { name: 'Найти адрес поблизости', exact: true }).click()
         } else {
-            if (op === 'confirm') { await preview(page); await page.getByRole('button', { name: 'Подтвердить положение', exact: true }).click() }
+            if (op === 'confirm') { await preview(page); await page.getByRole('button', { name: 'Анализировать по этому адресу', exact: true }).click() }
             else await input(page).fill('Синтетическая 10')
         }
         await expect.poll(() => !!stale).toBe(true)
@@ -111,7 +113,7 @@ for (const op of ['search', 'confirm', 'reverse']) {
         await expect(input(page)).toHaveValue(text)
         const req = stale.request().postDataJSON()
         try { await stale.fulfill({ json: envelope(req, op === 'confirm' ? f.selected : { status: 'OK', reason: null, ...(op === 'reverse' ? { point: { lon: req.lon, lat: req.lat } } : {}), candidates: [f.c] }) }) } catch { /* cancelled */ }
-        await expect(page.getByRole('option')).toHaveCount(0)
+        await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(0)
         await expect(page.getByRole('region', { name: 'Подтверждение адреса' })).toHaveCount(0)
         await expect(page.getByRole('button', { name: 'Анализировать место', exact: true }))[op === 'reverse' ? 'toBeEnabled' : 'toBeDisabled']()
         expect(f.calls).toHaveLength(count); expect(f.requests).toHaveLength(analyses)
@@ -119,7 +121,7 @@ for (const op of ['search', 'confirm', 'reverse']) {
 }
 test('Geoapify selection expires and reconfirms while local mode keeps ready results', async ({ page }) => {
     const f = await fixtures(page); await page.clock.install({ time: Date.now() }); await page.goto('/'); await mode(page).click(); await preview(page)
-    await page.getByRole('button', { name: 'Подтвердить положение', exact: true }).click()
+    await page.getByRole('button', { name: 'Анализировать по этому адресу', exact: true }).click()
     await expect(ready(page)).toHaveText('Готово'); await mode(page).click()
     await page.clock.fastForward(86400000 + 2000)
     await expect(page.getByRole('button', { name: 'Анализировать место', exact: true })).toBeDisabled()
@@ -175,12 +177,19 @@ for (const external of [false, true]) {
                 await expect(ready(page)).toHaveText('Готово')
                 expect(f.requests.every(r => r.place.kind === 'point' && r.place.lon === sourcePoint.lon && r.place.lat === sourcePoint.lat)).toBe(true)
                 if (action === 'point') {
-                    const referenceButton = page.locator('.pa-api-actions').getByRole('button', { name: 'Анализировать адрес', exact: true })
-                    const analyze = page.getByRole('button', { name: 'Анализировать место', exact: true })
-                    await expect(referenceButton).toBeVisible()
-                    const referenceBox = await referenceButton.boundingBox()
+                    const actions = page.locator('.pa-api-actions')
+                    const addressButton = actions.getByRole('button', { name: 'Анализировать адрес', exact: true })
+                    const analyze = actions.getByRole('button', { name: 'Анализировать место', exact: true })
+                    const addressLabel = actions.getByText('Ближайший адрес:', { exact: true })
+                    await expect(addressButton).toBeVisible()
+                    const addressBox = await addressButton.boundingBox()
                     const analyzeBox = await analyze.boundingBox()
-                    expect(analyzeBox.y - referenceBox.y - referenceBox.height).toBeGreaterThanOrEqual(8)
+                    const labelBox = await addressLabel.boundingBox()
+                    expect(addressBox.y - analyzeBox.y - analyzeBox.height).toBeGreaterThanOrEqual(8)
+                    expect(addressBox.x + addressBox.width).toBeLessThanOrEqual(analyzeBox.x + analyzeBox.width + 1)
+                    expect(labelBox.x + labelBox.width).toBeLessThan(addressBox.x)
+                    expect(labelBox.y).toBeLessThan(addressBox.y + addressBox.height)
+                    expect(labelBox.y + labelBox.height).toBeGreaterThan(addressBox.y)
                 }
             }
             expect(f.calls).toHaveLength(0); expect(f.requests).toHaveLength(3)
@@ -199,7 +208,7 @@ for (const resolving of [false, true]) {
         await mode(page).click(); await mode(page).click()
         try { await stale.fulfill({ json: resolving ? resolved(places.a.id) : searchResponse('Тестовая улица, 1') }) } catch { /* cancelled */ }
         await expect(input(page)).toHaveValue('Тестовая улица, 1')
-        await expect(page.getByRole('option')).toHaveCount(0)
+        await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(0)
         await expect(page.getByRole('button', { name: 'Анализировать место', exact: true })).toBeDisabled()
         expect(f.calls).toHaveLength(0); expect(f.requests).toHaveLength(0)
     })
@@ -249,7 +258,7 @@ test('confirming a pending point cancels a local resolver started after placing 
 
     await expect(card).toHaveCount(0)
     await expect(input(page)).toHaveValue(places.a.label)
-    await expect(page.getByRole('option')).toHaveCount(0)
+    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(0)
     await expect(page.getByText(places.a.label, { exact: true })).toHaveCount(0)
     await expect(ready(page)).toHaveText('Готово')
     expect(f.requests.map(r => r.place)).toEqual(Array(3).fill({ kind: 'point', lon: sourcePoint.lon, lat: sourcePoint.lat }))
@@ -273,8 +282,22 @@ for (const [availability, message] of Object.entries(emptySearchMessages)) {
         await expect(page.getByRole('status').filter({ hasText: message })).toHaveText(message)
         const other = availability === 'AVAILABLE' ? emptySearchMessages.UNAVAILABLE : emptySearchMessages.AVAILABLE
         await expect(page.getByRole('status').filter({ hasText: other })).toHaveCount(0)
-        await expect(page.getByRole('option')).toHaveCount(0)
-        await point(page)
+        await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(0)
+        const actions = page.locator('.pa-search-feedback')
+        const clarify = actions.getByRole('button', { name: 'Уточнить адрес' })
+        await expect(actions.getByRole('button', { name: 'Выбрать точку', exact: true })).toHaveCount(0)
+        await expect(page.getByRole('button', { name: 'Точка на карте', exact: true })).toBeInViewport({ ratio: 0.98 })
+        if (availability === 'AVAILABLE') {
+            await clarify.press('Enter')
+            await expect(input(page)).toBeFocused()
+            await expect(input(page)).toHaveValue('Несуществующая тестовая улица')
+        } else {
+            await expect(clarify).toHaveCount(0)
+        }
+        await page.getByRole('button', { name: 'Точка на карте', exact: true }).press('Enter')
+        await expect(page.locator('.pa-map')).toBeFocused()
+        await page.keyboard.press('Enter')
+        await page.getByRole('button', { name: 'Анализировать точку', exact: true }).click()
         await expect(ready(page)).toHaveText('Готово')
         expect(f.requests.map(r => r.place.kind)).toEqual(['point', 'point', 'point'])
         expect(f.calls).toHaveLength(0)
@@ -309,10 +332,10 @@ test('local keyboard selects a concrete object with a complete compact address',
     expect(f.resolutions).toHaveLength(0)
     await input(page).press('ArrowUp')
     const lastLabel = `${shortLabel} · Здание ${response.data[0].objects.length}`
-    await expect(page.getByRole('option', { name: lastLabel, exact: true, selected: true })).toBeInViewport()
+    await expect(page.getByRole('listbox').getByRole('option', { name: lastLabel, exact: true, selected: true })).toBeInViewport()
     await input(page).press('ArrowDown')
     await input(page).press('ArrowDown')
-    await expect(page.getByRole('option', { selected: true })).toHaveAccessibleName(shortLabel + ' · Здание 2')
+    await expect(page.getByRole('listbox').getByRole('option', { selected: true })).toHaveAccessibleName(shortLabel + ' · Здание 2')
     await expect(addressMarker(page, 'osm:way:502')).toHaveClass(/is-highlighted/)
     expect(f.resolutions).toHaveLength(0); expect(f.requests).toHaveLength(0)
     await input(page).press('Enter')
@@ -418,7 +441,7 @@ for (const destination of ['point', 'mode']) {
         }
         await stale.fulfill({ json: searchResponse('Неоднозначная') })
         await expect(page.locator('html')).toHaveAttribute('data-late-search-read', 'yes')
-        await expect(page.getByRole('option')).toHaveCount(0)
+        await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(0)
         await expect(page.locator('.pa-address-marker')).toHaveCount(0)
         expect(await addressFeatures(page)).toEqual([])
         expect(f.resolutions).toEqual([]); expect(f.calls).toEqual([])

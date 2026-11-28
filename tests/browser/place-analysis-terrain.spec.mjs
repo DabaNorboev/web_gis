@@ -1,3 +1,4 @@
+import { openMapLayers, openMapSettings } from './support/map-controls.mjs'
 import { expect, test } from '@playwright/test'
 import { GeoJSONVT } from '@maplibre/geojson-vt'
 import { fromGeojsonVt } from '@maplibre/vt-pbf'
@@ -34,6 +35,7 @@ async function openAnalysis(page) {
     })
     await page.route('**/api/v1/satellite/**', route => route.fulfill({ contentType: 'image/png', body: satellitePng }))
     await page.goto('/')
+    await openMapSettings(page)
     const mode = page.getByRole('group', { name: 'Режим карты' })
     const flat = mode.getByRole('button', { name: '2D', exact: true })
     const relief = mode.getByRole('button', { name: '3D', exact: true })
@@ -45,6 +47,7 @@ async function openAnalysis(page) {
     await page.getByRole('button', { name: 'Анализировать точку', exact: true }).press('Enter')
     const marker = page.locator('.pa-map-marker[data-poi-id="osm:node:1"]')
     await expect(marker).toBeVisible()
+    await openMapSettings(page)
     return { mode, flat, relief, marker, analysisRequests }
 }
 
@@ -55,11 +58,11 @@ test('3D loads terrain on demand and preserves the analysis and camera across mo
         return route.fulfill(terrainReply)
     })
     const { mode, flat, relief, marker, analysisRequests } = await openAnalysis(page)
-    await page.getByRole('tab', { name: 'Спутник', exact: true }).press('Enter')
+    await page.getByRole('tab', { name: 'Снимки и NDVI', exact: true }).press('Enter')
     const date = page.getByLabel('Дата снимка', { exact: true })
     await date.selectOption('2024-05-07')
     await expect(page.locator('[data-satellite-coverage]')).toBeVisible()
-    const scope = page.getByLabel('Область спутникового слоя')
+    const scope = page.getByLabel('Где показать слой на карте')
     await scope.selectOption('circle')
     await page.evaluate(() => {
         const map = window.__smokeMapIn('.pa-map')
@@ -73,7 +76,7 @@ test('3D loads terrain on demand and preserves the analysis and camera across mo
     expect(initial.circle.geometry.type).toBe('Polygon')
 
     const controlBounds = await mode.boundingBox()
-    const zoomControls = await page.locator('.pa-map .maplibregl-ctrl-top-right .maplibregl-ctrl-group').boundingBox()
+    const zoomControls = await page.locator('.pa-map-zoom').boundingBox()
     expect(controlBounds.x + controlBounds.width).toBeLessThan(zoomControls.x)
     await relief.press('Space')
     await expect(relief).toHaveAttribute('aria-pressed', 'true')
@@ -119,18 +122,23 @@ test('satellite basemap refreshes attribution and preserves terrain and analysis
     await page.route('**/api/v1/basemap/imagery/*/*/*', route => route.fulfill({ contentType: 'image/png', body: imageryPng }))
     await page.route(terrainTiles, route => route.fulfill(terrainReply))
     const { relief, marker, analysisRequests } = await openAnalysis(page)
-    await page.getByRole('tab', { name: 'Спутник', exact: true }).press('Enter')
+    await page.getByRole('tab', { name: 'Снимки и NDVI', exact: true }).press('Enter')
     const date = page.getByLabel('Дата снимка', { exact: true })
     await date.selectOption('2024-05-07')
     await expect(page.locator('[data-satellite-coverage]')).toBeVisible()
-    const scope = page.getByLabel('Область спутникового слоя')
+    const scope = page.getByLabel('Где показать слой на карте')
     await scope.selectOption('circle')
     const requestCount = analysisRequests.length
 
     const basemap = page.getByRole('group', { name: 'Подложка карты' })
     const vectorButton = basemap.getByRole('button', { name: 'Карта', exact: true })
-    const imageryButton = basemap.getByRole('button', { name: 'Спутник', exact: true })
+    const imageryButton = basemap.getByRole('button', { name: 'Спутниковый фон', exact: true })
     const credit = page.locator('.pa-imagery-credit')
+    const vectorCredit = page.locator('.pa-map .maplibregl-ctrl-attrib-inner')
+    await expect(vectorCredit).toBeVisible()
+    await expect(vectorCredit).toHaveText(/(?:^| \| )© OpenMapTiles · © OpenStreetMap(?: \| |$)/)
+    await expect(vectorCredit.getByRole('link', { name: 'OpenMapTiles' })).toHaveAttribute('href', 'https://openmaptiles.org/')
+    await expect(vectorCredit.getByRole('link', { name: 'OpenStreetMap' })).toHaveAttribute('href', 'https://www.openstreetmap.org/copyright')
     const before = await readMap(page)
     expect(viewports).toHaveLength(0)
     await expect(vectorButton).toHaveAttribute('aria-pressed', 'true')
@@ -147,7 +155,16 @@ test('satellite basemap refreshes attribution and preserves terrain and analysis
     })
     expect(order.vector).toBe('none')
     expect(order.order.indexOf('pa-imagery-basemap')).toBeLessThan(order.order.indexOf('pa-satellite-ndvi-raster'))
-    expect(order.order.indexOf('pa-imagery-basemap')).toBeLessThan(order.order.indexOf('pa-radius-line'))
+    expect(order.order.indexOf('pa-imagery-basemap')).toBeLessThan(order.order.indexOf('pa-radius-casing'))
+    expect(order.order.indexOf('pa-radius-casing')).toBeLessThan(order.order.indexOf('pa-radius-line'))
+    const radiusPaint = await page.evaluate(() => {
+        const map = window.__smokeMapIn('.pa-map')
+        return {
+            casing: map.getPaintProperty('pa-radius-casing', 'line-color'),
+            line: map.getPaintProperty('pa-radius-line', 'line-color'),
+        }
+    })
+    expect(radiusPaint).toEqual({ casing: '#17372d', line: '#f1fff5' })
 
     const imageryOutsideCircle = () => page.evaluate(() => new Promise(resolve => {
         const map = window.__smokeMapIn('.pa-map')
@@ -199,7 +216,7 @@ test('satellite basemap restores the vector map after a failure and retries with
     const { marker, analysisRequests } = await openAnalysis(page)
     const before = await readMap(page)
     const basemap = page.getByRole('group', { name: 'Подложка карты' })
-    await basemap.getByRole('button', { name: 'Спутник', exact: true }).press('Enter')
+    await basemap.getByRole('button', { name: 'Спутниковый фон', exact: true }).press('Enter')
     const alert = page.getByRole('alert').filter({ hasText: 'Спутниковая подложка недоступна' })
     await expect(alert).toBeVisible()
     await expect(basemap.getByRole('button', { name: 'Карта', exact: true })).toHaveAttribute('aria-pressed', 'true')
@@ -273,6 +290,7 @@ test('3D buildings follow the map theme and render on both basemaps', async ({ p
         const map = window.__smokeMapIn('.pa-map')
         return [...new Set(map.queryRenderedFeatures({ layers: ['pa-buildings-3d'] }).map(feature => feature.properties.name))]
     })
+    await openMapLayers(page)
     const note = page.getByText('При приближении видны здания с приблизительными высотами.', { exact: true })
     expect(await layer()).toBeNull()
     await expect(note).toHaveCount(0)
@@ -293,7 +311,7 @@ test('3D buildings follow the map theme and render on both basemaps', async ({ p
     await expect.poll(drawn).toEqual(['complete'])
     const beforeTheme = await readMap(page)
     const color = (await layer()).paint['fill-extrusion-color']
-    await page.getByRole('button', { name: 'Тёмная', exact: true }).press('Enter')
+    await page.getByLabel('Тема подложки карты').selectOption('dark')
     await expect.poll(async () => (await layer()).paint['fill-extrusion-color']).not.toBe(color)
     expect(await readMap(page)).toEqual(beforeTheme)
     await expect.poll(drawn).toEqual(['complete'])
@@ -309,7 +327,7 @@ test('3D buildings follow the map theme and render on both basemaps', async ({ p
     const basemap = page.getByRole('group', { name: 'Подложка карты' })
     const credit = page.locator('.pa-imagery-credit')
     const beforeSatellite = await readMap(page)
-    await basemap.getByRole('button', { name: 'Спутник', exact: true }).press('Enter')
+    await basemap.getByRole('button', { name: 'Спутниковый фон', exact: true }).press('Enter')
     await expect(credit).toBeVisible()
     await expect(note).toBeVisible()
     await expect.poll(drawn).toEqual(['complete'])
