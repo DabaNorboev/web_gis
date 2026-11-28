@@ -5,7 +5,7 @@ import type {
     AirObservation, AnalysisBlockKey, AnalysisPoi, PoiCategory, SatelliteData, SatelliteReleaseRef, SatelliteSelected,
 } from '@/types/placeAnalysis'
 import type { AnalysisBlockState } from '@/composables/usePlaceAnalysis'
-import { airReadingLabel } from '@/utils/airObservation'
+import { airReadingLabel, airStationDistanceLabel } from '@/utils/airObservation'
 import { categoryMeta, type SatelliteMode } from '@/place-analysis'
 import {
     coverageReasons, formatCircleFraction, formatMeanNdvi, formatObservationDate,
@@ -65,16 +65,9 @@ const visibleCategories = computed(() => props.category === 'all'
 const items = computed<AnalysisPoi[]>(() => poi.value?.status === 'READY'
     ? poi.value.data.items.filter(item => visibleCategories.value.includes(item.category)) : [])
 const distanceFormat = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 })
-const stationKilometres = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 })
 function stationHour(id: string) {
     const row = props.airHourRows?.get(id)
     return row ? airReadingLabel(row) + (row.value === null ? '' : ' мкг/м³') : null
-}
-function stationDistance(distance: number | null) {
-    if (distance === null) return 'Расстояние неизвестно'
-    return distance < 1000
-        ? `${distanceFormat.format(distance)} м по прямой`
-        : `${stationKilometres.format(distance / 1000)} км по прямой`
 }
 const stopSummary = computed(() => poi.value?.status === 'READY' ? poi.value.data.official_stop_summary : undefined)
 const unlocatedStops = computed(() => Math.max(0, (stopSummary.value?.source_without_coordinates ?? 0) - (stopSummary.value?.excluded_outside_scope ?? 0)))
@@ -350,7 +343,7 @@ function reloadAirSummary() {
                         <RadioTower :size="16" aria-hidden="true" />
                         <span class="pa-station__body">
                             <strong>{{ item.name }}</strong>
-                            <small :id="`pa-station-distance-${item.id}`">{{ stationDistance(item.distance_m) }}</small>
+                            <small :id="`pa-station-distance-${item.id}`">{{ airStationDistanceLabel(item.distance_m) }}</small>
                             <span v-if="airHourRows?.has(item.id)" :id="`pa-station-hour-${item.id}`" class="pa-station__hour">{{ stationHour(item.id) }}</span>
                         </span>
                         <ChevronRight class="pa-station__chevron" :size="15" aria-hidden="true" />

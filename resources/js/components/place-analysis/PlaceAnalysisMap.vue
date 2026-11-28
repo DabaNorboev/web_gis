@@ -431,6 +431,13 @@ function syncMarkersNow() {
             caption.className = 'pa-map-station__hour'
             caption.setAttribute('aria-hidden', 'true')
             element.append(caption)
+            if (station.id === props.selectedStation) {
+                const name = document.createElement('span')
+                name.className = 'pa-map-station__name'
+                name.textContent = station.name
+                name.setAttribute('aria-hidden', 'true')
+                element.append(name)
+            }
             element.setAttribute('aria-pressed', String(station.id === props.selectedStation))
             element.addEventListener('click', event => {
                 event.stopPropagation()

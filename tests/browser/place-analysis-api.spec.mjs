@@ -437,8 +437,10 @@ test('only an explicit station choice fits the circle and docking keeps the load
     await expect(page.locator('.pa-station small')).toHaveText(['3,5 км по прямой', '4,4 км по прямой', 'Расстояние неизвестно'])
     await stationButton(page, 'Станция Альфа').click()
     await expect.poll(() => fit()).toEqual([circle[0], circle[1], first[0], first[1]])
+    await expect(page.locator('#pa-panel [data-station-distance]')).toHaveText('· 3,5 км от выбранной точки')
     await expect(airSeries(page)).toBeVisible()
     await stationButton(page, 'Станция Бета').click()
+    await expect(page.locator('.pa-map-station.is-selected .pa-map-station__name')).toHaveText('Станция Бета')
     const secondFit = [second[0], circle[1], circle[2], second[1]]
     await expect.poll(() => fit()).toEqual(secondFit)
     await expect(airSeries(page)).toBeVisible()
@@ -447,6 +449,7 @@ test('only an explicit station choice fits the circle and docking keeps the load
     await page.getByRole('button', { name: 'Открыть график внизу' }).click()
     const dock = page.locator('#pa-air-dock')
     await expect(dock.locator('.pa-history')).toBeVisible()
+    await expect(dock.locator('[data-station-distance]')).toHaveText('· 4,4 км от выбранной точки')
     const plot = dock.locator('.pa-chart__plot')
     await expect(plot).toBeInViewport({ ratio: 0.99 })
     expect(await dock.evaluate(element => {
@@ -958,8 +961,8 @@ test('archive ranges preserve station history across panels and count numeric ho
     expect(historyRequests).toEqual(['1001', '1002'])
 })
 
-test('short mobile screen can scroll through the graph and hourly values', async ({ page }) => {
-    await page.setViewportSize({ width: 320, height: 500 })
+test('short screen can scroll through the graph and hourly values', async ({ page, viewport }) => {
+    await page.setViewportSize(viewport.width > 820 ? { width: 1280, height: 560 } : { width: 320, height: 500 })
     const { summary, histories: [history] } = airFixture(airSnapshot.snapshot_version, 0, [Array(168).fill(12)])
     await page.route(`**${historyPath(history.snapshot_version, history.station_id)}`, route => route.fulfill({ json: history }))
     await page.route('**/api/v1/place-analysis', route => route.fulfill({ json: analysisWithAir(route.request().postDataJSON(), summary) }))
@@ -976,6 +979,7 @@ test('short mobile screen can scroll through the graph and hourly values', async
         panel.scrollWidth > panel.clientWidth || document.documentElement.scrollWidth > window.innerWidth)
     expect(horizontalOverflow).toBe(false)
     await page.getByRole('button', { name: 'Открыть график внизу' }).click()
+    await expect(page.locator('#pa-air-dock [data-station-distance]')).toHaveText('Расстояние до выбранного места неизвестно')
     await expect(page.locator('#pa-air-dock .pa-chart__plot')).toBeInViewport({ ratio: 0.99 })
     await airRange(page).selectOption('archive')
     await expect(airSeries(page).getByText('168 из 168 часов со значениями')).toBeVisible()

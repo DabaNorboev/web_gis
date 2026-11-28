@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import type { AirSnapshotState } from '@/composables/useAirSnapshotRequest'
-import { airDateLabel as dateLabel, airHourLabel as observationLabel, airReadingLabel as rowLabel } from '@/utils/airObservation'
+import { airDateLabel as dateLabel, airHourLabel as observationLabel, airReadingLabel as rowLabel, airStationDistanceLabel } from '@/utils/airObservation'
 import type { AirObservation, AirStationHistory, AnalysisStation } from '@/types/placeAnalysis'
 
 const props = defineProps<{
@@ -13,6 +13,12 @@ const props = defineProps<{
 const emit = defineEmits<{ retry: []; 'toggle-dock': []; hour: [literal: string] }>()
 const range = defineModel<'recent' | 'archive'>('range', { required: true })
 const stationHeading = ref<HTMLHeadingElement | null>(null)
+const plot = ref<HTMLElement | null>(null)
+watch(range, async () => {
+    if (!props.docked) return
+    await nextTick()
+    plot.value?.scrollIntoView({ block: 'nearest' })
+})
 const axisNumber = new Intl.NumberFormat('ru-RU', { maximumSignificantDigits: 3, notation: 'compact' })
 const releaseTime = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Krasnoyarsk' })
 const releaseUtc = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short', timeZone: 'UTC' })
@@ -124,7 +130,10 @@ function retry() {
 <template>
     <section class="pa-station-detail" aria-labelledby="pa-air-station">
         <div class="pa-station-detail__header">
-            <h2 id="pa-air-station" ref="stationHeading" tabindex="-1">{{ station.name }}</h2>
+            <div class="pa-station-detail__identity">
+                <h2 id="pa-air-station" ref="stationHeading" tabindex="-1">Станция «{{ station.name }}»</h2>
+                <p class="pa-note" data-station-distance>{{ station.distance_m === null ? 'Расстояние до выбранного места неизвестно' : '· ' + airStationDistanceLabel(station.distance_m, true) + ' от выбранной точки' }}</p>
+            </div>
             <button id="pa-air-dock-toggle" class="pa-outline" type="button"
                 :aria-label="docked ? 'Вернуть в боковую панель' : undefined" @click="emit('toggle-dock')">
                 {{ docked ? 'В боковую панель' : 'Открыть график внизу' }}
@@ -141,7 +150,7 @@ function retry() {
                 <div class="pa-history__overview">
                     <div class="pa-history__summary">
                         <div class="pa-air-latest">
-                            <p>Последнее значение {{ metricLabel }} в архиве</p>
+                            <p>Последнее измерение {{ metricLabel }} на станции:</p>
                             <template v-if="latest">
                                 <strong>{{ rowLabel(latest) }} мкг/м³</strong>
                                 <time class="pa-air-hour" :datetime="latest.observed_at_raw.replace(' ', 'T')">
@@ -186,7 +195,7 @@ function retry() {
                         </div>
                         <div v-if="rows.length" class="pa-chart">
                             <span class="pa-chart__unit">мкг/м³</span>
-                            <div class="pa-chart__plot">
+                            <div ref="plot" class="pa-chart__plot">
                                 <div class="pa-chart__scale" aria-hidden="true">
                                     <span v-for="(tick, index) in chart.ticks" :key="index">{{ axisNumber.format(tick) }}</span>
                                 </div>
@@ -244,7 +253,7 @@ function retry() {
                 </details>
             </section>
             <p class="pa-note">Источник: <a href="https://air.krasn.ru/" target="_blank" rel="noopener noreferrer">{{ station.source }}</a></p>
-            <p class="pa-note">Архивные измерения на станции. Часовой пояс исходных меток и контроль качества неизвестны.</p>
+            <p class="pa-note">Измерения на станции. Значение в выбранной точке неизвестно. Часовой пояс исходных меток и контроль качества неизвестны.</p>
             <p v-if="station.crs !== 'EPSG:4326'" class="pa-note">Для этого выпуска положение станции неизвестно.</p>
         </div>
     </section>
