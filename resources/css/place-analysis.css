@@ -7,10 +7,10 @@
     --pa-accent-soft: #eaf2df;
     --pa-canvas: #f2f5ef;
     height: 100dvh;
-    min-height: 540px;
+    position: relative;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: clip;
     background: var(--pa-canvas);
     color: var(--pa-ink);
     font-family: 'Instrument Sans', 'Segoe UI', sans-serif;
@@ -145,7 +145,9 @@
 .pa-suggestion.is-active { background: #f0f5ed; }
 .pa-suggestion__pin { flex: none; color: var(--pa-accent); }
 .pa-suggestions__empty { margin: 8px; color: var(--pa-muted); font-size: 12px; }
-.pa-sidebar-search { position: relative; z-index: 5; flex: none; padding: 12px 12px 0; }
+.pa-sidebar-search { position: relative; z-index: 5; flex: none; padding: 12px 12px 0; display: flex; flex-direction: column; align-items: flex-start; }
+.pa-search-fields { width: 100%; }
+.pa-sidebar-search > .pa-search-point { flex: none; }
 .pa-place-button {
     display: inline-flex;
     align-items: center;
@@ -249,11 +251,30 @@
 .pa-air-dock .pa-station-detail__body { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
 .pa-air-dock .pa-station-detail__body > .pa-note { margin-top: 4px; }
 .pa-air-dock .pa-history { margin: 0; padding-top: 0; border: 0; }
-.pa-air-dock .pa-chart__series { height: clamp(72px, calc(var(--air-dock-height) - 248px), 360px); }
+.pa-air-dock .pa-history__main { --pa-dock-controls-height: 248px; }
+.pa-air-dock .pa-history__main:has(.pa-air-metrics) { --pa-dock-controls-height: 278px; }
+.pa-air-dock .pa-chart__series { height: clamp(72px, calc(var(--air-dock-height) - var(--pa-dock-controls-height)), 400px); }
 .pa-air-dock .pa-air-latest { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 5px 8px; }
 .pa-air-dock .pa-air-latest strong { font-size: 17px; }
-@media (max-width: 820px) and (max-height: 600px) {
-    .pa-air-dock .pa-chart__series { height: clamp(72px, calc(var(--air-dock-height) - 296px), 360px); }
+@media (max-width: 820px) {
+    .pa-air-dock .pa-history__main { --pa-dock-controls-height: 288px; }
+    .pa-air-dock .pa-history__main:has(.pa-air-metrics) { --pa-dock-controls-height: 372px; }
+}
+@media (max-width: 420px) {
+    .pa-air-dock .pa-station-detail__header {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: start;
+        gap: 3px 8px;
+    }
+    .pa-air-dock .pa-station-detail__identity { display: contents; }
+    .pa-air-dock .pa-station-detail__identity .pa-note { grid-area: 2 / 1 / 3 / -1; }
+    .pa-air-dock .pa-station-detail__header .pa-outline { grid-area: 1 / 2; }
+}
+@media (max-height: 620px) {
+    .pa-air-dock .pa-air-metrics { margin-bottom: 0; }
+    .pa-air-dock .pa-air-metrics .pa-outline { min-height: 28px; padding-block: 2px; }
+    .pa-air-dock .pa-air-series-key { margin-bottom: 0; }
 }
 @container air-dock (min-width: 800px) {
     .pa-air-dock .pa-history__overview {
@@ -261,7 +282,8 @@
         grid-template: 'chart summary' / minmax(0, 1fr) calc(224px + max(0px, 100cqw - 1440px));
         column-gap: clamp(16px, 2cqw, 28px);
     }
-    .pa-air-dock .pa-chart__series { height: clamp(72px, calc(var(--air-dock-height) - 188px), 400px); }
+    .pa-air-dock .pa-history__main { --pa-dock-controls-height: 188px; }
+    .pa-air-dock .pa-history__main:has(.pa-air-metrics) { --pa-dock-controls-height: 202px; }
     .pa-air-dock .pa-history__summary { grid-area: summary; display: grid; align-content: start; gap: 10px; }
     .pa-air-dock .pa-air-latest { grid-area: auto; display: grid; gap: 4px; padding: 10px 12px; }
     .pa-air-dock .pa-air-latest strong { font-size: 22px; }
@@ -567,7 +589,6 @@
 .pa-chart__reading.is-above { --tooltip-y: calc(var(--pointer-y) - 8px - var(--tooltip-height)); }
 .pa-chart__reading time { font-variant-numeric: tabular-nums; }
 .pa-chart__reading strong { font-size: 12px; }
-.pa-air-dock .pa-chart__plot { scroll-margin-block: 3px; }
 .pa-chart__plot { display: grid; grid-template: auto auto / max-content minmax(0, 1fr); gap: 4px 6px; }
 .pa-chart__scale, .pa-chart__grid { display: flex; flex-direction: column; justify-content: space-between; }
 .pa-chart__scale { align-items: end; margin-block: -0.5em; line-height: 1; }
@@ -605,7 +626,14 @@
 }
 .pa-air-values { margin-top: 8px; font-size: 12px; }
 .pa-air-values summary { cursor: pointer; padding: 8px 0; font-weight: 600; }
-.pa-air-values table { width: 100%; border-collapse: collapse; text-align: left; font-variant-numeric: tabular-nums; }
+.pa-air-values__scroll {
+    position: relative;
+    max-height: min(32dvh, 17rem);
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+.pa-air-values thead { position: sticky; top: 0; background: #fff; }
+.pa-air-values table { width: 100%; border-collapse: separate; border-spacing: 0; text-align: left; font-variant-numeric: tabular-nums; }
 .pa-air-values :is(th, td) { padding: 5px 4px; border-bottom: 1px solid var(--pa-border); }
 
 .pa-map-shell {
@@ -620,6 +648,9 @@
 }
 #pa-search-attribution { position: absolute; z-index: 7; right: 0; bottom: 20px; max-width: 100%; }
 .pa-geocoding-attribution { display: flex; flex-wrap: wrap; gap: 2px 8px; padding: 2px 6px; background: #fffffff0; color: #283c32; font-size: 11px; }
+/* A map credit to the same OSM copyright page also covers address results. */
+.pa-map-shell:has(.maplibregl-ctrl-attrib a[href="https://www.openstreetmap.org/copyright"])
+    .pa-geocoding-attribution a[href="https://www.openstreetmap.org/copyright"] { display: none; }
 .pa-geocoding-attribution a:hover { text-decoration: underline; }
 .pa-map-toolbar {
     display: flex;
@@ -1013,7 +1044,7 @@
 .pa-geocoding .pa-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; height: auto; min-height: 40px; }
 .pa-geocoding .pa-search__input { grid-area: 1 / 1; min-height: 38px; width: 100%; }
 .pa-geocoding .pa-search__clear { grid-area: 1 / 2; }
-.pa-geocoding .pa-suggestions { grid-column: 1 / -1; position: static; min-width: 0; width: 100%; max-height: 180px; overflow-y: auto; margin: 0 0 8px; padding: 4px; box-shadow: none; }
+.pa-geocoding .pa-suggestions { grid-column: 1 / -1; position: static; min-width: 0; width: 100%; max-height: none; overflow: visible; margin: 0 0 8px; padding: 4px; box-shadow: none; }
 .pa-geocoding .pa-note, .pa-geocoding strong, .pa-geocoding .pa-suggestion { overflow-wrap: anywhere; }
 .pa-geocoding .pa-note { margin: 0; }
 .pa-geocoding summary { cursor: pointer; }
@@ -1022,18 +1053,13 @@
 .pa-search-feedback__actions .pa-outline { margin: 0; min-height: 34px; }
 .pa-search-feedback > p:first-child { color: var(--pa-ink); font-weight: 600; }
 
-/* Keep geocoding preview/confirmation inside the panel, including short screens. */
-.pa-panel:has(.pa-geocoding) .pa-sidebar-search { flex: 0 1 auto; min-height: 52px; max-height: 48%; overflow-y: auto; }
-.pa-sidebar-search:has(#pa-geocoding-query) { min-height: 108px; }
-.pa-panel .pa-sidebar-search:has(.pa-suggestions, .pa-search-feedback) {
-    flex-shrink: 0;
-    max-height: max(196px, 48%);
+/* Give expanded address controls and results a single sidebar scroll area. */
+.pa-panel:has(.pa-geocoding-preview, .pa-geocoding section, .pa-search-feedback, .pa-geocoding .pa-suggestions) {
+    overflow: auto;
 }
-@media (max-width: 820px) {
-    .pa-panel:has(.pa-geocoding) .pa-sidebar-search { max-height: max(100px, calc(48dvh - 140px)); }
-    .pa-panel .pa-sidebar-search:has(.pa-suggestions, .pa-search-feedback) {
-        max-height: max(196px, calc(48dvh - 140px));
-    }
+.pa-panel:has(.pa-geocoding-preview, .pa-geocoding section, .pa-search-feedback, .pa-geocoding .pa-suggestions) .pa-panel__scroll {
+    flex: none;
+    overflow: visible;
 }
 
 @media (max-width: 1050px) {
@@ -1162,6 +1188,8 @@
 
 .pa-suggestion__body { display: grid; gap: 3px; }
 .pa-suggestion__body small { font-size: 11px; color: var(--pa-muted); font-weight: 400; }
+.pa-analysis-selection { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin-bottom: 8px; font-size: 13px; overflow-wrap: anywhere; }
+.pa-analysis-selection > span { color: var(--pa-muted); font-size: 12px; }
 .pa-api-actions .pa-note { overflow-wrap: anywhere; margin: 0 0 10px; }
 
 .pa-address-title { color: var(--pa-ink); font-size: 13px; font-weight: 600; line-height: 1.45; }

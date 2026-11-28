@@ -104,7 +104,7 @@ for (const op of ['search', 'confirm', 'reverse']) {
             await point(page)
             await page.getByRole('button', { name: 'Найти адрес поблизости', exact: true }).click()
         } else {
-            if (op === 'confirm') { await preview(page); await page.getByRole('button', { name: 'Подтвердить положение', exact: true }).click() }
+            if (op === 'confirm') { await preview(page); await page.getByRole('button', { name: 'Анализировать по этому адресу', exact: true }).click() }
             else await input(page).fill('Синтетическая 10')
         }
         await expect.poll(() => !!stale).toBe(true)
@@ -121,7 +121,7 @@ for (const op of ['search', 'confirm', 'reverse']) {
 }
 test('Geoapify selection expires and reconfirms while local mode keeps ready results', async ({ page }) => {
     const f = await fixtures(page); await page.clock.install({ time: Date.now() }); await page.goto('/'); await mode(page).click(); await preview(page)
-    await page.getByRole('button', { name: 'Подтвердить положение', exact: true }).click()
+    await page.getByRole('button', { name: 'Анализировать по этому адресу', exact: true }).click()
     await expect(ready(page)).toHaveText('Готово'); await mode(page).click()
     await page.clock.fastForward(86400000 + 2000)
     await expect(page.getByRole('button', { name: 'Анализировать место', exact: true })).toBeDisabled()
@@ -285,7 +285,8 @@ for (const [availability, message] of Object.entries(emptySearchMessages)) {
         await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(0)
         const actions = page.locator('.pa-search-feedback')
         const clarify = actions.getByRole('button', { name: 'Уточнить адрес' })
-        await expect(actions.getByRole('button', { name: 'Выбрать точку', exact: true })).toBeInViewport({ ratio: 0.98 })
+        await expect(actions.getByRole('button', { name: 'Выбрать точку', exact: true })).toHaveCount(0)
+        await expect(page.getByRole('button', { name: 'Точка на карте', exact: true })).toBeInViewport({ ratio: 0.98 })
         if (availability === 'AVAILABLE') {
             await clarify.press('Enter')
             await expect(input(page)).toBeFocused()
@@ -293,7 +294,7 @@ for (const [availability, message] of Object.entries(emptySearchMessages)) {
         } else {
             await expect(clarify).toHaveCount(0)
         }
-        await actions.getByRole('button', { name: 'Выбрать точку', exact: true }).press('Enter')
+        await page.getByRole('button', { name: 'Точка на карте', exact: true }).press('Enter')
         await expect(page.locator('.pa-map')).toBeFocused()
         await page.keyboard.press('Enter')
         await page.getByRole('button', { name: 'Анализировать точку', exact: true }).click()

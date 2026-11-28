@@ -12,7 +12,7 @@ import { categoryMeta, categoryOrder, type AnalysisLayer, type AnalysisTab, type
 import LocalAddressSearch from '@/components/place-analysis/LocalAddressSearch.vue'
 import PointAddressReference from '@/components/place-analysis/PointAddressReference.vue'
 import { useAnalysisPointAddress } from '@/composables/useAnalysisPointAddress'
-import { localAddressLabel } from '@/utils/addressLabels'
+import { geocodingAddressLabel, localAddressLabel } from '@/utils/addressLabels'
 import type { AnalysisAddress } from '@/types/placeAnalysis'
 import GeocodingSearch from '@/components/place-analysis/GeocodingSearch.vue'
 import type { GeocodingSelection } from '@/types/geocoding'
@@ -132,6 +132,11 @@ const nextRadius = computed(() => {
 })
 const radiusPending = computed(() => hasSelection.value && nextRadius.value !== appliedRadius.value)
 const mapRadius = computed(() => displayedGeometry.value?.radius_m ?? appliedRadius.value)
+const analysisPlaceLabel = computed(() => {
+    const address = geocodingSelection.value?.place.address
+    if (address) return geocodingAddressLabel(address.components, address.precision.level)
+    return place.value.id ? selectedAddressLabel.value : place.value.label
+})
 const pendingPoint = ref<AnalysisPoint | null>(null)
 const pickMode = ref(false)
 const referencePoint = computed(() => pendingPoint.value
@@ -482,8 +487,9 @@ function toggleChartDock() {
         if (chartDocked.value && airDockContent.value) {
             const scrollArea = airDockContent.value.querySelector<HTMLElement>('.pa-station-detail__body')
             if (scrollArea) scrollArea.scrollTop = 0
-            airDockPanel.value?.scrollIntoView({ block: 'nearest' })
-            airDockContent.value.querySelector('.pa-chart__plot')?.scrollIntoView({ block: 'nearest' })
+            if (window.matchMedia('(max-width: 820px)').matches) {
+                airDockPanel.value?.scrollIntoView({ block: 'nearest' })
+            }
         }
     })
 }
@@ -526,16 +532,22 @@ onBeforeUnmount(() => {
         <div ref="workspace" class="pa-body" :class="{ 'is-resizing': sidebarDragging }" :style="sidebarStyle">
             <aside id="pa-panel" class="pa-panel" aria-label="Панель анализа места">
                 <div class="pa-sidebar-search">
-                <LocalAddressSearch ref="localSearchRef" v-model:query="searchQuery" :enabled="searchMode === 'local'" @selected="acceptLocalAddress" @pick-point="startPointPick" />
-                <GeocodingSearch ref="geocodingRef" v-model:query="searchQuery" :enabled="searchMode === 'geoapify'" :point="referencePoint" :selection-error="selectionError"
-                    @selected="acceptGeocodingSelection" @retired="retireGeocodingSelection" @authorization-expired="geocodingAuthorizationExpired = $event" @preview="previewGeocoding" @point="onMapPoint" @pick-point="startPointPick" />
+                    <div class="pa-search-fields">
+                        <LocalAddressSearch ref="localSearchRef" v-model:query="searchQuery" :enabled="searchMode === 'local'" @selected="acceptLocalAddress" />
+                        <GeocodingSearch ref="geocodingRef" v-model:query="searchQuery" :enabled="searchMode === 'geoapify'" :point="referencePoint" :selection-error="selectionError"
+                            @selected="acceptGeocodingSelection" @retired="retireGeocodingSelection" @authorization-expired="geocodingAuthorizationExpired = $event" @preview="previewGeocoding" @point="onMapPoint" />
+                    </div>
                     <button ref="placeButton" class="pa-search-point" type="button" :aria-pressed="pickMode"
                         @click="pickMode ? cancelPick() : startPointPick()">
                         <MapPin :size="16" aria-hidden="true" /> Точка на карте
                     </button>
                 </div>
                 <div class="pa-api-actions">
-                    <p v-if="!geocodingSelection && (!referencePoint || pendingPoint)" class="pa-note">{{ hasSelection ? (place.id ? selectedAddressLabel : place.label) : 'Выберите адресный объект или точку карты.' }}</p>
+                    <section v-if="hasSelection" class="pa-analysis-selection" aria-label="Анализируемое место">
+                        <strong>{{ analysisPlaceLabel }}</strong>
+                        <span>Радиус анализа {{ mapRadius }} м</span>
+                    </section>
+                    <p v-else class="pa-note">Выберите адресный объект или точку карты.</p>
                     <div class="pa-api-actions__main">
                         <button class="pa-primary" type="button" :disabled="!analysis.input.value || !!geocodingSelection && geocodingAuthorizationExpired" :aria-describedby="!hasSelection ? 'pa-selection-hint' : undefined" @click="runAnalysis">{{ radiusPending ? `Пересчитать для ${nextRadius} м` : 'Анализировать место' }}</button>
                         <p v-if="radiusPending && displayedGeometry" class="pa-radius-note" role="status">На карте прежний контур · {{ mapRadius }} м</p>

@@ -8,7 +8,7 @@ import type { AddressResult } from '@/types/address'
 import type { AnalysisAddress } from '@/types/placeAnalysis'
 
 const props = defineProps<{ query: string; enabled: boolean }>()
-const emit = defineEmits<{ 'update:query': [string]; selected: [AnalysisAddress]; pickPoint: [] }>()
+const emit = defineEmits<{ 'update:query': [string]; selected: [AnalysisAddress] }>()
 const query = ref(props.query)
 watch(() => props.query, value => { query.value = value }, { flush: 'sync' })
 watch(query, value => emit('update:query', value), { flush: 'sync' })
@@ -160,7 +160,6 @@ function key(event: KeyboardEvent) {
             <div class="pa-search-feedback__actions">
                 <button v-if="empty && !unavailable" class="pa-outline" type="button" @click="queryInput?.focus()">Уточнить адрес</button>
                 <button v-if="status === 'error'" class="pa-outline" type="button" @click="queryInput?.focus(); submit()">Повторить поиск</button>
-                <button class="pa-outline" type="button" @click="emit('pickPoint')">Выбрать точку</button>
             </div>
         </div>
     </div>

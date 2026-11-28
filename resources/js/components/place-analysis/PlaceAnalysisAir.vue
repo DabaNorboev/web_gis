@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { AirSnapshotState } from '@/composables/useAirSnapshotRequest'
 import { airDateLabel as dateLabel, airHourLabel as observationLabel, airReadingLabel as rowLabel, airStationDistanceLabel } from '@/utils/airObservation'
 import type { AirObservation, AirStationHistory, AnalysisStation } from '@/types/placeAnalysis'
@@ -13,12 +13,6 @@ const props = defineProps<{
 const emit = defineEmits<{ retry: []; 'toggle-dock': []; hour: [literal: string] }>()
 const range = defineModel<'recent' | 'archive'>('range', { required: true })
 const stationHeading = ref<HTMLHeadingElement | null>(null)
-const plot = ref<HTMLElement | null>(null)
-watch(range, async () => {
-    if (!props.docked) return
-    await nextTick()
-    plot.value?.scrollIntoView({ block: 'nearest' })
-})
 const axisNumber = new Intl.NumberFormat('ru-RU', { maximumSignificantDigits: 3, notation: 'compact' })
 const releaseTime = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Krasnoyarsk' })
 const releaseUtc = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short', timeZone: 'UTC' })
@@ -205,7 +199,7 @@ function retry() {
                         </div>
                         <div v-if="rows.length" class="pa-chart">
                             <span class="pa-chart__unit">мкг/м³</span>
-                            <div ref="plot" class="pa-chart__plot">
+                            <div class="pa-chart__plot">
                                 <div class="pa-chart__scale" aria-hidden="true">
                                     <span v-for="(tick, index) in chart.ticks" :key="index">{{ axisNumber.format(tick) }}</span>
                                 </div>
@@ -249,17 +243,19 @@ function retry() {
                 </div>
                 <details class="pa-air-values">
                     <summary>Часовые значения и пропуски</summary>
-                    <table>
-                        <caption class="sr-only">Часовые значения {{ comparisons ? 'PM2,5 и PM₁₀' : metricLabel }}. {{ station.name }}</caption>
-                        <thead><tr><th scope="col">Время источника</th><th scope="col">{{ metricLabel }}, мкг/м³</th>
-                            <th v-if="comparisons" scope="col">PM₁₀, мкг/м³</th></tr></thead>
-                        <tbody>
-                            <tr v-for="(row, index) in rows" :key="row.observed_at_raw">
-                                <td>{{ observationLabel(row.observed_at_raw) }}</td><td>{{ rowLabel(row) }}</td>
-                                <td v-if="comparedRows[index]">{{ rowLabel(comparedRows[index]!) }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <div class="pa-air-values__scroll" role="region" aria-label="Почасовая таблица" tabindex="0">
+                        <table>
+                            <caption class="sr-only">Часовые значения {{ comparisons ? 'PM2,5 и PM₁₀' : metricLabel }}. {{ station.name }}</caption>
+                            <thead><tr><th scope="col">Время источника</th><th scope="col">{{ metricLabel }}, мкг/м³</th>
+                                <th v-if="comparisons" scope="col">PM₁₀, мкг/м³</th></tr></thead>
+                            <tbody>
+                                <tr v-for="(row, index) in rows" :key="row.observed_at_raw">
+                                    <td>{{ observationLabel(row.observed_at_raw) }}</td><td>{{ rowLabel(row) }}</td>
+                                    <td v-if="comparedRows[index]">{{ rowLabel(comparedRows[index]!) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </details>
             </section>
             <p class="pa-note">Источник: <a href="https://air.krasn.ru/" target="_blank" rel="noopener noreferrer">{{ station.source }}</a></p>

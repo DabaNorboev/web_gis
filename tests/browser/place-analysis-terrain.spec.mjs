@@ -155,7 +155,16 @@ test('satellite basemap refreshes attribution and preserves terrain and analysis
     })
     expect(order.vector).toBe('none')
     expect(order.order.indexOf('pa-imagery-basemap')).toBeLessThan(order.order.indexOf('pa-satellite-ndvi-raster'))
-    expect(order.order.indexOf('pa-imagery-basemap')).toBeLessThan(order.order.indexOf('pa-radius-line'))
+    expect(order.order.indexOf('pa-imagery-basemap')).toBeLessThan(order.order.indexOf('pa-radius-casing'))
+    expect(order.order.indexOf('pa-radius-casing')).toBeLessThan(order.order.indexOf('pa-radius-line'))
+    const radiusPaint = await page.evaluate(() => {
+        const map = window.__smokeMapIn('.pa-map')
+        return {
+            casing: map.getPaintProperty('pa-radius-casing', 'line-color'),
+            line: map.getPaintProperty('pa-radius-line', 'line-color'),
+        }
+    })
+    expect(radiusPaint).toEqual({ casing: '#17372d', line: '#f1fff5' })
 
     const imageryOutsideCircle = () => page.evaluate(() => new Promise(resolve => {
         const map = window.__smokeMapIn('.pa-map')

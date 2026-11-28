@@ -181,10 +181,16 @@ function addLayers() {
         paint: { 'fill-color': '#2d6450', 'fill-opacity': 0.045 },
     })
     map.addLayer({
+        id: 'pa-radius-casing',
+        type: 'line',
+        source: 'pa-radius',
+        paint: { 'line-color': '#17372d', 'line-width': 4 },
+    })
+    map.addLayer({
         id: 'pa-radius-line',
         type: 'line',
         source: 'pa-radius',
-        paint: { 'line-color': '#245b45', 'line-width': 2, 'line-dasharray': [4, 3] },
+        paint: { 'line-color': '#f1fff5', 'line-width': 2, 'line-dasharray': [4, 3] },
     })
 }
 
@@ -196,7 +202,7 @@ const layerFillGroups: Record<AnalysisLayer, string[]> = {
     objects: ['pa-poi-fill', 'pa-poi-outline'],
     satellite: ['pa-satellite-clip-start', 'pa-satellite-true-color-raster', 'pa-satellite-ndvi-raster', 'pa-satellite-clip-end'],
     stations: [],
-    radius: ['pa-radius-fill', 'pa-radius-line'],
+    radius: ['pa-radius-fill', 'pa-radius-casing', 'pa-radius-line'],
 }
 
 function applyMarkerOrder() {
@@ -285,9 +291,10 @@ function syncLayers() {
     const radiusSource = map.getSource('pa-radius') as GeoJSONSource | undefined
     syncPoiGeometry()
     radiusSource?.setData(analysisFeature())
-    setVisibility('pa-radius-fill', props.showRadius && !!props.analysisArea)
-    setVisibility('pa-radius-line', props.showRadius && !!props.analysisArea)
-    if (map.getLayer('pa-radius-line')) map.setPaintProperty('pa-radius-line', 'line-opacity', props.geometryStale ? .4 : 1)
+    for (const id of layerFillGroups.radius) setVisibility(id, props.showRadius && !!props.analysisArea)
+    for (const id of ['pa-radius-casing', 'pa-radius-line']) {
+        if (map.getLayer(id)) map.setPaintProperty(id, 'line-opacity', props.geometryStale ? .62 : 1)
+    }
     syncSatelliteRasters()
     map.triggerRepaint()
     applyLayerOrder()

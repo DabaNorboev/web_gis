@@ -64,8 +64,8 @@ test('analysis guides explain air and NDVI without reloading results', async ({ 
     await expect.poll(() => calls.length).toBe(3)
     await expect(page.getByText('Как это работает', { exact: true })).toHaveCount(0)
     for (const [tab, title, explanation] of [
-        ['Воздух', 'Как читать график PM2,5', 'Почему станция может быть только в списке?'],
-        ['Спутник', 'Как читать снимок и NDVI', 'NDVI сам по себе не показывает долю растительности'],
+        ['Воздух', 'Как читать график воздуха', 'Почему станция может быть только в списке?'],
+        ['Снимки и NDVI', 'Как читать снимок и NDVI', 'NDVI сам по себе не показывает долю растительности'],
     ]) {
         await page.getByRole('tab', { name: tab, exact: true }).click()
         const guide = page.getByText('Как это работает', { exact: true })
@@ -75,6 +75,11 @@ test('analysis guides explain air and NDVI without reloading results', async ({ 
         await expect(heading).toBeVisible()
         await expect(page.getByText(explanation, { exact: tab === 'Воздух' })).toBeVisible()
         await expect(page.locator('.pa-guide figure')).toBeVisible()
+        if (tab === 'Воздух') {
+            await expect(page.locator('.pa-guide')).toContainText('частицы до 2,5 мкм')
+            await expect(page.locator('.pa-guide')).toContainText('частицы до 10 мкм')
+            await expect(page.locator('.pa-guide')).toContainText('на общей шкале')
+        }
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
         await page.keyboard.press('Space')
         await expect(heading).not.toBeVisible()
@@ -151,6 +156,9 @@ test('date change reloads only satellite; late replies are discarded and radius 
     await page.getByRole('spinbutton', { name: 'Радиус анализа:' }).press('Tab')
     const applyRadius = page.getByRole('button', { name: 'Пересчитать для 1000 м', exact: true })
     await expect(applyRadius).toBeVisible()
+    const context = page.getByRole('region', { name: 'Анализируемое место' })
+    await expect(context).toContainText('Точка на карте')
+    await expect(context).toContainText('Радиус анализа 500 м')
     await expect(page.locator('.pa-map-marker')).toHaveCount(1)
     await expect(card(page, 'poi').getByRole('status')).toHaveText('Готово')
     await expect(page.locator('.pa-map-radius-label')).toHaveText('R = 500 м · предыдущий')
@@ -164,6 +172,7 @@ test('date change reloads only satellite; late replies are discarded and radius 
     expect(calls.slice(4).every(r => r.radius_m === 1000 && r.date === '2024-05-07')).toBe(true)
     for (const route of routes.slice(4)) await fixture(route, { poi: 'READY', air: 'READY', satellite: 'READY' })
     await expect(page.locator('.pa-map-radius-label')).toHaveText('R = 1000 м')
+    await expect(context).toContainText('Радиус анализа 1000 м')
     for (const key of ['poi', 'air']) await expect(card(page, key).getByRole('status')).toHaveText('Готово')
     await expect(card(page, 'satellite').getByRole('status')).toHaveText('Наблюдение готово')
     await expect.poll(() => page.evaluate(() => window.__smokeMapIn('.pa-map')?.getSource('pa-radius')?.serialize().data)).toEqual({ type: 'Feature', properties: {}, geometry: responseFor(calls[4]).analysis_area })
@@ -266,7 +275,7 @@ test('exact address and keyboard station choice show zero and two distinct gaps'
     await page.goto('/analysis')
     await page.getByRole('button', { name: 'Поиск: локальный', exact: true }).click()
     await geocodingPreview(page)
-    await page.getByRole('button', { name: 'Подтвердить положение', exact: true }).click()
+    await page.getByRole('button', { name: 'Анализировать по этому адресу', exact: true }).click()
     await expect.poll(() => calls.length).toBe(3)
     await expect(card(page, 'poi').getByRole('status')).toHaveText('Готово')
     expect(calls.every(r => r.place.kind === 'address' && r.analysis_version === 2 && r.place.selection_token === geo.selected.selection_token && !('lon' in r.place))).toBe(true)
@@ -964,6 +973,7 @@ test('archive ranges preserve station history across panels and count numeric ho
 test('short screen can scroll through the graph and hourly values', async ({ page, viewport }) => {
     await page.setViewportSize(viewport.width > 820 ? { width: 1280, height: 560 } : { width: 320, height: 500 })
     const { summary, histories: [history] } = airFixture(airSnapshot.snapshot_version, 0, [Array(168).fill(12)])
+    history.pm10_rows = history.rows.map(row => ({ ...row, value: 16 }))
     await page.route(`**${historyPath(history.snapshot_version, history.station_id)}`, route => route.fulfill({ json: history }))
     await page.route('**/api/v1/place-analysis', route => route.fulfill({ json: analysisWithAir(route.request().postDataJSON(), summary) }))
     await openPointAir(page)
@@ -975,15 +985,28 @@ test('short screen can scroll through the graph and hourly values', async ({ pag
     const last = airSeries(page).getByRole('cell', { name: '12', exact: true }).last()
     await last.scrollIntoViewIfNeeded()
     await expect(last).toBeInViewport()
+    const table = page.getByRole('region', { name: 'Почасовая таблица' })
+    expect(await table.evaluate(element => element.scrollTop)).toBeGreaterThan(0)
+    expect(await table.evaluate(element =>
+        element.querySelector('thead').getBoundingClientRect().top - element.getBoundingClientRect().top)).toBeCloseTo(0, 0)
     const horizontalOverflow = await page.locator('.pa-panel__scroll').evaluate(panel =>
         panel.scrollWidth > panel.clientWidth || document.documentElement.scrollWidth > window.innerWidth)
     expect(horizontalOverflow).toBe(false)
     await page.getByRole('button', { name: 'Открыть график внизу' }).click()
     await expect(page.locator('#pa-air-dock [data-station-distance]')).toHaveText('Расстояние до выбранного места неизвестно')
     await expect(page.locator('#pa-air-dock .pa-chart__plot')).toBeInViewport({ ratio: 0.99 })
-    await airRange(page).selectOption('archive')
-    await expect(airSeries(page).getByText('168 из 168 часов со значениями')).toBeVisible()
+    await page.getByRole('button', { name: 'Вместе', exact: true }).click()
+    await page.getByLabel('Период общего графика').selectOption('archive')
+    await expect(airSeries(page).getByText(/PM2,5 168 из 168 часов со значениями/)).toBeVisible()
     await expect(page.locator('#pa-air-dock .pa-chart__labels')).toBeInViewport({ ratio: 0.99 })
+    await expect(page.locator('#pa-air-history')).toBeInViewport({ ratio: 0.99 })
+    await expect(page.locator('#pa-air-dock .pa-air-latest')).toBeInViewport({ ratio: 0.99 })
+    if (viewport.width > 820) {
+        expect(await page.evaluate(() => {
+            const page = document.scrollingElement
+            return [page.scrollTop, page.scrollHeight - page.clientHeight]
+        })).toEqual([0, 0])
+    }
 })
 
 test('pinned A11 map and list open the same station weeks', async ({ page }) => {
