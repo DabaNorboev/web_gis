@@ -33,35 +33,18 @@ try {
         }
         usleep(100000);
     }
-    $cases = [['inside-200', 497230, 6209920, 200], ['inside-1000', 497230, 6209920, 1000],
-        ['cloud-200', null, null, 200], ['cloud-1000', null, null, 1000], ['edge-200', null, null, 200], ['edge-1000', null, null, 1000], ['outside-200', 400000, 6200000, 200], ['outside-1000', 400000, 6200000, 1000]];
-    // Synthetic review points, no personal locations. Reuse retained A9 test circle centres.
-    $review = json_decode(file_get_contents(base_path('data/satellite/reviews/2026-06-06-city-a9-5-01/city-boundary-circles.json')), true);
-    $edge = $review[0]['center_utm'];
-    $catalog = json_decode(file_get_contents($runtime.'/catalog.json'), true);
-    $june = array_values(array_filter($catalog['releases'], fn ($r) => $r['date'] === '2026-06-06'))[0];
-    $cloud = null;
-    foreach ($june['tiles'] as $key => $tile) {
-        $raw = file_get_contents($runtime.'/'.$tile['path']);
-        for ($o = 0; $o < strlen($raw); $o += 8) {
-            if (ord($raw[$o + 4]) === 5) {
-                [$tr,$tc] = array_map('intval', explode('-', $key));
-                $w = min(256, $catalog['grid']['width'] - $tc * 256);
-                $cell = intdiv($o, 8);
-                $t = $catalog['grid']['transform'];
-                $cloud = [$t[2] + ($tc * 256 + $cell % $w + .5) * 10, $t[5] - ($tr * 256 + intdiv($cell, $w) + .5) * 10];
-                break 2;
-            }
-        }
-    }
+    // Public control centres in EPSG:32646. Cloud and western edge centres were
+    // chosen inside the service boundary using the June exclusion raster.
+    // The former western centre lies in the source buffer outside the service boundary.
+    $cases = [
+        ['inside-200', 497230, 6209920, 200], ['inside-1000', 497230, 6209920, 1000],
+        ['cloud-200', 490335, 6207095, 200], ['cloud-1000', 490335, 6207095, 1000],
+        ['edge-200', 444905, 6206485, 200], ['edge-1000', 444905, 6206485, 1000],
+        ['outside-buffer-1000', 444889.9938225126, 6206476.068324317, 1000],
+        ['outside-200', 400000, 6200000, 200], ['outside-1000', 400000, 6200000, 1000],
+    ];
     $results = [];
     foreach ($cases as [$name,$x,$y,$radius]) {
-        if (str_starts_with($name, 'cloud')) {
-            [$x,$y] = $cloud;
-        }
-        if (str_starts_with($name, 'edge')) {
-            [$x,$y] = $edge;
-        }
         $p = DB::selectOne('SELECT ST_X(p) lon, ST_Y(p) lat FROM (SELECT ST_Transform(ST_SetSRID(ST_MakePoint(?,?),32646),4326) p) s', [$x, $y]);
         $expected = (new SatelliteCatalogReader($runtime, config('satellite.sha256')))->forPoint((float) $p->lon, (float) $p->lat, $radius);
         $body = json_encode(['place' => ['kind' => 'point', 'lon' => (float) $p->lon, 'lat' => (float) $p->lat], 'radius_m' => $radius, 'date' => '2026-06-06']);
@@ -69,12 +52,15 @@ try {
         $raw = file_get_contents('http://127.0.0.1:18765/api/v1/place-analysis', false, stream_context_create(['http' => ['method' => 'POST', 'header' => "Content-Type: application/json\r\n", 'content' => $body, 'ignore_errors' => true]]));
         $seconds = microtime(true) - $start;
         $r = json_decode($raw, true);
+        $headers = array_map('strtolower', $http_response_header);
         if (str_starts_with($name, 'outside')) {
             if (! str_contains($http_response_header[0], '422') || ($r['code'] ?? null) !== 'OUTSIDE_SERVICE_AREA'
-                || isset($r['blocks']) || ! in_array('Referrer-Policy: no-referrer', $http_response_header, true)) {
-                throw new RuntimeException('Outside-city request must be rejected before satellite analysis.');
+                || isset($r['blocks']) || ! in_array('referrer-policy: no-referrer', $headers, true)
+                || ! array_filter($headers, fn ($header) => str_starts_with($header, 'cache-control:') && str_contains($header, 'no-store'))) {
+                throw new RuntimeException('Outside-city response contract failed for '.$name.'.');
             }
             $results[] = ['case' => $name, 'seconds' => $seconds, 'code' => 'OUTSIDE_SERVICE_AREA'];
+
             continue;
         }
         if (! str_contains($http_response_header[0], '200') || ($r['blocks']['satellite']['status'] ?? null) !== 'READY') {
@@ -95,8 +81,9 @@ try {
         if (str_starts_with($name, 'cloud') && $actual['selected']['coverage']['reason_counts']['cloud_or_cirrus'] === 0) {
             throw new RuntimeException('Cloud case missing');
         }
-        if ($name === 'edge-1000' && $actual['selected']['coverage']['inside_rectangle_outside_target_pixels'] !== 1) {
-            throw new RuntimeException('Unknown edge pixel must survive');
+        if (str_starts_with($name, 'edge')
+            && $actual['selected']['coverage']['usable_pixels'] >= $actual['selected']['coverage']['circle_pixels']) {
+            throw new RuntimeException('Edge uncertainty must survive');
         }
         $results[] = ['case' => $name, 'seconds' => $seconds, 'response_bytes' => strlen($raw), 'reader' => $expected['metrics'], 'selected_coverage' => $actual['selected']['coverage']];
         foreach ($actual['selected']['layers'] ?? [] as $source) {

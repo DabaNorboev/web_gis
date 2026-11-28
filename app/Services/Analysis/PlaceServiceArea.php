@@ -15,17 +15,18 @@ class PlaceServiceArea
         try {
             $covered = $this->scope->covers($point);
         } catch (Throwable) {
-            throw new HttpResponseException(response()->json([
-                'code' => 'SERVICE_AREA_UNAVAILABLE',
-                'message' => 'Не удалось проверить границу Красноярска. Попробуйте ещё раз.',
-            ], 503));
+            $this->reject('SERVICE_AREA_UNAVAILABLE', 'Не удалось проверить границу Красноярска. Попробуйте ещё раз.', 503);
         }
 
         if (! $covered) {
-            throw new HttpResponseException(response()->json([
-                'code' => 'OUTSIDE_SERVICE_AREA',
-                'message' => 'Точку для анализа можно выбрать только в пределах Красноярска.',
-            ], 422));
+            $this->reject('OUTSIDE_SERVICE_AREA', 'Точку для анализа можно выбрать только в пределах Красноярска.', 422);
         }
+    }
+
+    private function reject(string $code, string $message, int $status): never
+    {
+        throw new HttpResponseException(response()->json(['code' => $code, 'message' => $message], $status)
+            ->header('Cache-Control', 'no-store')
+            ->header('Referrer-Policy', 'no-referrer'));
     }
 }

@@ -43,11 +43,14 @@ class PlaceAnalysisApiTest extends TestCase
         $path = self::PATH.'/selection';
         $this->postJson($path, ['lon' => .12, 'lat' => .23])->assertOk()->assertExactJson(['status' => 'INSIDE'])
             ->assertHeader('Cache-Control', 'no-store, private')->assertHeader('Referrer-Policy', 'no-referrer');
-        $this->postJson($path, ['lon' => .24, 'lat' => .36])->assertUnprocessable()->assertJsonPath('code', 'OUTSIDE_SERVICE_AREA');
+        $this->postJson($path, ['lon' => .24, 'lat' => .36])->assertUnprocessable()->assertJsonPath('code', 'OUTSIDE_SERVICE_AREA')
+            ->assertHeader('Cache-Control', 'no-store, private')->assertHeader('Referrer-Policy', 'no-referrer');
         $this->postJson(self::PATH, ['place' => ['kind' => 'point', 'lon' => .24, 'lat' => .36]])
-            ->assertUnprocessable()->assertJsonPath('code', 'OUTSIDE_SERVICE_AREA')->assertJsonMissingPath('blocks');
+            ->assertUnprocessable()->assertJsonPath('code', 'OUTSIDE_SERVICE_AREA')->assertJsonMissingPath('blocks')
+            ->assertHeader('Cache-Control', 'no-store, private')->assertHeader('Referrer-Policy', 'no-referrer');
         $this->postJson($path, ['lon' => .36, 'lat' => .48])->assertStatus(503)
-            ->assertJsonPath('code', 'SERVICE_AREA_UNAVAILABLE')->assertDontSee('private-canary');
+            ->assertJsonPath('code', 'SERVICE_AREA_UNAVAILABLE')->assertDontSee('private-canary')
+            ->assertHeader('Cache-Control', 'no-store, private')->assertHeader('Referrer-Policy', 'no-referrer');
         $this->postJson($path.'?private-canary=1', ['lon' => .12, 'lat' => .23])->assertUnprocessable()->assertDontSee('private-canary');
         $this->postJson($path, ['lon' => '0.12', 'lat' => .23])->assertUnprocessable()->assertJsonPath('code', 'INVALID_REQUEST');
         $this->postJson($path, ['lon' => .12, 'lat' => .23, 'unexpected' => 'private-canary'])
