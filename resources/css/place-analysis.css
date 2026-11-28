@@ -295,6 +295,7 @@
     color: var(--color-search-muted, #52635b);
     font-size: 13px;
 }
+.pa-tab svg { flex: none; }
 .pa-tab:disabled { background: transparent; color: var(--pa-muted); opacity: .5; }
 .pa-selection-hint { margin: 16px 0; padding: 24px 18px; border: 1px dashed var(--pa-border); border-radius: 12px; background: #f4f7f3; color: var(--pa-muted); text-align: center; }
 .pa-selection-hint > svg { margin: 0 auto 12px; color: var(--pa-accent); }
@@ -984,6 +985,7 @@
     color: var(--pa-accent);
     white-space: nowrap;
 }
+.pa-sat-comparison caption { padding-bottom: 5px; text-align: start; font-weight: 600; }
 .pa-sat-comparison__date[aria-pressed="true"] { border-color: var(--pa-accent); background: var(--pa-accent); color: #fff; }
 .pa-sat-comparison__warning { display: block; margin-top: 2px; color: #6b5124; font-size: 11px; font-weight: 400; }
 .pa-sat-reasons { display: grid; gap: 4px; margin: 6px 0; padding: 0; list-style: none; }
@@ -1043,6 +1045,7 @@
 
 @media (820px < width <= 1050px) {
     .pa-map-toolbar { gap: 4px; padding-inline: 5px; }
+    .pa-basemap-control button { font-size: 11px; padding-inline: 4px; }
     .pa-map-theme > span,
     .pa-map-layers-toggle > span,
     .pa-map-layers-toggle > svg:last-child { display: none; }

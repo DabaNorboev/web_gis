@@ -14,6 +14,7 @@ import {
 
 const props = defineProps<{
     satelliteScope: 'territory' | 'circle'
+    appliedRadius: number
     canLoad: boolean
     tab: 'overview' | 'objects' | 'satellite' | 'air'
     blocks: Record<AnalysisBlockKey, AnalysisBlockState>
@@ -200,9 +201,10 @@ function reloadAirSummary() {
         </label>
         <details v-show="comparableSatelliteDates.length > 1" class="pa-sat-details">
             <summary>Сравнить даты</summary>
-            <table class="pa-sat-comparison" aria-label="NDVI и покрытие круга по датам">
+            <table class="pa-sat-comparison">
+                <caption>Растительность в круге {{ appliedRadius }} м</caption>
                 <thead>
-                    <tr><th scope="col">Дата</th><th scope="col">Средний NDVI</th><th scope="col">Пригодно</th></tr>
+                    <tr><th scope="col">Дата снимка</th><th scope="col">Средний индекс NDVI</th><th scope="col">Доля пригодных пикселей</th></tr>
                 </thead>
                 <tbody>
                     <tr v-for="release in comparableSatelliteDates" :key="release.date">
@@ -216,9 +218,10 @@ function reloadAirSummary() {
                     </tr>
                 </tbody>
             </table>
+            <p class="pa-note">Процент показывает, для какой части круга есть пригодные данные снимка.</p>
         </details>
-        <label class="pa-field"><span>Область отображения</span>
-            <select class="pa-select" aria-label="Область спутникового слоя" :value="satelliteScope"
+        <label class="pa-field"><span>Где показать слой на карте</span>
+            <select class="pa-select" aria-label="Где показать слой на карте" :value="satelliteScope"
                 @change="emit('satellite-scope', ($event.target as HTMLSelectElement).value as 'territory' | 'circle')">
                 <option value="territory">Вся подготовленная территория</option>
                 <option value="circle">Только круг анализа</option>

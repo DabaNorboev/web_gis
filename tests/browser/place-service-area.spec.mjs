@@ -73,7 +73,7 @@ test('outside clicks and taps preserve the analyzed place and both basemaps are 
 
     await openMapSettings(page)
     const basemap = page.getByRole('group', { name: 'Подложка карты' })
-    await basemap.getByRole('button', { name: 'Спутник', exact: true }).press('Enter')
+    await basemap.getByRole('button', { name: 'Спутниковый фон', exact: true }).press('Enter')
     await expect(page.locator('.pa-imagery-credit')).toBeVisible()
     expect(await mapState(page)).toEqual(outside)
     await basemap.getByRole('button', { name: 'Карта', exact: true }).press('Enter')
@@ -103,7 +103,7 @@ test('the service boundary uses the server geometry and toggles independently of
     await expect.poll(visibleSegments).toBeGreaterThan(0)
 
     const basemap = page.getByRole('group', { name: 'Подложка карты' })
-    await basemap.getByRole('button', { name: 'Спутник', exact: true }).press('Enter')
+    await basemap.getByRole('button', { name: 'Спутниковый фон', exact: true }).press('Enter')
     await expect(page.locator('.pa-imagery-credit')).toBeVisible()
     const layers = await page.evaluate(() => window.__smokeMapIn('.pa-map').getStyle().layers.map(layer => layer.id))
     expect(layers.indexOf('pa-service-boundary-line')).toBeGreaterThan(layers.indexOf('pa-imagery-basemap'))

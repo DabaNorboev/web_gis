@@ -278,7 +278,7 @@ const layerOrder = ref<AnalysisLayer[]>(['objects', 'stations', 'radius', 'satel
 
 const mapPois = computed(() => realMapPois.value.filter(poi => enabledPoiCategories.value.includes(poi.category)))
 const tabLabels: Record<AnalysisTab, string> = {
-    overview: 'Обзор', objects: 'Объекты', satellite: 'Спутник', air: 'Воздух',
+    overview: 'Обзор', objects: 'Объекты', satellite: 'Снимки и NDVI', air: 'Воздух',
 }
 const tabIcons: Record<AnalysisTab, Component> = {
     overview: LayoutDashboard, objects: MapPin, satellite: Satellite, air: Wind,
@@ -571,7 +571,7 @@ onBeforeUnmount(() => {
                         <p>Найдите и выберите адрес в поиске или нажмите «Точка на карте». После выбора станут доступны разделы и анализ места.</p>
                     </div>
                     <PlaceAnalysisResults v-else :tab="activeTab" :blocks="analysis.blocks" :selected-poi="selectedPoiId" :category="activeCategory" :enabled-categories="shownPoiCategories" :available-categories="availablePoiCategories"
-                        :satellite-scope="satelliteScope" :can-load="!!analysis.input.value" :date="realDate" :satellite-mode="satelliteMode" :satellite-catalog="satelliteCatalog"
+                        :satellite-scope="satelliteScope" :applied-radius="appliedRadius" :can-load="!!analysis.input.value" :date="realDate" :satellite-mode="satelliteMode" :satellite-catalog="satelliteCatalog"
                         :selected-station="selectedStationId" :air-hour-rows="hourRows"
                         @load="loadBlock" @open="openAnalysisTab" @poi="selectPoi" @category="selectCategory" @toggle-category="togglePoiCategory"
                         @date="chooseSatelliteDate" @satellite-mode="satelliteMode = $event" @satellite-scope="satelliteScope = $event"
@@ -602,7 +602,7 @@ onBeforeUnmount(() => {
                             <button type="button" :aria-pressed="!mapRef?.basemapMode || mapRef.basemapMode === 'map'"
                                 @click="mapRef?.selectBasemap(false)">Карта</button>
                             <button type="button" :disabled="!mapRef?.mapReady" :aria-pressed="!!mapRef?.basemapMode && mapRef.basemapMode !== 'map'"
-                                @click="mapRef?.selectBasemap(true)">Спутник</button>
+                                @click="mapRef?.selectBasemap(true)">Спутниковый фон</button>
                         </div>
                         <div class="pa-map-view-control" role="group" aria-label="Режим карты">
                             <button type="button" :aria-pressed="!mapRef?.terrainEnabled" @click="mapRef?.setTerrainMode(false)">2D</button>
