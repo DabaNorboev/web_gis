@@ -9,13 +9,17 @@ use Throwable;
 /** Independent snapshot transactions: a category failure preserves other local results. */
 class RetailPoiProvider
 {
-    public function __construct(private GroceryPoiProvider $grocery, private PharmacyPoiProvider $pharmacy, private OfficialStopPoiProvider $officialStops, private ParkPoiProvider $parks) {}
+    public function __construct(private GroceryPoiProvider $grocery, private PharmacyPoiProvider $pharmacy, private OfficialStopPoiProvider $officialStops, private ParkPoiProvider $parks, private SchoolPoiProvider $schools, private KindergartenPoiProvider $kindergartens) {}
 
     public function analyze(array $point, int $radius): array
     {
         $coverage = $completeness = $availability = $items = [];
         $counts = [];
         $providers = ['grocery' => $this->grocery, 'pharmacy' => $this->pharmacy, 'official_stop' => $this->officialStops, 'park' => $this->parks];
+        $education = config('place_analysis.education_enabled');
+        if ($education) {
+            $providers += ['school' => $this->schools, 'kindergarten' => $this->kindergartens];
+        }
         $stopSummary = ['found_count' => null, 'source_without_coordinates' => null];
         $ready = $failed = false;
         foreach ($providers as $category => $provider) {
@@ -44,8 +48,8 @@ class RetailPoiProvider
             }
         }
         $items = array_values($byId);
-        foreach (['grocery', 'pharmacy', 'park'] as $category) {
-            if ($counts[$category] !== null) {
+        foreach (array_keys($providers) as $category) {
+            if ($category !== 'official_stop' && $counts[$category] !== null) {
                 $counts[$category] = count(array_filter($items, fn ($item) => $item['category'] === $category));
             }
         }
@@ -60,7 +64,7 @@ class RetailPoiProvider
             'code' => $ready ? null : ($failed ? 'BLOCK_CALCULATION_FAILED' : 'POI_SNAPSHOTS_UNAVAILABLE'),
             'message' => $ready ? 'Категории рассчитаны независимо; доступность и покрытие указаны отдельно. Расстояния прямые, не пешая доступность.' : 'Нет доступных результатов POI.',
             'calculated_at' => CarbonImmutable::now('UTC')->toISOString(),
-            'method_version' => config('place_analysis.parks_enabled') ? 'poi-v3-geography-source-geometry-park-outer-aliases' : (config('place_analysis.official_stops_enabled') ? 'poi-v2-geography-source-geometry-independent-categories' : 'osm-retail-v1-geography-source-geometry-independent-categories'),
+            'method_version' => $education ? 'poi-v4-geography-source-geometry-education' : (config('place_analysis.parks_enabled') ? 'poi-v3-geography-source-geometry-park-outer-aliases' : (config('place_analysis.official_stops_enabled') ? 'poi-v2-geography-source-geometry-independent-categories' : 'osm-retail-v1-geography-source-geometry-independent-categories')),
             'availability_by_category' => $availability,
             'coverage' => ['status' => $summary, 'reason' => 'Покрытие определяется отдельно по категориям.', 'available_radius_m' => null, 'by_category' => $coverage],
             'completeness' => ['status' => in_array('PARTIAL', array_column($completeness, 'status'), true) ? 'PARTIAL' : 'UNKNOWN', 'reason' => 'Полнота источников относительно реального мира неизвестна.', 'by_category' => $completeness],

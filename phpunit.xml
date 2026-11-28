@@ -20,6 +20,8 @@
     <php>
         <server name="PLACE_ANALYSIS_PARKS_ENABLED" value="false" force="true"/>
         <env name="PLACE_ANALYSIS_PARKS_ENABLED" value="false" force="true"/>
+        <server name="PLACE_ANALYSIS_EDUCATION_ENABLED" value="false" force="true"/>
+        <env name="PLACE_ANALYSIS_EDUCATION_ENABLED" value="false" force="true"/>
         <!-- Local provider activation must not leak into isolated tests. -->
         <server name="AIR_SNAPSHOT_ROOT" value="" force="true"/>
         <env name="AIR_SNAPSHOT_ROOT" value="" force="true"/>
